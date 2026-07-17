@@ -13,4 +13,12 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+# The oracle needs python3 and the rpctl checkout; off in the pre-commit hook.
+oracle = ["dep:serde_json"]
+
 [dependencies]
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

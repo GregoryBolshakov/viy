@@ -1,0 +1,20 @@
+[package]
+name = "viy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "viy"
+path = "src/main.rs"
+
+[lib]
+name = "viy_cli"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]

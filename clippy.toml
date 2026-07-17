@@ -1,0 +1,18 @@
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+await-holding-invalid-types = [
+    "tokio::sync::MutexGuard",
+    "tokio::sync::RwLockReadGuard",
+    "tokio::sync::RwLockWriteGuard",
+]
+# Python's str.strip() and str.split() treat \x1c-\x1f (rpctl's Shift+Tab
+# marker is \x1e), \x85 and the Unicode spaces as whitespace; Rust's set
+# differs (docs/flags.md F05). viy-pycompat holds the replacements and
+# allows these locally.
+disallowed-methods = [
+    { path = "str::trim", reason = "Python's whitespace set differs: use viy_pycompat's py_strip (flags.md F05)." },
+    { path = "str::trim_start", reason = "Python's whitespace set differs: use viy_pycompat's py_lstrip (flags.md F05)." },
+    { path = "str::trim_end", reason = "Python's whitespace set differs: use viy_pycompat's py_rstrip (flags.md F05)." },
+    { path = "str::split_whitespace", reason = "Python's whitespace set differs: use viy_pycompat's py_split (flags.md F05)." },
+    { path = "str::split_ascii_whitespace", reason = "Python's whitespace set differs: use viy_pycompat's py_split (flags.md F05)." },
+]

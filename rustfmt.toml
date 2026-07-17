@@ -1,0 +1,4 @@
+edition = "2024"
+# Codex's setting. Unstable on stable rustfmt, which warns and still formats;
+# the warning can be ignored.
+imports_granularity = "Item"

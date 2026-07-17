@@ -1,0 +1,80 @@
+[workspace]
+members = [
+    "crates/viy",
+    "crates/viy-agent",
+    "crates/viy-config",
+    "crates/viy-pod",
+    "crates/viy-pycompat",
+    "crates/viy-term",
+    "crates/viy-testkit",
+    "crates/viy-tools",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+# viy is private: never published, the name reserved nowhere (CLAUDE.md,
+# implementation-plan.md 7).
+publish = false
+
+[workspace.dependencies]
+# Internal
+viy-agent = { path = "crates/viy-agent" }
+viy-config = { path = "crates/viy-config" }
+viy-pod = { path = "crates/viy-pod" }
+viy-pycompat = { path = "crates/viy-pycompat" }
+viy-term = { path = "crates/viy-term" }
+viy-testkit = { path = "crates/viy-testkit" }
+viy-tools = { path = "crates/viy-tools" }
+
+# External crates are added when a work package first needs one, each version
+# recorded as a fact (ROADMAP phase 0).
+
+# Codex's deny list (codex-rs/Cargo.toml at the commit in tests/codex-ref.txt).
+[workspace.lints]
+rust = {}
+
+[workspace.lints.clippy]
+await_holding_invalid_type = "deny"
+await_holding_lock = "deny"
+disallowed_methods = "deny"
+expect_used = "deny"
+identity_op = "deny"
+manual_clamp = "deny"
+manual_filter = "deny"
+manual_find = "deny"
+manual_flatten = "deny"
+manual_map = "deny"
+manual_memcpy = "deny"
+manual_non_exhaustive = "deny"
+manual_ok_or = "deny"
+manual_range_contains = "deny"
+manual_retain = "deny"
+manual_strip = "deny"
+manual_try_fold = "deny"
+manual_unwrap_or = "deny"
+needless_borrow = "deny"
+needless_borrowed_reference = "deny"
+needless_collect = "deny"
+needless_late_init = "deny"
+needless_option_as_deref = "deny"
+needless_question_mark = "deny"
+needless_update = "deny"
+redundant_clone = "deny"
+redundant_closure = "deny"
+redundant_closure_for_method_calls = "deny"
+redundant_static_lifetimes = "deny"
+trivially_copy_pass_by_ref = "deny"
+uninlined_format_args = "deny"
+unnecessary_filter_map = "deny"
+unnecessary_lazy_evaluations = "deny"
+unnecessary_sort_by = "deny"
+unnecessary_to_owned = "deny"
+unwrap_used = "deny"
+
+[profile.dev]
+# The test profile inherits dev. Source locations without locals keep test
+# binaries small; CARGO_PROFILE_DEV_DEBUG=full brings locals back.
+debug = "line-tables-only"

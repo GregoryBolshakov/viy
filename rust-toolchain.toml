@@ -1,0 +1,5 @@
+[toolchain]
+# The laptop's toolchain (kb f008); Codex is on 1.99.1, an upgrade is checked
+# separately (docs/codex-patterns.md 3).
+channel = "1.97.1"
+components = ["clippy", "rustfmt", "rust-src"]

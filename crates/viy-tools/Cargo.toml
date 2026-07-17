@@ -1,0 +1,16 @@
+[package]
+name = "viy-tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "viy_tools"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]

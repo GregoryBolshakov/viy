@@ -11,3 +11,4 @@
 pub mod pyjson;
 pub mod pystr;
 mod pystr_tables;
+pub mod shlex;

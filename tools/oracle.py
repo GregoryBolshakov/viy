@@ -19,9 +19,10 @@ Python version.
 JSON carries what it can. Other values are tagged, in both directions:
 {"$tuple": [...]}, {"$bytes": "<base64>"}, {"$path": "..."}, and in requests
 {"$slice": [start, stop, step]}; a result of any other type comes back as
-{"$repr": "..."}. `oracle.char_ranges` answers a whole character class at
-once: [[first, last], ...] for "isspace", "isdigit", "isdecimal" or
-"splitlines" (where str.splitlines() breaks).
+{"$repr": "..."}. The oracle's own helpers: `oracle.char_ranges` answers a
+whole character class at once, [[first, last], ...] for "isspace",
+"isdigit", "isdecimal" or "splitlines" (where str.splitlines() breaks);
+`oracle.shlex_tokens` runs the shlex lexer approve.py and egress.py build.
 
 rpctl is imported from target/rpctl-ref/<commit>/ (tools/refsnap.sh), never
 the live checkout. Before the import, HOME, every XDG_* directory and the
@@ -60,6 +61,7 @@ FUNCTIONS = {
     "len": ("builtins", "len"),
     "operator.getitem": ("operator", "getitem"),
     "repr": ("builtins", "repr"),
+    "shlex.join": ("shlex", "join"),
     "shlex.quote": ("shlex", "quote"),
     "shlex.split": ("shlex", "split"),
     "str.isdigit": ("builtins", "str.isdigit"),
@@ -71,6 +73,9 @@ FUNCTIONS = {
     "str.splitlines": ("builtins", "str.splitlines"),
     "str.strip": ("builtins", "str.strip"),
     "unicodedata.decimal": ("unicodedata", "decimal"),
+    # the oracle's own helpers, below
+    "oracle.char_ranges": ("__main__", "char_ranges"),
+    "oracle.shlex_tokens": ("__main__", "shlex_tokens"),
 }
 
 CHAR_CLASSES = {
@@ -79,6 +84,17 @@ CHAR_CLASSES = {
     "isdecimal": str.isdecimal,
     "splitlines": lambda c: len(("a" + c + "b").splitlines()) == 2,
 }
+
+
+def shlex_tokens(s, punctuation_chars, commenters):
+    """list(lex) for the lexer approve.py and egress.py build: posix, with
+    whitespace_split, the given punctuation_chars (a string, or true for
+    shlex's default) and commenters."""
+    import shlex
+    lex = shlex.shlex(s, posix=True, punctuation_chars=punctuation_chars)
+    lex.whitespace_split = True
+    lex.commenters = commenters
+    return list(lex)
 
 
 def char_ranges(kind):
@@ -160,11 +176,6 @@ def answer(req, commit):
     name = req.get("fn")
     if name == "oracle.hello":
         return {"ok": {"rpctl_commit": commit, "python": sys.version.split()[0]}}
-    if name == "oracle.char_ranges":
-        kind = (req.get("args") or [None])[0]
-        if kind not in CHAR_CLASSES:
-            return {"refused": f"no character class {kind!r}"}
-        return {"ok": char_ranges(kind)}
     if name not in FUNCTIONS:
         return {"refused": f"not on the oracle's whitelist: {name}"}
     module, attr = FUNCTIONS[name]

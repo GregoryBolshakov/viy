@@ -95,6 +95,16 @@ pub const PY_NUMBER_PIECES: &[&str] = &[
     "e-", "inf", "nan", " ", "\t", "\x1c", "\u{a0}", "\u{3000}", "\0", "x", "ы",
 ];
 
+/// Pieces for shell-ish commands: quotes, escapes, every punctuation and
+/// comment character shlex knows, its four whitespace characters and near
+/// misses, and words.
+pub const SHELL_PIECES: &[&str] = &[
+    " ", "  ", "\t", "\n", "\r", "\x0b", "\x1c", "\u{a0}", "\u{3000}", "'", "\"", "\\", "\\\"",
+    "''", "\"\"", "&", "&&", "|", "||", ";", ";;", "(", ")", "<", ">", ">&", "2>", "#", "$", "$(",
+    "`", "*", "?", "~", "=", "-", "--", ".", "/", "/tmp", "rm", "-rf", "git", "curl", "x.com", "a",
+    "b1", "ы", "😀", "ß", "é",
+];
+
 #[cfg(test)]
 #[path = "fuzz_tests.rs"]
 mod tests;

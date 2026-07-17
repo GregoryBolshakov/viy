@@ -68,8 +68,9 @@ fn python_ranges(oracle: &mut Oracle, kind: &str) -> Vec<(u32, u32)> {
 #[test]
 fn character_tables_equal_python() {
     let mut oracle = Oracle::spawn().unwrap();
-    let checks: [(&str, CharClass); 4] = [
+    let checks: [(&str, CharClass); 5] = [
         ("isspace", pystr::is_space),
+        ("isprintable", pystr::is_printable),
         ("isdigit", pystr::is_digit),
         ("isdecimal", |c| pystr::decimal_value(c).is_some()),
         ("splitlines", pystr::is_line_break),

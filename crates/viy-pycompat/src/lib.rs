@@ -9,6 +9,7 @@
 //! Rust's; this crate is where the replacements live.
 
 pub mod pyjson;
+pub mod pyrepr;
 pub mod pystr;
 mod pystr_tables;
 pub mod shlex;

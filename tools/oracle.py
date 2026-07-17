@@ -21,7 +21,7 @@ JSON carries what it can. Other values are tagged, in both directions:
 {"$slice": [start, stop, step]}; a result of any other type comes back as
 {"$repr": "..."}. The oracle's own helpers: `oracle.char_ranges` answers a
 whole character class at once, [[first, last], ...] for "isspace",
-"isdigit", "isdecimal" or "splitlines" (where str.splitlines() breaks);
+"isdigit", "isdecimal", "isprintable" or "splitlines" (where str.splitlines() breaks);
 `oracle.shlex_tokens` runs the shlex lexer approve.py and egress.py build.
 
 rpctl is imported from target/rpctl-ref/<commit>/ (tools/refsnap.sh), never
@@ -64,6 +64,7 @@ FUNCTIONS = {
     "shlex.join": ("shlex", "join"),
     "shlex.quote": ("shlex", "quote"),
     "shlex.split": ("shlex", "split"),
+    "str": ("builtins", "str"),
     "str.isdigit": ("builtins", "str.isdigit"),
     "str.isspace": ("builtins", "str.isspace"),
     "str.lstrip": ("builtins", "str.lstrip"),
@@ -82,6 +83,7 @@ CHAR_CLASSES = {
     "isspace": str.isspace,
     "isdigit": str.isdigit,
     "isdecimal": str.isdecimal,
+    "isprintable": str.isprintable,
     "splitlines": lambda c: len(("a" + c + "b").splitlines()) == 2,
 }
 

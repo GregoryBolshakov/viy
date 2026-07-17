@@ -7,6 +7,11 @@
 //! of cases per property (implementation plan 3.2; proptest is not used: it
 //! is not in the cargo cache, and Codex does without it).
 
+use serde_json::Map;
+use serde_json::Number;
+use serde_json::Value;
+use serde_json::json;
+
 /// The seed when `VIY_FUZZ_SEED` is not set.
 pub const DEFAULT_SEED: u64 = 0x0005_eed0_f797;
 
@@ -103,6 +108,83 @@ pub const SHELL_PIECES: &[&str] = &[
     "''", "\"\"", "&", "&&", "|", "||", ";", ";;", "(", ")", "<", ">", ">&", "2>", "#", "$", "$(",
     "`", "*", "?", "~", "=", "-", "--", ".", "/", "/tmp", "rm", "-rf", "git", "curl", "x.com", "a",
     "b1", "ы", "😀", "ß", "é",
+];
+
+/// Floats at the edges of Python's repr formatting.
+pub const FLOATS: &[f64] = &[
+    0.0,
+    -0.0,
+    0.1,
+    1e15,
+    1e16,
+    9_999_999_999_999_998.0,
+    1e-4,
+    1e-5,
+    5e-324,
+    f64::MAX,
+    f64::MIN_POSITIVE,
+    123_456.789,
+    1e22,
+    1e21,
+    -2.5e-7,
+];
+
+/// A finite float: half from [`FLOATS`] (format edges), half from random bits.
+pub fn float(g: &mut Gen) -> f64 {
+    if g.below(2) == 0 {
+        return *g.pick(FLOATS);
+    }
+    loop {
+        let x = f64::from_bits(g.next_u64());
+        if x.is_finite() {
+            return x;
+        }
+    }
+}
+
+/// A JSON value nested up to `depth`: null, bools, i64 edges, u64 above i64,
+/// floats, strings and keys from [`PY_STR_PIECES`].
+pub fn json_value(g: &mut Gen, depth: usize) -> Value {
+    let kinds = if depth == 0 { 6 } else { 8 };
+    match g.below(kinds) {
+        0 => Value::Null,
+        1 => Value::Bool(g.below(2) == 0),
+        2 => json!(*g.pick(&[0i64, 1, -1, 42, i64::MIN, i64::MAX, 1 << 53])),
+        3 => json!(*g.pick(&[u64::MAX, 1u64 << 63, 12_345_678_901_234_567_890])),
+        4 => Number::from_f64(float(g)).map_or(Value::Null, Value::Number),
+        5 => Value::String(g.string(PY_STR_PIECES, 6)),
+        6 => Value::Array((0..g.below(4)).map(|_| json_value(g, depth - 1)).collect()),
+        _ => {
+            let mut map = Map::new();
+            for _ in 0..g.below(4) {
+                map.insert(g.string(PY_STR_PIECES, 3), json_value(g, depth - 1));
+            }
+            Value::Object(map)
+        }
+    }
+}
+
+/// Pieces for `repr()`: the quote choices, escapes and every class of
+/// non-printable character on top of [`PY_STR_PIECES`].
+pub const REPR_PIECES: &[&str] = &[
+    "'",
+    "\"",
+    "\\",
+    "\u{ad}",
+    "\u{200b}",
+    "\u{378}",
+    "\u{e000}",
+    "\u{e0001}",
+    "\u{10ffff}",
+    "\u{fffe}",
+    "\u{d7ff}",
+    "\u{1f600}",
+    "\x01",
+    "\u{80}",
+    "\u{9f}",
+    "\u{ff}",
+    "\u{100}",
+    "\u{2028}",
 ];
 
 #[cfg(test)]

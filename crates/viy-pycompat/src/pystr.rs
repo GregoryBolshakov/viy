@@ -16,6 +16,7 @@ use std::cmp::Ordering;
 use crate::pystr_tables::DECIMAL;
 use crate::pystr_tables::DIGIT;
 use crate::pystr_tables::LINE_BREAK;
+use crate::pystr_tables::PRINTABLE;
 use crate::pystr_tables::SPACE;
 
 /// CPython's `_PY_LONG_DEFAULT_MAX_STR_DIGITS`: `int()` refuses more digits.
@@ -45,6 +46,11 @@ pub fn is_space(c: char) -> bool {
 /// like.
 pub fn is_digit(c: char) -> bool {
     in_ranges(DIGIT, c)
+}
+
+/// `c.isprintable()`: not in Unicode's C* or Z* categories, space excepted.
+pub fn is_printable(c: char) -> bool {
+    in_ranges(PRINTABLE, c)
 }
 
 /// Whether `str.splitlines()` breaks at `c`.

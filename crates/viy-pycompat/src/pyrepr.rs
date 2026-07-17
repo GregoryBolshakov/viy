@@ -13,39 +13,59 @@ use crate::pystr::is_printable;
 /// no double one; backslash, the quote, `\t`, `\n`, `\r` escaped; other
 /// non-printable characters as `\xNN`, `\uNNNN` or `\UNNNNNNNN`.
 pub fn repr_str(s: &str) -> String {
-    let quote = if s.contains('\'') && !s.contains('"') {
-        '"'
+    repr_code_points(&s.chars().map(u32::from).collect::<Vec<_>>())
+}
+
+/// `repr()` of the str Python makes of a file name: its bytes decoded as
+/// UTF-8 with surrogateescape, so each undecodable byte b is U+DC00+b and
+/// shows as `\udcNN`.
+pub fn repr_bytes_path(name: &[u8]) -> String {
+    let mut cps = Vec::with_capacity(name.len());
+    for chunk in name.utf8_chunks() {
+        cps.extend(chunk.valid().chars().map(u32::from));
+        cps.extend(chunk.invalid().iter().map(|&b| 0xDC00 + u32::from(b)));
+    }
+    repr_code_points(&cps)
+}
+
+/// CPython's `unicode_repr` over code points, lone surrogates allowed.
+fn repr_code_points(cps: &[u32]) -> String {
+    let squote = u32::from('\'');
+    let dquote = u32::from('"');
+    let quote = if cps.contains(&squote) && !cps.contains(&dquote) {
+        dquote
     } else {
-        '\''
+        squote
     };
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push(quote);
-    for c in s.chars() {
-        let cp = u32::from(c);
-        match c {
-            c if c == quote || c == '\\' => {
+    let printable = |cp: u32| char::from_u32(cp).is_some_and(is_printable);
+    let mut out = String::with_capacity(cps.len() + 2);
+    let push = |out: &mut String, cp: u32| out.extend(char::from_u32(cp));
+    push(&mut out, quote);
+    for &cp in cps {
+        match cp {
+            cp if cp == quote || cp == u32::from('\\') => {
                 out.push('\\');
-                out.push(c);
+                push(&mut out, cp);
             }
-            '\t' => out.push_str("\\t"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            _ if cp < 0x20 || cp == 0x7f => {
+            0x09 => out.push_str("\\t"),
+            0x0a => out.push_str("\\n"),
+            0x0d => out.push_str("\\r"),
+            cp if cp < 0x20 || cp == 0x7f => {
                 let _ = write!(out, "\\x{cp:02x}");
             }
-            c if cp < 0x7f || is_printable(c) => out.push(c),
-            _ if cp <= 0xff => {
+            cp if cp < 0x7f || printable(cp) => push(&mut out, cp),
+            cp if cp <= 0xff => {
                 let _ = write!(out, "\\x{cp:02x}");
             }
-            _ if cp <= 0xffff => {
+            cp if cp <= 0xffff => {
                 let _ = write!(out, "\\u{cp:04x}");
             }
-            _ => {
+            cp => {
                 let _ = write!(out, "\\U{cp:08x}");
             }
         }
     }
-    out.push(quote);
+    push(&mut out, quote);
     out
 }
 

@@ -1,3 +1,4 @@
+mod posixpath_oracle;
 mod pyjson_oracle;
 mod pyrepr_oracle;
 mod pystr_oracle;

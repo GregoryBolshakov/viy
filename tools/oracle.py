@@ -22,7 +22,9 @@ JSON carries what it can. Other values are tagged, in both directions:
 {"$repr": "..."}. The oracle's own helpers: `oracle.char_ranges` answers a
 whole character class at once, [[first, last], ...] for "isspace",
 "isdigit", "isdecimal", "isprintable" or "splitlines" (where str.splitlines() breaks);
-`oracle.shlex_tokens` runs the shlex lexer approve.py and egress.py build.
+`oracle.shlex_tokens` runs the shlex lexer approve.py and egress.py build;
+`oracle.path_call` runs realpath, abspath or Path.resolve from a given cwd
+(read-only file-system access, for the posixpath tests' scratch trees).
 
 rpctl is imported from target/rpctl-ref/<commit>/ (tools/refsnap.sh), never
 the live checkout. Before the import, HOME, every XDG_* directory and the
@@ -76,6 +78,7 @@ FUNCTIONS = {
     "unicodedata.decimal": ("unicodedata", "decimal"),
     # the oracle's own helpers, below
     "oracle.char_ranges": ("__main__", "char_ranges"),
+    "oracle.path_call": ("__main__", "path_call"),
     "oracle.shlex_tokens": ("__main__", "shlex_tokens"),
 }
 
@@ -97,6 +100,20 @@ def shlex_tokens(s, punctuation_chars, commenters):
     lex.whitespace_split = True
     lex.commenters = commenters
     return list(lex)
+
+
+def path_call(func, path, cwd):
+    """os.path.realpath, os.path.abspath or str(pathlib.Path(path).resolve())
+    with cwd as the working directory, for the posixpath tests' scratch trees."""
+    import pathlib
+    funcs = {"realpath": os.path.realpath, "abspath": os.path.abspath,
+             "resolve": lambda p: str(pathlib.Path(p).resolve())}
+    old = os.getcwd()
+    os.chdir(cwd)
+    try:
+        return funcs[func](path)
+    finally:
+        os.chdir(old)
 
 
 def char_ranges(kind):

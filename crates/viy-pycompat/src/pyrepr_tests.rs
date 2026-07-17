@@ -37,3 +37,10 @@ fn repr_value_matches_python() {
     assert_eq!(str_value(&json!("plain")), "plain");
     assert_eq!(str_value(&json!(["plain"])), "['plain']");
 }
+
+#[test]
+fn repr_of_undecodable_file_names() {
+    // Python: repr(os.fsdecode(b"a\xff\xc3")) == "'a\\udcff\\udcc3'"
+    assert_eq!(repr_bytes_path(b"a\xff\xc3"), "'a\\udcff\\udcc3'");
+    assert_eq!(repr_bytes_path("ключ".as_bytes()), "'ключ'");
+}

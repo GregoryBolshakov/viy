@@ -8,6 +8,7 @@
 //! friends elsewhere, because Python's whitespace and line breaks are not
 //! Rust's; this crate is where the replacements live.
 
+pub mod posixpath;
 pub mod pyjson;
 pub mod pyrepr;
 pub mod pystr;

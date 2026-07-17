@@ -8,5 +8,6 @@ pub mod fixtures;
 pub mod fuzz;
 #[cfg(feature = "oracle")]
 pub mod oracle;
+pub mod scratch;
 
 mod repo;

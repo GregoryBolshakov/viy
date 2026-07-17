@@ -8,5 +8,6 @@
 //! friends elsewhere, because Python's whitespace and line breaks are not
 //! Rust's; this crate is where the replacements live.
 
+pub mod pyjson;
 pub mod pystr;
 mod pystr_tables;

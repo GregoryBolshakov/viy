@@ -18,6 +18,7 @@ workspace = true
 oracle = ["viy-testkit/oracle"]
 
 [dependencies]
+serde_json = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

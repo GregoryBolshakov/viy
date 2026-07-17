@@ -59,6 +59,7 @@ FUNCTIONS = {
     "json.dumps": ("json", "dumps"),
     "len": ("builtins", "len"),
     "operator.getitem": ("operator", "getitem"),
+    "repr": ("builtins", "repr"),
     "shlex.quote": ("shlex", "quote"),
     "shlex.split": ("shlex", "split"),
     "str.isdigit": ("builtins", "str.isdigit"),

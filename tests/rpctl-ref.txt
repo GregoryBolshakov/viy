@@ -1,0 +1,6 @@
+# The rpctl commit viy ports from. Change it only together with regenerated
+# fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
+commit: 6bfec96bcd5087080a1ad17df165a663a4e5e77e
+branch: leak-protection
+pinned: 2026-07-11
+subject: One sandboxed shell approval, chat modes, /mount and /rewind in rp chat

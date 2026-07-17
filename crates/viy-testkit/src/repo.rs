@@ -10,7 +10,8 @@ pub(crate) fn repo_root() -> PathBuf {
 /// The full rpctl commit pinned in `tests/rpctl-ref.txt`.
 pub(crate) fn pinned_commit() -> Option<String> {
     let pin = std::fs::read_to_string(repo_root().join("tests").join("rpctl-ref.txt")).ok()?;
-    pin.lines()
+    // A file viy writes itself, ASCII only: no Python semantics needed.
+    pin.split('\n')
         .find_map(|l| l.strip_prefix("commit:"))
-        .map(|c| c.chars().filter(|ch| !ch.is_whitespace()).collect())
+        .map(|c| c.chars().filter(char::is_ascii_hexdigit).collect())
 }

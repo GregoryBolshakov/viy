@@ -5,6 +5,7 @@
 //! non-test code.
 
 pub mod fixtures;
+pub mod fuzz;
 #[cfg(feature = "oracle")]
 pub mod oracle;
 

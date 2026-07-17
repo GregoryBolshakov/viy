@@ -5,14 +5,16 @@ await-holding-invalid-types = [
     "tokio::sync::RwLockReadGuard",
     "tokio::sync::RwLockWriteGuard",
 ]
-# Python's str.strip() and str.split() treat \x1c-\x1f (rpctl's Shift+Tab
-# marker is \x1e), \x85 and the Unicode spaces as whitespace; Rust's set
-# differs (docs/flags.md F05). viy-pycompat holds the replacements and
-# allows these locally.
+# Python's str.strip(), str.split() and str.isspace() treat \x1c-\x1f
+# (rpctl's Shift+Tab marker is \x1e) as whitespace and str.splitlines() also
+# breaks at \v, \f, \x1c-\x1e, \x85, U+2028 and U+2029; Rust's sets differ
+# (docs/flags.md F05). viy_pycompat::pystr holds the replacements.
 disallowed-methods = [
-    { path = "str::trim", reason = "Python's whitespace set differs: use viy_pycompat's py_strip (flags.md F05)." },
-    { path = "str::trim_start", reason = "Python's whitespace set differs: use viy_pycompat's py_lstrip (flags.md F05)." },
-    { path = "str::trim_end", reason = "Python's whitespace set differs: use viy_pycompat's py_rstrip (flags.md F05)." },
-    { path = "str::split_whitespace", reason = "Python's whitespace set differs: use viy_pycompat's py_split (flags.md F05)." },
-    { path = "str::split_ascii_whitespace", reason = "Python's whitespace set differs: use viy_pycompat's py_split (flags.md F05)." },
+    { path = "str::trim", reason = "Python's whitespace set differs: use viy_pycompat's pystr::py_strip (flags.md F05)." },
+    { path = "str::trim_start", reason = "Python's whitespace set differs: use viy_pycompat's pystr::py_lstrip (flags.md F05)." },
+    { path = "str::trim_end", reason = "Python's whitespace set differs: use viy_pycompat's pystr::py_rstrip (flags.md F05)." },
+    { path = "str::split_whitespace", reason = "Python's whitespace set differs: use viy_pycompat's pystr::py_split (flags.md F05)." },
+    { path = "str::split_ascii_whitespace", reason = "Python's whitespace set differs: use viy_pycompat's pystr::py_split (flags.md F05)." },
+    { path = "str::lines", reason = "Python's line breaks differ: use viy_pycompat's pystr::py_splitlines (flags.md F05)." },
+    { path = "char::is_whitespace", reason = "Python's whitespace set differs: use viy_pycompat's pystr::is_space (flags.md F05)." },
 ]

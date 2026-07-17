@@ -13,4 +13,13 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+# The oracle tests: python3 and the rpctl checkout needed; off in the hook.
+oracle = ["viy-testkit/oracle"]
+
 [dependencies]
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serde_json = { workspace = true }
+viy-testkit = { workspace = true }

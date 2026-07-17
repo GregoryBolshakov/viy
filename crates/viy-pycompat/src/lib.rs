@@ -4,6 +4,9 @@
 //! (docs/flags.md F01, F05-F08, F22). Every function is checked against rpctl
 //! through the oracle (WP 0.9).
 //!
-//! The workspace's `clippy.toml` forbids `str::trim` and friends elsewhere,
-//! because Python's whitespace set is not Rust's; this crate is where the
-//! replacements live.
+//! The workspace's `clippy.toml` forbids `str::trim`, `str::lines` and
+//! friends elsewhere, because Python's whitespace and line breaks are not
+//! Rust's; this crate is where the replacements live.
+
+pub mod pystr;
+mod pystr_tables;

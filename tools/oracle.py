@@ -17,8 +17,11 @@ package (`approve.destructive_reason`), the Python standard library by its own
 Python version.
 
 JSON carries what it can. Other values are tagged, in both directions:
-{"$tuple": [...]}, {"$bytes": "<base64>"}, {"$path": "..."}; a result of any
-other type comes back as {"$repr": "..."}.
+{"$tuple": [...]}, {"$bytes": "<base64>"}, {"$path": "..."}, and in requests
+{"$slice": [start, stop, step]}; a result of any other type comes back as
+{"$repr": "..."}. `oracle.char_ranges` answers a whole character class at
+once: [[first, last], ...] for "isspace", "isdigit", "isdecimal" or
+"splitlines" (where str.splitlines() breaks).
 
 rpctl is imported from target/rpctl-ref/<commit>/ (tools/refsnap.sh), never
 the live checkout. Before the import, HOME, every XDG_* directory and the
@@ -51,10 +54,46 @@ FUNCTIONS = {
     "approve.plain_pipeline": ("rpctl.approve", "plain_pipeline"),
     "approve.prefix_for": ("rpctl.approve", "prefix_for"),
     # the standard library, for viy-pycompat (WP 0.9)
+    "float": ("builtins", "float"),
+    "int": ("builtins", "int"),
     "json.dumps": ("json", "dumps"),
+    "len": ("builtins", "len"),
+    "operator.getitem": ("operator", "getitem"),
     "shlex.quote": ("shlex", "quote"),
     "shlex.split": ("shlex", "split"),
+    "str.isdigit": ("builtins", "str.isdigit"),
+    "str.isspace": ("builtins", "str.isspace"),
+    "str.lstrip": ("builtins", "str.lstrip"),
+    "str.rsplit": ("builtins", "str.rsplit"),
+    "str.rstrip": ("builtins", "str.rstrip"),
+    "str.split": ("builtins", "str.split"),
+    "str.splitlines": ("builtins", "str.splitlines"),
+    "str.strip": ("builtins", "str.strip"),
+    "unicodedata.decimal": ("unicodedata", "decimal"),
 }
+
+CHAR_CLASSES = {
+    "isspace": str.isspace,
+    "isdigit": str.isdigit,
+    "isdecimal": str.isdecimal,
+    "splitlines": lambda c: len(("a" + c + "b").splitlines()) == 2,
+}
+
+
+def char_ranges(kind):
+    """[[first, last], ...]: the code points in one character class."""
+    pred = CHAR_CLASSES[kind]
+    out, start = [], None
+    for cp in range(0x110000):
+        hit = pred(chr(cp))
+        if hit and start is None:
+            start = cp
+        elif not hit and start is not None:
+            out.append([start, cp - 1])
+            start = None
+    if start is not None:
+        out.append([start, 0x10FFFF])
+    return out
 
 
 def snapshot():
@@ -92,6 +131,8 @@ def decode(v):
                 return base64.b64decode(x)
             if k == "$path":
                 return pathlib.Path(x)
+            if k == "$slice":
+                return slice(*x)
         return {k: decode(x) for k, x in v.items()}
     return v
 
@@ -118,6 +159,11 @@ def answer(req, commit):
     name = req.get("fn")
     if name == "oracle.hello":
         return {"ok": {"rpctl_commit": commit, "python": sys.version.split()[0]}}
+    if name == "oracle.char_ranges":
+        kind = (req.get("args") or [None])[0]
+        if kind not in CHAR_CLASSES:
+            return {"refused": f"no character class {kind!r}"}
+        return {"ok": char_ranges(kind)}
     if name not in FUNCTIONS:
         return {"refused": f"not on the oracle's whitelist: {name}"}
     module, attr = FUNCTIONS[name]
@@ -125,7 +171,9 @@ def answer(req, commit):
     stdin, sys.stdin = sys.stdin, io.StringIO()
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            fn = getattr(importlib.import_module(module), attr)
+            fn = importlib.import_module(module)
+            for part in attr.split("."):
+                fn = getattr(fn, part)
             args = decode(req.get("args", []))
             kwargs = decode(req.get("kwargs", {}))
             result = {"ok": encode(fn(*args, **kwargs))}

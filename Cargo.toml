@@ -33,7 +33,7 @@ viy-tools = { path = "crates/viy-tools" }
 # recorded as a fact (ROADMAP phase 0).
 # preserve_order: object keys keep their order, as in Python dicts (kb d011).
 pretty_assertions = "1.4.1"
-serde_json = { version = "1.0.151", features = ["preserve_order"] }
+serde_json = { version = "1.0.151", features = ["float_roundtrip", "preserve_order"] }
 
 # Codex's deny list (codex-rs/Cargo.toml at the commit in tests/codex-ref.txt).
 [workspace.lints]

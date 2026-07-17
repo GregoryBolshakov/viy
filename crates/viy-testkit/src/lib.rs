@@ -4,5 +4,8 @@
 //! runner (docs/implementation-plan.md 3.2-3.6). Never a dependency of
 //! non-test code.
 
+pub mod fixtures;
 #[cfg(feature = "oracle")]
 pub mod oracle;
+
+mod repo;

@@ -15,10 +15,10 @@ workspace = true
 
 [features]
 # The oracle needs python3 and the rpctl checkout; off in the pre-commit hook.
-oracle = ["dep:serde_json"]
+oracle = []
 
 [dependencies]
-serde_json = { workspace = true, optional = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

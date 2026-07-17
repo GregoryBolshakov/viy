@@ -2,6 +2,7 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 
 use super::*;
+use crate::repo::pinned_commit;
 
 fn returned(answer: Answer) -> Value {
     match answer.outcome {
@@ -12,11 +13,7 @@ fn returned(answer: Answer) -> Value {
 
 #[test]
 fn hello_names_the_pinned_commit() {
-    let pin = std::fs::read_to_string(repo_root().join("tests").join("rpctl-ref.txt")).unwrap();
-    let commit = pin
-        .lines()
-        .find_map(|l| l.strip_prefix("commit: "))
-        .unwrap();
+    let commit = pinned_commit().unwrap();
     let hello = Oracle::spawn().unwrap().hello().unwrap();
     let short = hello["rpctl_commit"].as_str().unwrap();
     assert!(commit.starts_with(short), "{short} vs {commit}");

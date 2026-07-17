@@ -10,7 +10,6 @@ use std::io;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
-use std::path::PathBuf;
 use std::process::Child;
 use std::process::ChildStdin;
 use std::process::ChildStdout;
@@ -19,6 +18,8 @@ use std::process::Stdio;
 
 use serde_json::Value;
 use serde_json::json;
+
+use crate::repo::repo_root;
 
 /// What the Python function did.
 #[derive(Debug, Clone, PartialEq)]
@@ -150,12 +151,6 @@ impl Drop for Oracle {
 /// A Python tuple, as the oracle tags it.
 pub fn tuple(items: Vec<Value>) -> Value {
     json!({ "$tuple": items })
-}
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
 }
 
 #[cfg(test)]

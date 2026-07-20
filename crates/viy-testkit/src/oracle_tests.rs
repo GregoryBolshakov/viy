@@ -62,13 +62,13 @@ fn tuples_come_back_tagged() {
 fn exceptions_carry_type_and_message() {
     let mut oracle = Oracle::spawn().unwrap();
     let answer = oracle
-        .call("shlex.split", json!(["echo \"unclosed"]), json!({}))
+        .call("approve.prefix_for", json!([5]), json!({}))
         .unwrap();
     assert_eq!(
         answer.outcome,
         Outcome::Raised {
-            kind: "ValueError".to_string(),
-            message: "No closing quotation".to_string(),
+            kind: "TypeError".to_string(),
+            message: "'int' object is not subscriptable".to_string(),
         }
     );
 }
@@ -76,22 +76,11 @@ fn exceptions_carry_type_and_message() {
 #[test]
 fn non_ascii_survives_the_pipe() {
     let mut oracle = Oracle::spawn().unwrap();
-    let value = json!({"ключ": "值 😀"});
-    let ascii = returned(
-        oracle
-            .call("json.dumps", json!([value]), json!({}))
-            .unwrap(),
-    );
-    assert_eq!(
-        ascii,
-        json!("{\"\\u043a\\u043b\\u044e\\u0447\": \"\\u503c \\ud83d\\ude00\"}")
-    );
-    let raw = returned(
-        oracle
-            .call("json.dumps", json!([value]), json!({"ensure_ascii": false}))
-            .unwrap(),
-    );
-    assert_eq!(raw, json!("{\"ключ\": \"值 😀\"}"));
+    let argv = json!(["ключ", "值😀", "x"]);
+    let answer = oracle
+        .call("approve.prefix_for", json!([argv]), json!({}))
+        .unwrap();
+    assert_eq!(returned(answer), json!(["ключ", "值😀"]));
 }
 
 #[test]

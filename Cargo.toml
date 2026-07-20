@@ -4,7 +4,6 @@ members = [
     "crates/viy-agent",
     "crates/viy-config",
     "crates/viy-pod",
-    "crates/viy-pycompat",
     "crates/viy-term",
     "crates/viy-testkit",
     "crates/viy-tools",
@@ -24,7 +23,6 @@ publish = false
 viy-agent = { path = "crates/viy-agent" }
 viy-config = { path = "crates/viy-config" }
 viy-pod = { path = "crates/viy-pod" }
-viy-pycompat = { path = "crates/viy-pycompat" }
 viy-term = { path = "crates/viy-term" }
 viy-testkit = { path = "crates/viy-testkit" }
 viy-tools = { path = "crates/viy-tools" }

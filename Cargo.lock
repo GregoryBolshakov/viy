@@ -147,15 +147,6 @@ name = "viy-pod"
 version = "0.1.0"
 
 [[package]]
-name = "viy-pycompat"
-version = "0.1.0"
-dependencies = [
- "pretty_assertions",
- "serde_json",
- "viy-testkit",
-]
-
-[[package]]
 name = "viy-term"
 version = "0.1.0"
 

@@ -12,19 +12,14 @@ One request per line on stdin, one answer per line on stdout:
     {"refused": "not on the oracle's whitelist: os.system"}
 
 `fn` names an entry of FUNCTIONS: rpctl modules by their name inside the
-package (`approve.destructive_reason`), the Python standard library by its own
-(`shlex.split`). `oracle.hello` answers with the snapshot's commit and the
-Python version.
+package (`approve.destructive_reason`). `oracle.hello` answers with the
+snapshot's commit and the Python version. viy reproduces rpctl's behaviour,
+not Python's semantics (kb d029), so the standard library is not offered.
 
 JSON carries what it can. Other values are tagged, in both directions:
 {"$tuple": [...]}, {"$bytes": "<base64>"}, {"$path": "..."}, and in requests
 {"$slice": [start, stop, step]}; a result of any other type comes back as
-{"$repr": "..."}. The oracle's own helpers: `oracle.char_ranges` answers a
-whole character class at once, [[first, last], ...] for "isspace",
-"isdigit", "isdecimal", "isprintable" or "splitlines" (where str.splitlines() breaks);
-`oracle.shlex_tokens` runs the shlex lexer approve.py and egress.py build;
-`oracle.path_call` runs realpath, abspath or Path.resolve from a given cwd
-(read-only file-system access, for the posixpath tests' scratch trees).
+{"$repr": "..."}.
 
 rpctl is imported from target/rpctl-ref/<commit>/ (tools/refsnap.sh), never
 the live checkout. Before the import, HOME, every XDG_* directory and the
@@ -56,80 +51,7 @@ FUNCTIONS = {
     "approve.net_ask_reason": ("rpctl.approve", "net_ask_reason"),
     "approve.plain_pipeline": ("rpctl.approve", "plain_pipeline"),
     "approve.prefix_for": ("rpctl.approve", "prefix_for"),
-    # the standard library, for viy-pycompat (WP 0.9)
-    "float": ("builtins", "float"),
-    "int": ("builtins", "int"),
-    "json.dumps": ("json", "dumps"),
-    "len": ("builtins", "len"),
-    "operator.getitem": ("operator", "getitem"),
-    "repr": ("builtins", "repr"),
-    "shlex.join": ("shlex", "join"),
-    "shlex.quote": ("shlex", "quote"),
-    "shlex.split": ("shlex", "split"),
-    "str": ("builtins", "str"),
-    "str.isdigit": ("builtins", "str.isdigit"),
-    "str.isspace": ("builtins", "str.isspace"),
-    "str.lstrip": ("builtins", "str.lstrip"),
-    "str.rsplit": ("builtins", "str.rsplit"),
-    "str.rstrip": ("builtins", "str.rstrip"),
-    "str.split": ("builtins", "str.split"),
-    "str.splitlines": ("builtins", "str.splitlines"),
-    "str.strip": ("builtins", "str.strip"),
-    "unicodedata.decimal": ("unicodedata", "decimal"),
-    # the oracle's own helpers, below
-    "oracle.char_ranges": ("__main__", "char_ranges"),
-    "oracle.path_call": ("__main__", "path_call"),
-    "oracle.shlex_tokens": ("__main__", "shlex_tokens"),
 }
-
-CHAR_CLASSES = {
-    "isspace": str.isspace,
-    "isdigit": str.isdigit,
-    "isdecimal": str.isdecimal,
-    "isprintable": str.isprintable,
-    "splitlines": lambda c: len(("a" + c + "b").splitlines()) == 2,
-}
-
-
-def shlex_tokens(s, punctuation_chars, commenters):
-    """list(lex) for the lexer approve.py and egress.py build: posix, with
-    whitespace_split, the given punctuation_chars (a string, or true for
-    shlex's default) and commenters."""
-    import shlex
-    lex = shlex.shlex(s, posix=True, punctuation_chars=punctuation_chars)
-    lex.whitespace_split = True
-    lex.commenters = commenters
-    return list(lex)
-
-
-def path_call(func, path, cwd):
-    """os.path.realpath, os.path.abspath or str(pathlib.Path(path).resolve())
-    with cwd as the working directory, for the posixpath tests' scratch trees."""
-    import pathlib
-    funcs = {"realpath": os.path.realpath, "abspath": os.path.abspath,
-             "resolve": lambda p: str(pathlib.Path(p).resolve())}
-    old = os.getcwd()
-    os.chdir(cwd)
-    try:
-        return funcs[func](path)
-    finally:
-        os.chdir(old)
-
-
-def char_ranges(kind):
-    """[[first, last], ...]: the code points in one character class."""
-    pred = CHAR_CLASSES[kind]
-    out, start = [], None
-    for cp in range(0x110000):
-        hit = pred(chr(cp))
-        if hit and start is None:
-            start = cp
-        elif not hit and start is not None:
-            out.append([start, cp - 1])
-            start = None
-    if start is not None:
-        out.append([start, 0x10FFFF])
-    return out
 
 
 def snapshot():

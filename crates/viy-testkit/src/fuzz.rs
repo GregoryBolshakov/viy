@@ -1,16 +1,11 @@
 //! Generated inputs for the oracle tests: a seeded splitmix64 generator and
-//! strings built from pieces chosen to hit the edges of a Python semantic
-//! (whitespace classes, non-ASCII digits, number syntax, astral chars).
+//! strings built from pieces chosen to hit the edges of what is tested
+//! (quotes, operators and wrappers in shell commands).
 //!
 //! Runs are reproducible: the seed is fixed unless `VIY_FUZZ_SEED` is set, and
 //! every failure message should print it. `VIY_FUZZ_CASES` scales the number
 //! of cases per property (implementation plan 3.2; proptest is not used: it
 //! is not in the cargo cache, and Codex does without it).
-
-use serde_json::Map;
-use serde_json::Number;
-use serde_json::Value;
-use serde_json::json;
 
 /// The seed when `VIY_FUZZ_SEED` is not set.
 pub const DEFAULT_SEED: u64 = 0x0005_eed0_f797;
@@ -76,30 +71,6 @@ pub fn cases(default: usize) -> usize {
         .unwrap_or(default)
 }
 
-/// Pieces for Python string semantics: every whitespace and line-break class
-/// boundary, decimal and non-decimal digits of several scripts, number
-/// syntax, and ordinary text in Cyrillic, CJK and emoji.
-pub const PY_STR_PIECES: &[&str] = &[
-    // whitespace and line breaks, ASCII and not, plus near misses
-    " ", "  ", "\t", "\n", "\r", "\r\n", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x1f", "\u{85}",
-    "\u{a0}", "\u{1680}", "\u{2000}", "\u{200a}", "\u{200b}", "\u{2028}", "\u{2029}", "\u{202f}",
-    "\u{205f}", "\u{3000}", "\u{180e}", "\u{feff}", "\0", "\x7f",
-    // digits: ASCII, decimal in other scripts, digits that are not decimal
-    "0", "1", "5", "9", "00", "١", "٥", "۹", "०", "৯", "๓", "９", "𝟘", "𝟗", "²", "①", "Ⅷ", "½",
-    // number syntax
-    "+", "-", "_", "__", ".", "e", "E", "e-", "inf", "Infinity", "nan", "NaN", "x", "0x",
-    // text
-    "a", "Z", "ы", "Ключ", "日本", "😀", "é", "e\u{301}",
-];
-
-/// Pieces for `int()` and `float()`: mostly what a number is made of, so that
-/// a fair share of the inputs parse, with the separators and near misses that
-/// decide the edge cases.
-pub const PY_NUMBER_PIECES: &[&str] = &[
-    "0", "1", "2", "7", "9", "00", "١", "٥", "９", "𝟗", "²", "½", "+", "-", "_", ".", "e", "E",
-    "e-", "inf", "nan", " ", "\t", "\x1c", "\u{a0}", "\u{3000}", "\0", "x", "ы",
-];
-
 /// Pieces for shell-ish commands: quotes, escapes, every punctuation and
 /// comment character shlex knows, its four whitespace characters and near
 /// misses, and words.
@@ -108,83 +79,6 @@ pub const SHELL_PIECES: &[&str] = &[
     "''", "\"\"", "&", "&&", "|", "||", ";", ";;", "(", ")", "<", ">", ">&", "2>", "#", "$", "$(",
     "`", "*", "?", "~", "=", "-", "--", ".", "/", "/tmp", "rm", "-rf", "git", "curl", "x.com", "a",
     "b1", "ы", "😀", "ß", "é",
-];
-
-/// Floats at the edges of Python's repr formatting.
-pub const FLOATS: &[f64] = &[
-    0.0,
-    -0.0,
-    0.1,
-    1e15,
-    1e16,
-    9_999_999_999_999_998.0,
-    1e-4,
-    1e-5,
-    5e-324,
-    f64::MAX,
-    f64::MIN_POSITIVE,
-    123_456.789,
-    1e22,
-    1e21,
-    -2.5e-7,
-];
-
-/// A finite float: half from [`FLOATS`] (format edges), half from random bits.
-pub fn float(g: &mut Gen) -> f64 {
-    if g.below(2) == 0 {
-        return *g.pick(FLOATS);
-    }
-    loop {
-        let x = f64::from_bits(g.next_u64());
-        if x.is_finite() {
-            return x;
-        }
-    }
-}
-
-/// A JSON value nested up to `depth`: null, bools, i64 edges, u64 above i64,
-/// floats, strings and keys from [`PY_STR_PIECES`].
-pub fn json_value(g: &mut Gen, depth: usize) -> Value {
-    let kinds = if depth == 0 { 6 } else { 8 };
-    match g.below(kinds) {
-        0 => Value::Null,
-        1 => Value::Bool(g.below(2) == 0),
-        2 => json!(*g.pick(&[0i64, 1, -1, 42, i64::MIN, i64::MAX, 1 << 53])),
-        3 => json!(*g.pick(&[u64::MAX, 1u64 << 63, 12_345_678_901_234_567_890])),
-        4 => Number::from_f64(float(g)).map_or(Value::Null, Value::Number),
-        5 => Value::String(g.string(PY_STR_PIECES, 6)),
-        6 => Value::Array((0..g.below(4)).map(|_| json_value(g, depth - 1)).collect()),
-        _ => {
-            let mut map = Map::new();
-            for _ in 0..g.below(4) {
-                map.insert(g.string(PY_STR_PIECES, 3), json_value(g, depth - 1));
-            }
-            Value::Object(map)
-        }
-    }
-}
-
-/// Pieces for `repr()`: the quote choices, escapes and every class of
-/// non-printable character on top of [`PY_STR_PIECES`].
-pub const REPR_PIECES: &[&str] = &[
-    "'",
-    "\"",
-    "\\",
-    "\u{ad}",
-    "\u{200b}",
-    "\u{378}",
-    "\u{e000}",
-    "\u{e0001}",
-    "\u{10ffff}",
-    "\u{fffe}",
-    "\u{d7ff}",
-    "\u{1f600}",
-    "\x01",
-    "\u{80}",
-    "\u{9f}",
-    "\u{ff}",
-    "\u{100}",
-    "\u{2028}",
 ];
 
 #[cfg(test)]

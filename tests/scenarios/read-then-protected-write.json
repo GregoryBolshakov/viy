@@ -1,0 +1,41 @@
+{
+  "name": "read-then-protected-write",
+  "about": "Build tools on, search off, ask_claude off; an AGENTS.md in the workspace. The model reads a file, then tries to write .env, a protected path: the approver asks and the user declines; the model answers. Covers the startup tool preflight, tool-call deltas split across chunks, tool results and the instruction-file block.",
+  "config": {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "0", "CONSULT_ENABLED": "0"},
+  "max_model_len": 65536,
+  "workspace": {
+    "AGENTS.md": "Keep answers under three sentences.\n",
+    "notes.txt": "TODO: the demo key goes in .env as API_KEY=placeholder\n"
+  },
+  "steps": [
+    {"user": "Do what notes.txt says."}
+  ],
+  "approvals": [
+    {"question": "let the model write it?", "answer": "n"}
+  ],
+  "responses": [
+    {"expect": {"stream": false, "tools": "auto"},
+     "message": ""},
+    {"expect": {"stream": true, "tools": "auto", "last_role": "user"},
+     "stream": [
+       {"reasoning": "I should read notes.txt first."},
+       {"tool_call": {"id": "call_read_1", "name": "read_file",
+                      "argument_parts": ["{\"path\": ", "\"notes.txt\"}"]}},
+       {"finish": "tool_calls"}
+     ]},
+    {"expect": {"stream": true, "tools": "auto", "last_role": "tool"},
+     "stream": [
+       {"reasoning": "It asks for API_KEY=placeholder in .env."},
+       {"tool_call": {"id": "call_write_1", "name": "write_file",
+                      "arguments": "{\"path\": \".env\", \"content\": \"API_KEY=placeholder\\n\"}"}},
+       {"finish": "tool_calls"}
+     ]},
+    {"expect": {"stream": true, "tools": "auto", "last_role": "tool"},
+     "stream": [
+       {"content": "I did not write .env: you declined the write. "},
+       {"content": "Add API_KEY=placeholder to it yourself, or allow the write."}
+     ]},
+    {"expect": {"stream": false, "tools": "omit"},
+     "message": "Demo key in .env declined"}
+  ]
+}

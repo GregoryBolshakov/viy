@@ -1,0 +1,30 @@
+{
+  "name": "plain-two-turns",
+  "about": "Two plain turns with reasoning, build tools off, web search on (so search and fetch are offered but not called); the background title request after the first reply.",
+  "config": {"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "1"},
+  "max_model_len": 65536,
+  "steps": [
+    {"user": "What is a haiku? One sentence, please."},
+    {"user": "Now write one about rain on a tin roof."}
+  ],
+  "responses": [
+    {"expect": {"stream": true, "tools": "auto", "last_user": "What is a haiku? One sentence, please."},
+     "stream": [
+       {"reasoning": "The user wants a one-sentence definition. "},
+       {"reasoning": "Keep it short."},
+       {"content": "A haiku is a short Japanese poem "},
+       {"content": "of three lines with five, seven and five syllables."},
+       {"usage": {"prompt_tokens": 812, "completion_tokens": 31, "total_tokens": 843}}
+     ]},
+    {"expect": {"stream": false, "tools": "omit"},
+     "message": "Haiku definition"},
+    {"expect": {"stream": true, "tools": "auto", "last_user": "Now write one about rain on a tin roof."},
+     "stream": [
+       {"reasoning": "Five, seven, five. Rain, tin, sound."},
+       {"content": "Rain on the tin roof\n"},
+       {"content": "a thousand small drums at once\n"},
+       {"content": "then the gutter sighs"},
+       {"usage": {"prompt_tokens": 860, "completion_tokens": 40, "total_tokens": 900}}
+     ]}
+  ]
+}

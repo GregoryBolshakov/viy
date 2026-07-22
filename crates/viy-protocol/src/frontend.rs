@@ -11,6 +11,7 @@ pub trait Frontend: Send + Sync {
     fn emit(&self, event: Event);
 
     /// Asks `question` and waits for the answer. A frontend with nobody to
-    /// ask returns `question.unattended`, never a guess.
+    /// ask returns `question.unattended`, never a guess. Replaced in WP 3.1
+    /// by a request event answered by an `Op`, as in Codex (kb d036).
     fn ask(&self, question: &Question) -> Answer;
 }

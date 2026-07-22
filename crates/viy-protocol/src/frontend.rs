@@ -5,7 +5,7 @@ use crate::Question;
 /// Where the engine's events go and who answers its questions: the terminal
 /// UI, the plain renderer, `viy dev drive`, or a test's scripted frontend.
 /// The one seam that replaces rpctl tests' patching of `print`, `input`,
-/// `_confirm` and `isatty` (kb d035).
+/// `_confirm` and `isatty` (kb d037).
 pub trait Frontend: Send + Sync {
     /// Shows one event. Never waits for the user.
     fn emit(&self, event: Event);

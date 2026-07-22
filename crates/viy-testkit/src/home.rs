@@ -1,4 +1,4 @@
-//! The temp-XDG guard (docs/implementation-plan.md 3.6, kb d035).
+//! The temp-XDG guard (docs/implementation-plan.md 3.6, kb d037).
 //! `.cargo/config.toml` points `HOME` and the XDG base directories into
 //! `target/test-home` for every process cargo starts, and viy code finds its
 //! directories only through `viy_config::Paths`, which reads exactly those

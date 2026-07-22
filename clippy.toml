@@ -6,5 +6,5 @@ await-holding-invalid-types = [
     "tokio::sync::RwLockWriteGuard",
 ]
 disallowed-methods = [
-    { path = "std::env::home_dir", reason = "take a viy_config::Paths: tests point HOME and XDG_* at a scratch dir through it (kb d035)" },
+    { path = "std::env::home_dir", reason = "take a viy_config::Paths: tests point HOME and XDG_* at a scratch dir through it (kb d037)" },
 ]

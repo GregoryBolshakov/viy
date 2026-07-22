@@ -1,7 +1,7 @@
 //! Where viy's and rp's files live: the home directory and the XDG base
 //! directories, read once from the environment as rpctl's `config._xdg` does.
 //! Everything else receives a [`Paths`] instead of reading `HOME` or `XDG_*`
-//! itself, so a test points all of it at a scratch directory (kb d035).
+//! itself, so a test points all of it at a scratch directory (kb d037).
 //! The scopes and the `.viy/` marker on top of these roots come in WP 1.1.
 
 use std::ffi::OsString;

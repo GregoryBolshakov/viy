@@ -1,4 +1,4 @@
-# The temp-XDG guard (docs/implementation-plan.md 3.6, kb d035): every process
+# The temp-XDG guard (docs/implementation-plan.md 3.6, kb d037): every process
 # cargo starts (test binaries and what they spawn, `cargo run`) gets HOME and
 # the XDG base directories inside target/test-home, so no test and no agent's
 # smoke run reaches the real config, chats or pod state. Billed live checks

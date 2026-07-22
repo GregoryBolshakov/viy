@@ -19,6 +19,7 @@ oracle = []
 
 [dependencies]
 serde_json = { workspace = true }
+viy-protocol = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

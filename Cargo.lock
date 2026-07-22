@@ -77,6 +77,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]
@@ -141,10 +142,22 @@ version = "0.1.0"
 [[package]]
 name = "viy-config"
 version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+]
 
 [[package]]
 name = "viy-pod"
 version = "0.1.0"
+
+[[package]]
+name = "viy-protocol"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "viy-term"
@@ -156,6 +169,7 @@ version = "0.1.0"
 dependencies = [
  "pretty_assertions",
  "serde_json",
+ "viy-protocol",
 ]
 
 [[package]]

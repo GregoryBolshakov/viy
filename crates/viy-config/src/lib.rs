@@ -4,3 +4,7 @@
 //! profiles, `viy init` and `viy migrate`, open tokens from the tok vault, and
 //! redaction. Ported from rpctl's `config.py`, `vault.py` and `redact.py`
 //! (ROADMAP phase 1).
+
+pub mod paths;
+
+pub use paths::Paths;

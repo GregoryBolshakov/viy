@@ -1,0 +1,12 @@
+# The temp-XDG guard (docs/implementation-plan.md 3.6, kb d035): every process
+# cargo starts (test binaries and what they spawn, `cargo run`) gets HOME and
+# the XDG base directories inside target/test-home, so no test and no agent's
+# smoke run reaches the real config, chats or pod state. Billed live checks
+# run target/debug/viy directly, with the real environment.
+# viy-testkit's `home` guard test fails if this stops applying.
+[env]
+HOME = { value = "target/test-home", relative = true, force = true }
+XDG_CONFIG_HOME = { value = "target/test-home/.config", relative = true, force = true }
+XDG_DATA_HOME = { value = "target/test-home/.local/share", relative = true, force = true }
+XDG_STATE_HOME = { value = "target/test-home/.local/state", relative = true, force = true }
+XDG_CACHE_HOME = { value = "target/test-home/.cache", relative = true, force = true }

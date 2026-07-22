@@ -4,6 +4,7 @@ members = [
     "crates/viy-agent",
     "crates/viy-config",
     "crates/viy-pod",
+    "crates/viy-protocol",
     "crates/viy-term",
     "crates/viy-testkit",
     "crates/viy-tools",
@@ -23,6 +24,7 @@ publish = false
 viy-agent = { path = "crates/viy-agent" }
 viy-config = { path = "crates/viy-config" }
 viy-pod = { path = "crates/viy-pod" }
+viy-protocol = { path = "crates/viy-protocol" }
 viy-term = { path = "crates/viy-term" }
 viy-testkit = { path = "crates/viy-testkit" }
 viy-tools = { path = "crates/viy-tools" }
@@ -31,6 +33,7 @@ viy-tools = { path = "crates/viy-tools" }
 # recorded as a fact (ROADMAP phase 0).
 # preserve_order: object keys keep their order, as in Python dicts (kb d011).
 pretty_assertions = "1.4.1"
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["float_roundtrip", "preserve_order"] }
 
 # Codex's deny list (codex-rs/Cargo.toml at the commit in tests/codex-ref.txt).

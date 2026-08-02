@@ -6,5 +6,7 @@
 //! (ROADMAP phase 1).
 
 pub mod paths;
+pub mod project;
 
 pub use paths::Paths;
+pub use project::Project;

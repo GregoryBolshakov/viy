@@ -1,8 +1,9 @@
 //! Where viy's and rp's files live: the home directory and the XDG base
-//! directories, read once from the environment as rpctl's `config._xdg` does.
-//! Everything else receives a [`Paths`] instead of reading `HOME` or `XDG_*`
-//! itself, so a test points all of it at a scratch directory (kb d037).
-//! The scopes and the `.viy/` marker on top of these roots come in WP 1.1.
+//! directories, read once from the environment as rpctl's `config._xdg` does,
+//! and the global scope's directories under them. Everything else receives a
+//! [`Paths`] instead of reading `HOME` or `XDG_*` itself, so a test points
+//! all of it at a scratch directory (kb d037). The project scope is
+//! [`crate::Project`].
 
 use std::ffi::OsString;
 use std::io;
@@ -52,7 +53,67 @@ impl Paths {
     pub fn under(home: impl Into<PathBuf>) -> Self {
         Self::from_vars(home.into(), |_| None)
     }
+
+    /// `~/.config/viy`: the global config file and the model profiles.
+    pub fn config_dir(&self) -> PathBuf {
+        self.config_home.join(TOOL)
+    }
+
+    /// The global `KEY=value` config file.
+    pub fn config_file(&self) -> PathBuf {
+        self.config_dir().join("config")
+    }
+
+    /// One `<name>.env` per model profile.
+    pub fn profiles_dir(&self) -> PathBuf {
+        self.config_dir().join("profiles")
+    }
+
+    /// viy's data directory under `XDG_DATA_HOME`: sessions and the global
+    /// toolbox.
+    pub fn data_dir(&self) -> PathBuf {
+        self.data_home.join(TOOL)
+    }
+
+    /// Every chat's session log, from every project.
+    pub fn sessions_dir(&self) -> PathBuf {
+        self.data_dir().join("sessions")
+    }
+
+    /// viy's state directory under `XDG_STATE_HOME`: its own state, apart
+    /// from the pod's.
+    pub fn state_dir(&self) -> PathBuf {
+        self.state_home.join(TOOL)
+    }
+
+    /// rp's state directory: the pod state viy shares with rp until cutover
+    /// (`pod.json`, `pod.lock`, `last_activity`, `known_hosts`, the boot
+    /// records; kb d006).
+    pub fn pod_state_dir(&self) -> PathBuf {
+        self.state_home.join(RPCTL)
+    }
+
+    /// The one pod's state, `pod.json`.
+    pub fn pod_state_file(&self) -> PathBuf {
+        self.pod_state_dir().join("pod.json")
+    }
+
+    /// `~/.config/rpctl`: rp's global config, which `viy migrate` copies.
+    pub fn rpctl_config_dir(&self) -> PathBuf {
+        self.config_home.join(RPCTL)
+    }
+
+    /// rp's data directory: its sessions and toolbox, which `viy migrate`
+    /// copies.
+    pub fn rpctl_data_dir(&self) -> PathBuf {
+        self.data_home.join(RPCTL)
+    }
 }
+
+/// The directory name viy's own files go under.
+const TOOL: &str = "viy";
+/// rp's, for what viy shares with it or copies from it.
+const RPCTL: &str = "rpctl";
 
 #[cfg(test)]
 #[path = "paths_tests.rs"]

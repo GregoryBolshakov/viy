@@ -1,0 +1,282 @@
+{
+ "rpctl_commit": "6bfec96bcd5087080a1ad17df165a663a4e5e77e",
+ "generator": "tools/fixtures.py config/project",
+ "about": "rpctl config's project root (find_project from the cwd), has_project() and module paths for synthetic trees; $T is the case's root, HOME is $T/home, XDG_* are $T/config, $T/state, $T/data unless the case says",
+ "cases": [
+  {
+   "name": "marker_in_cwd",
+   "dirs": [
+    "project/.rpctl"
+   ],
+   "files": [],
+   "symlinks": {},
+   "cwd": "project",
+   "xdg": {},
+   "paths": {
+    "PROJECT_DIR": "$T/project",
+    "USER_CONFIG_DIR": "$T/config/rpctl",
+    "USER_STATE_DIR": "$T/state/rpctl",
+    "USER_DATA_DIR": "$T/data/rpctl",
+    "SESSIONS_DIR": "$T/data/rpctl/sessions",
+    "CONFIG_PATH": "$T/config/rpctl/config",
+    "PROFILES_DIR": "$T/config/rpctl/profiles",
+    "STATE_PATH": "$T/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/project/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/project/.rpctl/history",
+    "has_project": true
+   }
+  },
+  {
+   "name": "marker_in_an_ancestor",
+   "dirs": [
+    "project/.rpctl",
+    "project/src/deep"
+   ],
+   "files": [],
+   "symlinks": {},
+   "cwd": "project/src/deep",
+   "xdg": {},
+   "paths": {
+    "PROJECT_DIR": "$T/project",
+    "USER_CONFIG_DIR": "$T/config/rpctl",
+    "USER_STATE_DIR": "$T/state/rpctl",
+    "USER_DATA_DIR": "$T/data/rpctl",
+    "SESSIONS_DIR": "$T/data/rpctl/sessions",
+    "CONFIG_PATH": "$T/config/rpctl/config",
+    "PROFILES_DIR": "$T/config/rpctl/profiles",
+    "STATE_PATH": "$T/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/project/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/project/.rpctl/history",
+    "has_project": true
+   }
+  },
+  {
+   "name": "nearest_marker_wins",
+   "dirs": [
+    "project/.rpctl",
+    "project/sub/.rpctl",
+    "project/sub/src"
+   ],
+   "files": [],
+   "symlinks": {},
+   "cwd": "project/sub/src",
+   "xdg": {},
+   "paths": {
+    "PROJECT_DIR": "$T/project/sub",
+    "USER_CONFIG_DIR": "$T/config/rpctl",
+    "USER_STATE_DIR": "$T/state/rpctl",
+    "USER_DATA_DIR": "$T/data/rpctl",
+    "SESSIONS_DIR": "$T/data/rpctl/sessions",
+    "CONFIG_PATH": "$T/config/rpctl/config",
+    "PROFILES_DIR": "$T/config/rpctl/profiles",
+    "STATE_PATH": "$T/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/project/sub/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/project/sub/.rpctl/history",
+    "has_project": true
+   }
+  },
+  {
+   "name": "no_marker",
+   "dirs": [
+    "project/src"
+   ],
+   "files": [],
+   "symlinks": {},
+   "cwd": "project/src",
+   "xdg": {},
+   "paths": {
+    "PROJECT_DIR": "$T/project/src",
+    "USER_CONFIG_DIR": "$T/config/rpctl",
+    "USER_STATE_DIR": "$T/state/rpctl",
+    "USER_DATA_DIR": "$T/data/rpctl",
+    "SESSIONS_DIR": "$T/data/rpctl/sessions",
+    "CONFIG_PATH": "$T/config/rpctl/config",
+    "PROFILES_DIR": "$T/config/rpctl/profiles",
+    "STATE_PATH": "$T/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/project/src/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/project/src/.rpctl/history",
+    "has_project": false
+   }
+  },
+  {
+   "name": "marker_is_a_file",
+   "dirs": [
+    "project/src"
+   ],
+   "files": [
+    "project/.rpctl"
+   ],
+   "symlinks": {},
+   "cwd": "project/src",
+   "xdg": {},
+   "paths": {
+    "PROJECT_DIR": "$T/project/src",
+    "USER_CONFIG_DIR": "$T/config/rpctl",
+    "USER_STATE_DIR": "$T/state/rpctl",
+    "USER_DATA_DIR": "$T/data/rpctl",
+    "SESSIONS_DIR": "$T/data/rpctl/sessions",
+    "CONFIG_PATH": "$T/config/rpctl/config",
+    "PROFILES_DIR": "$T/config/rpctl/profiles",
+    "STATE_PATH": "$T/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/project/src/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/project/src/.rpctl/history",
+    "has_project": false
+   }
+  },
+  {
+   "name": "marker_is_a_symlink_to_a_directory",
+   "dirs": [
+    "elsewhere",
+    "project/src"
+   ],
+   "files": [],
+   "symlinks": {
+    "project/.rpctl": "../elsewhere"
+   },
+   "cwd": "project/src",
+   "xdg": {},
+   "paths": {
+    "PROJECT_DIR": "$T/project",
+    "USER_CONFIG_DIR": "$T/config/rpctl",
+    "USER_STATE_DIR": "$T/state/rpctl",
+    "USER_DATA_DIR": "$T/data/rpctl",
+    "SESSIONS_DIR": "$T/data/rpctl/sessions",
+    "CONFIG_PATH": "$T/config/rpctl/config",
+    "PROFILES_DIR": "$T/config/rpctl/profiles",
+    "STATE_PATH": "$T/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/project/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/project/.rpctl/history",
+    "has_project": true
+   }
+  },
+  {
+   "name": "marker_is_a_dangling_symlink",
+   "dirs": [
+    "project/src"
+   ],
+   "files": [],
+   "symlinks": {
+    "project/.rpctl": "missing"
+   },
+   "cwd": "project/src",
+   "xdg": {},
+   "paths": {
+    "PROJECT_DIR": "$T/project/src",
+    "USER_CONFIG_DIR": "$T/config/rpctl",
+    "USER_STATE_DIR": "$T/state/rpctl",
+    "USER_DATA_DIR": "$T/data/rpctl",
+    "SESSIONS_DIR": "$T/data/rpctl/sessions",
+    "CONFIG_PATH": "$T/config/rpctl/config",
+    "PROFILES_DIR": "$T/config/rpctl/profiles",
+    "STATE_PATH": "$T/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/project/src/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/project/src/.rpctl/history",
+    "has_project": false
+   }
+  },
+  {
+   "name": "cwd_through_a_symlink",
+   "dirs": [
+    "real/.rpctl",
+    "real/src"
+   ],
+   "files": [],
+   "symlinks": {
+    "link": "real"
+   },
+   "cwd": "link/src",
+   "xdg": {},
+   "paths": {
+    "PROJECT_DIR": "$T/real",
+    "USER_CONFIG_DIR": "$T/config/rpctl",
+    "USER_STATE_DIR": "$T/state/rpctl",
+    "USER_DATA_DIR": "$T/data/rpctl",
+    "SESSIONS_DIR": "$T/data/rpctl/sessions",
+    "CONFIG_PATH": "$T/config/rpctl/config",
+    "PROFILES_DIR": "$T/config/rpctl/profiles",
+    "STATE_PATH": "$T/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/real/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/real/.rpctl/history",
+    "has_project": true
+   }
+  },
+  {
+   "name": "marker_in_home",
+   "dirs": [
+    "home/.rpctl",
+    "home/work"
+   ],
+   "files": [],
+   "symlinks": {},
+   "cwd": "home/work",
+   "xdg": {},
+   "paths": {
+    "PROJECT_DIR": "$T/home",
+    "USER_CONFIG_DIR": "$T/config/rpctl",
+    "USER_STATE_DIR": "$T/state/rpctl",
+    "USER_DATA_DIR": "$T/data/rpctl",
+    "SESSIONS_DIR": "$T/data/rpctl/sessions",
+    "CONFIG_PATH": "$T/config/rpctl/config",
+    "PROFILES_DIR": "$T/config/rpctl/profiles",
+    "STATE_PATH": "$T/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/home/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/home/.rpctl/history",
+    "has_project": true
+   }
+  },
+  {
+   "name": "xdg_unset",
+   "dirs": [
+    "project"
+   ],
+   "files": [],
+   "symlinks": {},
+   "cwd": "project",
+   "xdg": {
+    "XDG_CONFIG_HOME": null,
+    "XDG_STATE_HOME": null,
+    "XDG_DATA_HOME": null
+   },
+   "paths": {
+    "PROJECT_DIR": "$T/project",
+    "USER_CONFIG_DIR": "$T/home/.config/rpctl",
+    "USER_STATE_DIR": "$T/home/.local/state/rpctl",
+    "USER_DATA_DIR": "$T/home/.local/share/rpctl",
+    "SESSIONS_DIR": "$T/home/.local/share/rpctl/sessions",
+    "CONFIG_PATH": "$T/home/.config/rpctl/config",
+    "PROFILES_DIR": "$T/home/.config/rpctl/profiles",
+    "STATE_PATH": "$T/home/.local/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/project/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/project/.rpctl/history",
+    "has_project": false
+   }
+  },
+  {
+   "name": "xdg_empty",
+   "dirs": [
+    "project"
+   ],
+   "files": [],
+   "symlinks": {},
+   "cwd": "project",
+   "xdg": {
+    "XDG_CONFIG_HOME": "",
+    "XDG_STATE_HOME": "",
+    "XDG_DATA_HOME": ""
+   },
+   "paths": {
+    "PROJECT_DIR": "$T/project",
+    "USER_CONFIG_DIR": "$T/home/.config/rpctl",
+    "USER_STATE_DIR": "$T/home/.local/state/rpctl",
+    "USER_DATA_DIR": "$T/home/.local/share/rpctl",
+    "SESSIONS_DIR": "$T/home/.local/share/rpctl/sessions",
+    "CONFIG_PATH": "$T/home/.config/rpctl/config",
+    "PROFILES_DIR": "$T/home/.config/rpctl/profiles",
+    "STATE_PATH": "$T/home/.local/state/rpctl/pod.json",
+    "TRANSCRIPTS": "$T/project/.rpctl/transcripts",
+    "HISTORY_PATH": "$T/project/.rpctl/history",
+    "has_project": false
+   }
+  }
+ ]
+}

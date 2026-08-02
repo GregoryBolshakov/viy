@@ -187,8 +187,97 @@ def gen_config_layering(snap):
     }
 
 
+# ------------------------------------------------------------ config/project
+
+# One case: a tree under the case's temporary root T (`dirs`, `files`,
+# `symlinks` as link -> target), the directory the command runs in, and the
+# XDG variables (absent: set to T/config, T/state, T/data; None: unset; a
+# string: that value, "" included). HOME is always T/home. The output is
+# rpctl's project root and paths with T written as "$T".
+PROJECT_CASES = [
+    dict(name="marker_in_cwd", dirs=["project/.rpctl"], cwd="project"),
+    dict(name="marker_in_an_ancestor", dirs=["project/.rpctl", "project/src/deep"],
+         cwd="project/src/deep"),
+    dict(name="nearest_marker_wins",
+         dirs=["project/.rpctl", "project/sub/.rpctl", "project/sub/src"],
+         cwd="project/sub/src"),
+    dict(name="no_marker", dirs=["project/src"], cwd="project/src"),
+    dict(name="marker_is_a_file", dirs=["project/src"], files=["project/.rpctl"],
+         cwd="project/src"),
+    dict(name="marker_is_a_symlink_to_a_directory", dirs=["elsewhere", "project/src"],
+         symlinks={"project/.rpctl": "../elsewhere"}, cwd="project/src"),
+    dict(name="marker_is_a_dangling_symlink", dirs=["project/src"],
+         symlinks={"project/.rpctl": "missing"}, cwd="project/src"),
+    dict(name="cwd_through_a_symlink", dirs=["real/.rpctl", "real/src"],
+         symlinks={"link": "real"}, cwd="link/src"),
+    dict(name="marker_in_home", dirs=["home/.rpctl", "home/work"], cwd="home/work"),
+    dict(name="xdg_unset", dirs=["project"], cwd="project",
+         xdg={"XDG_CONFIG_HOME": None, "XDG_STATE_HOME": None, "XDG_DATA_HOME": None}),
+    dict(name="xdg_empty", dirs=["project"], cwd="project",
+         xdg={"XDG_CONFIG_HOME": "", "XDG_STATE_HOME": "", "XDG_DATA_HOME": ""}),
+]
+
+PROJECT_PATHS = ("PROJECT_DIR", "USER_CONFIG_DIR", "USER_STATE_DIR", "USER_DATA_DIR",
+                 "SESSIONS_DIR", "CONFIG_PATH", "PROFILES_DIR", "STATE_PATH",
+                 "TRANSCRIPTS", "HISTORY_PATH")
+
+PROJECT_RUNNER = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import config
+out = {k: str(getattr(config, k)) for k in sys.argv[2:]}
+out["has_project"] = config.has_project()
+json.dump(out, sys.stdout)
+"""
+
+
+def project_case(snap, case):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        (tmp / "home").mkdir()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": str(tmp / "home")}
+        xdg = {"XDG_CONFIG_HOME": str(tmp / "config"), "XDG_STATE_HOME": str(tmp / "state"),
+               "XDG_DATA_HOME": str(tmp / "data")}
+        xdg.update(case.get("xdg", {}))
+        env.update({k: v for k, v in xdg.items() if v is not None})
+        for d in case.get("dirs", []):
+            (tmp / d).mkdir(parents=True, exist_ok=True)
+        for f in case.get("files", []):
+            (tmp / f).write_text("")
+        for link, target in case.get("symlinks", {}).items():
+            (tmp / link).symlink_to(target)
+        out = subprocess.run([sys.executable, "-I", "-c", PROJECT_RUNNER, str(snap),
+                              *PROJECT_PATHS],
+                             cwd=tmp / case["cwd"], env=env, check=True,
+                             capture_output=True, text=True)
+        paths = json.loads(out.stdout)
+        return {k: v.replace(str(tmp), "$T") if isinstance(v, str) else v
+                for k, v in paths.items()}
+
+
+def gen_config_project(snap):
+    cases = []
+    for case in PROJECT_CASES:
+        inputs = {
+            "name": case["name"],
+            "dirs": case.get("dirs", []),
+            "files": case.get("files", []),
+            "symlinks": case.get("symlinks", {}),
+            "cwd": case["cwd"],
+            "xdg": case.get("xdg", {}),
+        }
+        cases.append({**inputs, "paths": project_case(snap, case)})
+    return {
+        "about": "rpctl config's project root (find_project from the cwd), has_project() "
+                 "and module paths for synthetic trees; $T is the case's root, HOME is "
+                 "$T/home, XDG_* are $T/config, $T/state, $T/data unless the case says",
+        "cases": cases,
+    }
+
+
 GENERATORS = {
     "config/layering": gen_config_layering,
+    "config/project": gen_config_project,
 }
 
 # ------------------------------------------------------------------ driver

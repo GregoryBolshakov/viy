@@ -14,3 +14,12 @@ doctest = false
 workspace = true
 
 [dependencies]
+crossterm = { workspace = true, features = ["bracketed-paste"] }
+ratatui = { workspace = true }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+# The backend's writer, for the vt100 test backend (as Codex's tui).
+ratatui = { workspace = true, features = ["unstable-backend-writer"] }
+vt100 = { workspace = true }

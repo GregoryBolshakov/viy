@@ -17,15 +17,15 @@ pub struct VT100Backend {
     inner: CrosstermBackend<Screen>,
 }
 
-/// The emulator, and a count of the bytes it was sent.
+/// The emulator, and every byte it was sent.
 pub struct Screen {
     pub parser: vt100::Parser,
-    pub bytes: usize,
+    pub written: Vec<u8>,
 }
 
 impl Write for Screen {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.bytes += buf.len();
+        self.written.extend_from_slice(buf);
         self.parser.write(buf)
     }
 
@@ -40,7 +40,7 @@ impl VT100Backend {
         Self {
             inner: CrosstermBackend::new(Screen {
                 parser: vt100::Parser::new(height, width, 0),
-                bytes: 0,
+                written: Vec::new(),
             }),
         }
     }
@@ -51,7 +51,21 @@ impl VT100Backend {
 
     /// How many bytes were written so far.
     pub fn bytes_written(&self) -> usize {
-        self.inner.writer().bytes
+        self.inner.writer().written.len()
+    }
+
+    /// Every byte written so far.
+    pub fn written(&self) -> &[u8] {
+        &self.inner.writer().written
+    }
+
+    /// Resizes the emulated screen, as a window resize does.
+    pub fn resize(&mut self, width: u16, height: u16) {
+        self.inner
+            .writer_mut()
+            .parser
+            .screen_mut()
+            .set_size(height, width);
     }
 
     /// The screen's rows without trailing blanks, `▮` at the cursor when it

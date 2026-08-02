@@ -1,7 +1,8 @@
 //! WP 0.8's UI spike (docs/implementation-plan.md, flags F32 and F33): the
-//! inline viewport with a live region over the terminal's own scrollback,
-//! fed by a fake model stream, to try in GNOME Terminal, tmux, over ssh and
-//! at 60 columns before phase 3 builds on it. Not part of viy.
+//! alternate-screen layout of Codex's default, with the transcript viy draws
+//! and scrolls itself above a live region, fed by a fake model stream, to
+//! try in GNOME Terminal, tmux, over ssh and at 60 columns before phase 3
+//! builds on it (kb d038). Not part of viy.
 //!
 //! ```text
 //! cargo build -p viy-term --example ui_spike
@@ -10,8 +11,10 @@
 //!
 //! Enter sends (during a stream it queues), Ctrl-J or a trailing `\` adds a
 //! newline, Shift+Tab cycles the mode, Ctrl-C stops the stream or exits,
-//! Ctrl-L repaints. Commands: `/rewind` (repaint without the last exchange,
-//! its message back in the box), `/flood N` (N lines into the scrollback),
+//! Ctrl-L repaints, PageUp/PageDown and the mouse wheel scroll the
+//! transcript, End follows it again. With the mouse captured, Shift+drag is
+//! the terminal's own selection. Commands: `/rewind` (the last exchange
+//! gone, its message back in the box), `/flood N` (N transcript lines),
 //! `/redraw`, `/panic` (the terminal must come back usable), `/quit`.
 
 use std::io;
@@ -20,22 +23,25 @@ use std::io::Write;
 use std::time::Duration;
 use std::time::Instant;
 
-use crossterm::cursor::MoveTo;
 use crossterm::cursor::Show;
 use crossterm::event;
 use crossterm::event::DisableBracketedPaste;
+use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableBracketedPaste;
+use crossterm::event::EnableMouseCapture;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
+use crossterm::event::MouseEventKind;
 use crossterm::execute;
 use crossterm::queue;
-use crossterm::style::Print;
 use crossterm::terminal;
 use crossterm::terminal::BeginSynchronizedUpdate;
 use crossterm::terminal::EndSynchronizedUpdate;
+use crossterm::terminal::EnterAlternateScreen;
+use crossterm::terminal::LeaveAlternateScreen;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Position;
 use ratatui::layout::Rect;
@@ -44,12 +50,9 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
-use viy_term::history::ResetScrollRegion;
-use viy_term::history::SetScrollRegion;
-use viy_term::history::insert_history_lines;
-use viy_term::history::wrap_line;
 use viy_term::terminal::Terminal;
 use viy_term::textarea::TextArea;
+use viy_term::wrap::wrap_line;
 
 /// At most 30 frames a second (ui-plan 11).
 const FRAME: Duration = Duration::from_millis(33);
@@ -59,6 +62,8 @@ const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 const MODES: [&str; 2] = ["normal", "auto-yes"];
 /// Rows of the answer in progress shown in the live region.
 const ANSWER_ROWS: usize = 8;
+/// Rows one wheel notch scrolls.
+const WHEEL_ROWS: usize = 3;
 
 const ANSWERS: [&str; 2] = [
     "The tunnel guard runs before every /health poll. When the forward is dead it \
@@ -72,43 +77,56 @@ const ANSWERS: [&str; 2] = [
     "Short answer: yes.\n\n\
      - one list item that is long enough to wrap at sixty columns when the window is narrow\n\
      - another item\n\n\
-     Paragraphs move up into the scrollback as soon as they are finished, and the \
+     Paragraphs move up into the transcript as soon as they are finished, and the \
      part still being written stays in the live region below.",
 ];
 
 fn main() -> io::Result<()> {
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        // A panic can come mid-frame, inside a scroll region. `CSI r` homes
-        // the cursor, so the message goes below everything instead.
-        let height = terminal::size().map_or(1, |(_, height)| height);
-        let _ = execute!(
-            io::stdout(),
-            ResetScrollRegion,
-            MoveTo(0, height.saturating_sub(1)),
-            Print("\r\n")
-        );
         let _ = restore();
         hook(info);
     }));
 
     terminal::enable_raw_mode()?;
-    execute!(io::stdout(), EnableBracketedPaste)?;
+    execute!(
+        io::stdout(),
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    )?;
     let result = run();
     restore()?;
-    result
+    if let Ok(lines) = &result {
+        println!("ui spike: {lines} transcript lines (viy would keep them in the session log)");
+    }
+    result.map(|_| ())
 }
 
+/// Gives the shell back its screen, and with it its history, untouched.
 fn restore() -> io::Result<()> {
-    execute!(io::stdout(), DisableBracketedPaste, Show)?;
+    execute!(
+        io::stdout(),
+        DisableBracketedPaste,
+        DisableMouseCapture,
+        LeaveAlternateScreen,
+        Show
+    )?;
     terminal::disable_raw_mode()
 }
 
-fn run() -> io::Result<()> {
+/// Runs the chat and returns how many transcript lines it ended with.
+fn run() -> io::Result<usize> {
     let mut app = App::new(Terminal::new(CrosstermBackend::new(io::stdout()))?);
     app.commit(vec![
-        Line::from("viy ui spike · Enter sends · Ctrl-J newline · Shift+Tab mode · Ctrl-C stops/exits · Ctrl-L repaints".dim()),
-        Line::from("commands: /rewind  /flood N  /redraw  /quit".dim()),
+        Line::from(
+            "viy ui spike · Enter sends · Ctrl-J newline · Shift+Tab mode · Ctrl-C stops/exits · Ctrl-L repaints"
+                .dim(),
+        ),
+        Line::from(
+            "PageUp/PageDown or the wheel scroll, End follows · Shift+drag selects".dim(),
+        ),
+        Line::from("commands: /rewind  /flood N  /redraw  /panic  /quit".dim()),
     ]);
     while !app.quit {
         let timeout = FRAME.saturating_sub(app.last_frame.elapsed());
@@ -116,7 +134,12 @@ fn run() -> io::Result<()> {
             match event::read()? {
                 Event::Key(key) if key.kind != KeyEventKind::Release => app.key(key)?,
                 Event::Paste(text) => app.input.insert_str(&text),
-                Event::Resize(width, height) => app.resize(Size::new(width, height))?,
+                Event::Resize(width, height) => app.term.resize(Size::new(width, height))?,
+                Event::Mouse(mouse) => match mouse.kind {
+                    MouseEventKind::ScrollUp => app.scroll_up(WHEEL_ROWS),
+                    MouseEventKind::ScrollDown => app.scroll_down(WHEEL_ROWS),
+                    _ => continue,
+                },
                 _ => {}
             }
             app.dirty = true;
@@ -126,7 +149,8 @@ fn run() -> io::Result<()> {
             app.draw()?;
         }
     }
-    app.leave()
+    app.finish_stream(true);
+    Ok(app.transcript.len())
 }
 
 struct Stream {
@@ -141,10 +165,15 @@ struct Stream {
 
 struct App {
     term: Terminal<CrosstermBackend<Stdout>>,
-    /// Everything committed, for repaints.
+    /// Everything committed; viy draws it, the terminal keeps no copy.
     transcript: Vec<Line<'static>>,
-    /// Committed but not yet written above the viewport.
-    pending: Vec<Line<'static>>,
+    /// Rows scrolled back from the end of the transcript; 0 follows it.
+    scroll_back: usize,
+    /// Transcript rows at the last frame, to hold a scrolled-back view still
+    /// while rows arrive.
+    last_rows: usize,
+    /// Transcript rows the last frame showed: a page.
+    page: usize,
     /// Where each user turn starts in `transcript`, and its text.
     turns: Vec<(usize, String)>,
     input: TextArea,
@@ -164,7 +193,9 @@ impl App {
         Self {
             term,
             transcript: Vec::new(),
-            pending: Vec::new(),
+            scroll_back: 0,
+            last_rows: 0,
+            page: 1,
             turns: Vec::new(),
             input: TextArea::default(),
             queued: Vec::new(),
@@ -179,8 +210,7 @@ impl App {
     }
 
     fn commit(&mut self, lines: Vec<Line<'static>>) {
-        self.transcript.extend(lines.iter().cloned());
-        self.pending.extend(lines);
+        self.transcript.extend(lines);
         self.dirty = true;
     }
 
@@ -210,7 +240,10 @@ impl App {
             KeyCode::Left => self.input.move_left(),
             KeyCode::Right => self.input.move_right(),
             KeyCode::Home => self.input.move_home(),
+            KeyCode::End if self.scroll_back > 0 => self.scroll_back = 0,
             KeyCode::End => self.input.move_end(),
+            KeyCode::PageUp => self.scroll_up(self.page.saturating_sub(1).max(1)),
+            KeyCode::PageDown => self.scroll_down(self.page.saturating_sub(1).max(1)),
             KeyCode::Char(c) if !ctrl => self.input.insert_char(c),
             _ => {}
         }
@@ -331,30 +364,20 @@ impl App {
         }
     }
 
-    /// Clears the screen and the scrollback and reprints the transcript
-    /// from state (ui-plan 4).
+    /// Repaints the screen from state (ui-plan 4); the terminal's
+    /// scrollback is never touched.
     fn repaint(&mut self) -> io::Result<()> {
-        self.term.clear_scrollback_and_screen()?;
-        let width = self.term.screen_size().width;
-        self.term.set_viewport_area(Rect::new(0, 0, width, 0));
-        self.pending = self.transcript.clone();
+        self.scroll_back = 0;
         self.dirty = true;
-        Ok(())
+        self.term.clear()
     }
 
-    /// Keeps the viewport where the cursor went, as Codex does: terminals
-    /// that re-wrap on resize move the cursor's row.
-    fn resize(&mut self, size: Size) -> io::Result<()> {
-        let mut area = self.term.viewport_area();
-        if let Ok(cursor) = self.term.query_cursor_position() {
-            let moved = i32::from(cursor.y) - i32::from(self.term.cursor_position().y);
-            area.y = u16::try_from((i32::from(area.y) + moved).max(0)).unwrap_or(0);
-        }
-        area.width = size.width;
-        area.y = area.y.min(size.height.saturating_sub(area.height));
-        self.term.set_screen_size(size);
-        self.term.set_viewport_area(area);
-        self.term.clear_from(Position::new(0, area.y))
+    fn scroll_up(&mut self, rows: usize) {
+        self.scroll_back = (self.scroll_back + rows).min(self.last_rows.saturating_sub(1));
+    }
+
+    fn scroll_down(&mut self, rows: usize) {
+        self.scroll_back = self.scroll_back.saturating_sub(rows);
     }
 
     fn live_lines(&self, width: u16) -> Vec<Line<'static>> {
@@ -399,6 +422,9 @@ impl App {
         if !self.queued.is_empty() {
             spans.push(format!(" │ {} queued", self.queued.len()).cyan());
         }
+        if self.scroll_back > 0 {
+            spans.push(format!(" │ ↓ {} rows (End)", self.scroll_back).cyan());
+        }
         Line::from(spans)
     }
 
@@ -406,42 +432,58 @@ impl App {
         if !self.dirty && self.stream.is_none() {
             return Ok(());
         }
-        let size = self.term.screen_size();
+        let size = self.term.size();
         let width = size.width.max(4);
         let mut live = self.live_lines(width);
         let (input_rows, input_cursor) = self.input.layout(width - 2);
-        // Keep two rows above the viewport for the scrollback region.
-        let max_height = usize::from(size.height.saturating_sub(2)).max(2);
+        // The live region may take all but two rows; the transcript gets
+        // the rest.
+        let max_live = usize::from(size.height.saturating_sub(2)).max(2);
         let fixed = input_rows.len() + 1;
-        let live_room = max_height.saturating_sub(fixed);
+        let live_room = max_live.saturating_sub(fixed);
         if live.len() > live_room {
             live.drain(..live.len() - live_room);
         }
-        let mut lines = live;
-        let input_top = lines.len();
+        let input_top = live.len();
+        let mut bottom = live;
         for (i, row) in input_rows.into_iter().enumerate() {
             let prefix = if i == 0 { "› ".cyan() } else { "  ".into() };
-            lines.push(Line::from(vec![prefix, row.into()]));
+            bottom.push(Line::from(vec![prefix, row.into()]));
         }
-        lines.push(self.footer());
-        let height = u16::try_from(lines.len())
+        bottom.push(self.footer());
+        let bottom_height = u16::try_from(bottom.len())
             .unwrap_or(u16::MAX)
             .min(size.height);
 
-        queue!(self.term.backend_mut(), BeginSynchronizedUpdate)?;
-        self.place_viewport(height)?;
-        if !self.pending.is_empty() {
-            let pending = std::mem::take(&mut self.pending);
-            insert_history_lines(&mut self.term, &pending)?;
+        // The transcript, wrapped at the current width every frame: a resize
+        // reflows it with no trace in the terminal.
+        let rows: Vec<Line<'static>> = self
+            .transcript
+            .iter()
+            .flat_map(|line| wrap_line(line, usize::from(width)))
+            .collect();
+        if self.scroll_back > 0 {
+            self.scroll_back += rows.len().saturating_sub(self.last_rows);
         }
-        let area = self.term.viewport_area();
+        self.last_rows = rows.len();
+        self.scroll_back = self.scroll_back.min(rows.len().saturating_sub(1));
+        let top_height = size.height - bottom_height;
+        self.page = usize::from(top_height).max(1);
+        let end = rows.len() - self.scroll_back;
+        let shown: Vec<Line<'static>> = rows[end.saturating_sub(self.page)..end].to_vec();
+        // Short transcripts sit right above the live region, as in a shell.
+        let gap = top_height.saturating_sub(u16::try_from(shown.len()).unwrap_or(u16::MAX));
+
+        let top = Rect::new(0, gap, size.width, top_height - gap);
+        let live_area = Rect::new(0, top_height, size.width, bottom_height);
         let cursor = Position::new(
             2 + input_cursor.x,
-            area.y + u16::try_from(input_top).unwrap_or(0) + input_cursor.y,
+            top_height + u16::try_from(input_top).unwrap_or(0) + input_cursor.y,
         );
+        queue!(self.term.backend_mut(), BeginSynchronizedUpdate)?;
         self.term.draw(|frame| {
-            let area = frame.area();
-            frame.render_widget(Paragraph::new(lines), area);
+            frame.render_widget(Paragraph::new(shown), top);
+            frame.render_widget(Paragraph::new(bottom), live_area);
             frame.set_cursor_position(cursor);
         })?;
         queue!(self.term.backend_mut(), EndSynchronizedUpdate)?;
@@ -449,58 +491,5 @@ impl App {
         self.last_frame = Instant::now();
         self.dirty = false;
         Ok(())
-    }
-
-    /// Gives the viewport `height` rows. Growing past the bottom of the
-    /// screen pushes the rows above it into the scrollback, as Codex's
-    /// `grow_viewport` does: newlines at the bottom of a region over them.
-    fn place_viewport(&mut self, height: u16) -> io::Result<()> {
-        let size = self.term.screen_size();
-        let old = self.term.viewport_area();
-        let mut area = Rect::new(0, old.y, size.width, height);
-        if area.bottom() > size.height {
-            let scroll_by = area.bottom() - size.height;
-            if old.y <= 1 {
-                // No region above to scroll: the whole screen scrolls, so
-                // the old viewport must not go into the scrollback with it.
-                self.term.clear_from(Position::new(0, old.y))?;
-            }
-            let cursor = self.term.cursor_position();
-            let writer = self.term.backend_mut();
-            if old.y > 1 {
-                queue!(writer, SetScrollRegion(1..old.y), MoveTo(0, old.y - 1))?;
-                for _ in 0..scroll_by {
-                    queue!(writer, Print("\r\n"))?;
-                }
-                queue!(writer, ResetScrollRegion)?;
-            } else {
-                queue!(writer, MoveTo(0, size.height - 1))?;
-                for _ in 0..scroll_by {
-                    queue!(writer, Print("\r\n"))?;
-                }
-            }
-            queue!(writer, MoveTo(cursor.x, cursor.y))?;
-            area.y = size.height - height;
-        }
-        if area != old {
-            self.term.set_viewport_area(area);
-            self.term.clear_from(Position::new(0, area.y))?;
-        }
-        Ok(())
-    }
-
-    /// Leaves the cursor below the live region for the shell.
-    fn leave(&mut self) -> io::Result<()> {
-        self.finish_stream(true);
-        self.dirty = true;
-        self.draw()?;
-        let area = self.term.viewport_area();
-        let writer = self.term.backend_mut();
-        queue!(
-            writer,
-            MoveTo(0, area.bottom().saturating_sub(1)),
-            Print("\r\n")
-        )?;
-        writer.flush()
     }
 }

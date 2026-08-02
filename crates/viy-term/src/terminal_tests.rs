@@ -1,5 +1,4 @@
 use pretty_assertions::assert_eq;
-use ratatui::layout::Position;
 use ratatui::layout::Rect;
 use ratatui::layout::Size;
 use ratatui::widgets::Paragraph;
@@ -7,67 +6,68 @@ use ratatui::widgets::Paragraph;
 use super::*;
 use crate::test_backend::VT100Backend;
 
-fn terminal(width: u16, height: u16) -> Terminal<VT100Backend> {
-    Terminal::with_size_and_cursor(
-        VT100Backend::new(width, height),
-        Size::new(width, height),
-        Position::ORIGIN,
-    )
+fn text(text: &'static str) -> impl FnOnce(&mut Frame) {
+    move |frame: &mut Frame| {
+        let area = frame.area();
+        frame.render_widget(Paragraph::new(text), area);
+    }
 }
 
 #[test]
-fn draws_the_viewport_where_it_is_placed() {
-    let mut term = terminal(20, 5);
-    term.set_viewport_area(Rect::new(0, 3, 20, 2));
+fn draws_the_frame_and_places_the_cursor() {
+    let mut term = Terminal::new(VT100Backend::new(20, 3)).unwrap();
     term.draw(|frame| {
-        let area = frame.area();
-        frame.render_widget(Paragraph::new("live\nfooter"), area);
-        frame.set_cursor_position((4, 3));
+        frame.render_widget(Paragraph::new("transcript"), Rect::new(0, 0, 20, 1));
+        frame.render_widget(Paragraph::new("› hi"), Rect::new(0, 2, 20, 1));
+        frame.set_cursor_position((4, 2));
     })
     .unwrap();
-    assert_eq!(
-        term.backend().screen_rows(),
-        ["", "", "", "live▮", "footer"]
-    );
-    assert_eq!(term.cursor_position(), Position::new(4, 3));
+    assert_eq!(term.backend().screen_rows(), ["transcript", "", "› hi▮"]);
 }
 
 #[test]
-fn a_second_identical_frame_writes_no_cells() {
-    let mut term = terminal(20, 3);
-    term.set_viewport_area(Rect::new(0, 1, 20, 2));
-    let render = |frame: &mut Frame| {
-        let area = frame.area();
-        frame.render_widget(Paragraph::new("same"), area);
-    };
-    term.draw(render).unwrap();
+fn a_second_identical_frame_writes_nothing() {
+    let mut term = Terminal::new(VT100Backend::new(20, 3)).unwrap();
+    term.draw(text("same")).unwrap();
     let before = term.backend().bytes_written();
-    term.draw(render).unwrap();
+    term.draw(text("same")).unwrap();
     assert_eq!(term.backend().bytes_written(), before);
 }
 
 #[test]
-fn invalidating_repaints_cells_cleared_behind_the_viewport() {
-    let mut term = terminal(20, 3);
-    term.set_viewport_area(Rect::new(0, 1, 20, 2));
-    let render = |frame: &mut Frame| {
-        let area = frame.area();
-        frame.render_widget(Paragraph::new("kept"), area);
-    };
-    term.draw(render).unwrap();
-    term.clear_from(Position::new(0, 1)).unwrap();
-    assert_eq!(term.backend().screen_rows(), ["", "", ""]);
-    term.draw(render).unwrap();
-    assert_eq!(term.backend().screen_rows(), ["", "kept", ""]);
+fn clearing_repaints_every_cell() {
+    let mut term = Terminal::new(VT100Backend::new(20, 2)).unwrap();
+    term.draw(text("kept")).unwrap();
+    term.clear().unwrap();
+    assert_eq!(term.backend().screen_rows(), ["", ""]);
+    term.draw(text("kept")).unwrap();
+    assert_eq!(term.backend().screen_rows(), ["kept", ""]);
 }
 
 #[test]
-fn clearing_the_scrollback_sends_ed3_and_homes_the_cursor() {
-    let mut term = terminal(10, 3);
-    write!(term.backend_mut(), "old\r\ntext").unwrap();
-    term.clear_scrollback_and_screen().unwrap();
-    // vt100 does not keep a scrollback here; the screen is blank and the
-    // cursor home.
-    assert_eq!(term.backend().screen_rows(), ["▮", "", ""]);
-    assert_eq!(term.cursor_position(), Position::ORIGIN);
+fn a_resize_lays_the_frame_out_at_the_new_size() {
+    let mut term = Terminal::new(VT100Backend::new(20, 2)).unwrap();
+    term.draw(text("wide enough here")).unwrap();
+    term.backend_mut().resize(8, 3);
+    term.resize(Size::new(8, 3)).unwrap();
+    assert_eq!(term.size(), Size::new(8, 3));
+    term.draw(|frame| {
+        let area = frame.area();
+        frame.render_widget(
+            Paragraph::new("wide enough here").wrap(ratatui::widgets::Wrap { trim: true }),
+            area,
+        );
+    })
+    .unwrap();
+    assert_eq!(term.backend().screen_rows(), ["wide", "enough", "here"]);
+}
+
+#[test]
+fn nothing_written_clears_the_scrollback() {
+    let mut term = Terminal::new(VT100Backend::new(20, 2)).unwrap();
+    term.draw(text("a")).unwrap();
+    term.clear().unwrap();
+    term.resize(Size::new(20, 2)).unwrap();
+    term.draw(text("b")).unwrap();
+    assert!(!term.backend().written().windows(4).any(|w| w == b"\x1b[3J"));
 }

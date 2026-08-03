@@ -1,0 +1,446 @@
+{
+ "rpctl_commit": "6bfec96bcd5087080a1ad17df165a663a4e5e77e",
+ "generator": "tools/fixtures.py config/model",
+ "about": "`rp model ARGV` (rpctl __main__.cmd_model after config.load()) in a synthetic tree: exit status, stdout, stderr, and the files under $T/config/rpctl afterwards; HOME is $T/home, XDG_CONFIG_HOME $T/config, the project $T/project with a .rpctl/ marker",
+ "cases": [
+  {
+   "name": "list_without_a_profiles_dir",
+   "global_config": null,
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "list"
+   ],
+   "exit": 0,
+   "stdout": "no model profiles yet in $T/config/rpctl/profiles/\ncreate one with:  rp model add <name>\n",
+   "stderr": "",
+   "files": {}
+  },
+  {
+   "name": "list_with_an_empty_profiles_dir",
+   "global_config": "MODEL_PROFILE=ghost\n",
+   "profiles": {},
+   "profiles_dir": true,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "list"
+   ],
+   "exit": 0,
+   "stdout": "no model profiles yet in $T/config/rpctl/profiles/\ncreate one with:  rp model add <name>\n",
+   "stderr": "",
+   "files": {
+    "config": "MODEL_PROFILE=ghost\n"
+   }
+  },
+  {
+   "name": "list_marks_the_active_one_and_sorts_by_code_point",
+   "global_config": "MODEL_PROFILE=beta\n",
+   "profiles": {
+    "beta": "MODEL_REPO=org/beta-repo\n",
+    "alpha": "SERVED_MODEL_NAME=alpha-served\nMODEL_REPO=org/alpha\n",
+    "Zeta": "POD_NAME=z\n",
+    "blank-served": "SERVED_MODEL_NAME=\nMODEL_REPO=org/blank\n"
+   },
+   "profiles_dir": false,
+   "other_files": {
+    "profiles/README": "not a profile\n"
+   },
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "list"
+   ],
+   "exit": 0,
+   "stdout": "model profiles (* = active):\n    Zeta  (?)\n    alpha  (alpha-served)\n  * beta  (org/beta-repo)\n    blank-served  (org/blank)\n",
+   "stderr": "",
+   "files": {
+    "config": "MODEL_PROFILE=beta\n",
+    "profiles/README": "not a profile\n",
+    "profiles/Zeta.env": "POD_NAME=z\n",
+    "profiles/alpha.env": "SERVED_MODEL_NAME=alpha-served\nMODEL_REPO=org/alpha\n",
+    "profiles/beta.env": "MODEL_REPO=org/beta-repo\n",
+    "profiles/blank-served.env": "SERVED_MODEL_NAME=\nMODEL_REPO=org/blank\n"
+   }
+  },
+  {
+   "name": "list_with_an_active_profile_that_has_no_file",
+   "global_config": "MODEL_PROFILE=ghost\n",
+   "profiles": {
+    "alpha": "MODEL_REPO=a\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "list"
+   ],
+   "exit": 0,
+   "stdout": "model profiles (* = active):\n    alpha  (a)\n  ! MODEL_PROFILE=ghost is set but has no profile file\n",
+   "stderr": "",
+   "files": {
+    "config": "MODEL_PROFILE=ghost\n",
+    "profiles/alpha.env": "MODEL_REPO=a\n"
+   }
+  },
+  {
+   "name": "list_active_from_the_project_file",
+   "global_config": "MODEL_PROFILE=alpha\n",
+   "profiles": {
+    "alpha": "MODEL_REPO=a\n",
+    "beta": "MODEL_REPO=b\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": "MODEL_PROFILE=beta\n",
+   "env": {},
+   "argv": [
+    "list"
+   ],
+   "exit": 0,
+   "stdout": "model profiles (* = active):\n    alpha  (a)\n  * beta  (b)\n",
+   "stderr": "",
+   "files": {
+    "config": "MODEL_PROFILE=alpha\n",
+    "profiles/alpha.env": "MODEL_REPO=a\n",
+    "profiles/beta.env": "MODEL_REPO=b\n"
+   }
+  },
+  {
+   "name": "show_the_active_profile_in_profile_key_order",
+   "global_config": "MODEL_PROFILE=alpha\n",
+   "profiles": {
+    "alpha": "EXTRA_ONE=1\nPOD_NAME=alpha-pod\nBACKEND=runpod\n# a comment\nNETWORK_VOLUME_ID=\nEXTRA_TWO=2\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "show"
+   ],
+   "exit": 0,
+   "stdout": "profile alpha  ($T/config/rpctl/profiles/alpha.env):\n  BACKEND=runpod\n  POD_NAME=alpha-pod\n  NETWORK_VOLUME_ID=\n  EXTRA_ONE=1\n  EXTRA_TWO=2\n",
+   "stderr": "",
+   "files": {
+    "config": "MODEL_PROFILE=alpha\n",
+    "profiles/alpha.env": "EXTRA_ONE=1\nPOD_NAME=alpha-pod\nBACKEND=runpod\n# a comment\nNETWORK_VOLUME_ID=\nEXTRA_TWO=2\n"
+   }
+  },
+  {
+   "name": "show_a_named_profile",
+   "global_config": "MODEL_PROFILE=alpha\n",
+   "profiles": {
+    "alpha": "MODEL_REPO=a\n",
+    "beta": "MODEL_REPO=b\nMAX_TOKENS=99\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "show",
+    "beta"
+   ],
+   "exit": 0,
+   "stdout": "profile beta  ($T/config/rpctl/profiles/beta.env):\n  MODEL_REPO=b\n  MAX_TOKENS=99\n",
+   "stderr": "",
+   "files": {
+    "config": "MODEL_PROFILE=alpha\n",
+    "profiles/alpha.env": "MODEL_REPO=a\n",
+    "profiles/beta.env": "MODEL_REPO=b\nMAX_TOKENS=99\n"
+   }
+  },
+  {
+   "name": "show_without_an_active_profile",
+   "global_config": null,
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "show"
+   ],
+   "exit": 0,
+   "stdout": "no active profile; pass a name:  rp model show <name>\n",
+   "stderr": "",
+   "files": {}
+  },
+  {
+   "name": "show_a_missing_profile",
+   "global_config": null,
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "show",
+    "ghost"
+   ],
+   "exit": 0,
+   "stdout": "no such profile: ghost  ($T/config/rpctl/profiles/ghost.env)\n",
+   "stderr": "",
+   "files": {}
+  },
+  {
+   "name": "show_an_empty_profile",
+   "global_config": null,
+   "profiles": {
+    "empty": ""
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "show",
+    "empty"
+   ],
+   "exit": 0,
+   "stdout": "no such profile: empty  ($T/config/rpctl/profiles/empty.env)\n",
+   "stderr": "",
+   "files": {
+    "profiles/empty.env": ""
+   }
+  },
+  {
+   "name": "use_appends_to_the_global_file",
+   "global_config": "# rp config\nRUNPOD_API_KEY=k\n\nPOD_NAME=p",
+   "profiles": {
+    "alpha": ""
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "use",
+    "alpha"
+   ],
+   "exit": 0,
+   "stdout": "active model profile: alpha\nModel/serving keys are vLLM launch flags, so recreate the pod for the switch to take effect.\nIf a pod is running under the current model, terminate it FIRST (rp down), then:  rp model use alpha && rp up\n",
+   "stderr": "",
+   "files": {
+    "config": "# rp config\nRUNPOD_API_KEY=k\n\nPOD_NAME=p\nMODEL_PROFILE=alpha\n",
+    "profiles/alpha.env": ""
+   }
+  },
+  {
+   "name": "use_replaces_the_line_in_place",
+   "global_config": "POD_NAME=p\nMODEL_PROFILE=alpha\nTAVILY_API_KEY=t\n",
+   "profiles": {
+    "alpha": "",
+    "beta": "MODEL_REPO=b\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "use",
+    "beta"
+   ],
+   "exit": 0,
+   "stdout": "active model profile: beta\nModel/serving keys are vLLM launch flags, so recreate the pod for the switch to take effect.\nIf a pod is running under the current model, terminate it FIRST (rp down), then:  rp model use beta && rp up\n",
+   "stderr": "",
+   "files": {
+    "config": "POD_NAME=p\nMODEL_PROFILE=beta\nTAVILY_API_KEY=t\n",
+    "profiles/alpha.env": "",
+    "profiles/beta.env": "MODEL_REPO=b\n"
+   }
+  },
+  {
+   "name": "use_uncomments_a_commented_line",
+   "global_config": "POD_NAME=p\n#MODEL_PROFILE=alpha\n",
+   "profiles": {
+    "beta": "MODEL_REPO=b\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "use",
+    "beta"
+   ],
+   "exit": 0,
+   "stdout": "active model profile: beta\nModel/serving keys are vLLM launch flags, so recreate the pod for the switch to take effect.\nIf a pod is running under the current model, terminate it FIRST (rp down), then:  rp model use beta && rp up\n",
+   "stderr": "",
+   "files": {
+    "config": "POD_NAME=p\nMODEL_PROFILE=beta\n",
+    "profiles/beta.env": "MODEL_REPO=b\n"
+   }
+  },
+  {
+   "name": "use_rewrites_only_the_first_of_two_lines",
+   "global_config": "MODEL_PROFILE=alpha\nPOD_NAME=p\nMODEL_PROFILE=gamma\n",
+   "profiles": {
+    "beta": "MODEL_REPO=b\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "use",
+    "beta"
+   ],
+   "exit": 0,
+   "stdout": "active model profile: beta\nModel/serving keys are vLLM launch flags, so recreate the pod for the switch to take effect.\nIf a pod is running under the current model, terminate it FIRST (rp down), then:  rp model use beta && rp up\n",
+   "stderr": "",
+   "files": {
+    "config": "MODEL_PROFILE=beta\nPOD_NAME=p\nMODEL_PROFILE=gamma\n",
+    "profiles/beta.env": "MODEL_REPO=b\n"
+   }
+  },
+  {
+   "name": "use_creates_the_global_file",
+   "global_config": null,
+   "profiles": {
+    "alpha": "MODEL_REPO=a\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "use",
+    "alpha"
+   ],
+   "exit": 0,
+   "stdout": "active model profile: alpha\nModel/serving keys are vLLM launch flags, so recreate the pod for the switch to take effect.\nIf a pod is running under the current model, terminate it FIRST (rp down), then:  rp model use alpha && rp up\n",
+   "stderr": "",
+   "files": {
+    "config": "MODEL_PROFILE=alpha\n",
+    "profiles/alpha.env": "MODEL_REPO=a\n"
+   }
+  },
+  {
+   "name": "use_a_missing_profile",
+   "global_config": "POD_NAME=p\n",
+   "profiles": {
+    "alpha": ""
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "use",
+    "ghost"
+   ],
+   "exit": 1,
+   "stdout": "",
+   "stderr": "no such profile: ghost  (rp model list)\n",
+   "files": {
+    "config": "POD_NAME=p\n",
+    "profiles/alpha.env": ""
+   }
+  },
+  {
+   "name": "use_without_a_name",
+   "global_config": null,
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "use"
+   ],
+   "exit": 1,
+   "stdout": "",
+   "stderr": "rp model use needs a profile name\n",
+   "files": {}
+  },
+  {
+   "name": "add_seeds_from_the_effective_config",
+   "global_config": "POD_NAME=global-pod\nNETWORK_VOLUME_ID=vol-old\nRUNPOD_API_KEY=k\nMODEL_REPO=org/global\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {
+    "MAX_TOKENS": "4096"
+   },
+   "argv": [
+    "add",
+    "new"
+   ],
+   "exit": 0,
+   "stdout": "wrote $T/config/rpctl/profiles/new.env\nEdit it for the new model, then:  rp model use new\nGive it a UNIQUE POD_NAME and NETWORK_VOLUME_NAME so it gets its own pod + weights (tracking keys on POD_NAME).\n",
+   "stderr": "",
+   "files": {
+    "config": "POD_NAME=global-pod\nNETWORK_VOLUME_ID=vol-old\nRUNPOD_API_KEY=k\nMODEL_REPO=org/global\n",
+    "profiles/new.env": "BACKEND=runpod\nMODEL_REPO=org/global\nSERVED_MODEL_NAME=qwen3.8-abliterated\nVLLM_IMAGE=vllm/vllm-openai:v0.27.1\nCUDA_VERSIONS=13.0\nTOOL_CALL_PARSER=qwen3_xml\nMAX_MODEL_LEN=65536\nMAX_TOKENS=4096\nPOD_NAME=global-pod\nNETWORK_VOLUME_NAME=qwen38-weights\nNETWORK_VOLUME_ID=\nGPU_TYPE_IDS=NVIDIA A100 80GB PCIe,NVIDIA A100-SXM4-80GB,NVIDIA RTX PRO 6000 Blackwell Server Edition,NVIDIA H100 NVL,NVIDIA H100 80GB HBM3,NVIDIA H200,NVIDIA B200\nSTARTUP_CACHE=1\nMODEL_CACHE_MODE=auto\nSAFETENSORS_LOAD_STRATEGY=prefetch\nWEIGHTS_PREWARM=1\nMM_WARMUP=0\nPREFIX_CACHING=1\nENDPOINT_URL=\nENDPOINT_MODEL=\nLOCAL_VLLM_PORT=\n"
+   }
+  },
+  {
+   "name": "add_refuses_an_existing_profile",
+   "global_config": null,
+   "profiles": {
+    "alpha": "MODEL_REPO=keep\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "add",
+    "alpha"
+   ],
+   "exit": 1,
+   "stdout": "",
+   "stderr": "$T/config/rpctl/profiles/alpha.env already exists; pass --force to overwrite\n",
+   "files": {
+    "profiles/alpha.env": "MODEL_REPO=keep\n"
+   }
+  },
+  {
+   "name": "add_force_overwrites",
+   "global_config": "MODEL_PROFILE=alpha\n",
+   "profiles": {
+    "alpha": "MODEL_REPO=org/alpha\nNETWORK_VOLUME_ID=vol-a\nEXTRA=x\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "add",
+    "alpha",
+    "--force"
+   ],
+   "exit": 0,
+   "stdout": "wrote $T/config/rpctl/profiles/alpha.env\nEdit it for the new model, then:  rp model use alpha\nGive it a UNIQUE POD_NAME and NETWORK_VOLUME_NAME so it gets its own pod + weights (tracking keys on POD_NAME).\n",
+   "stderr": "",
+   "files": {
+    "config": "MODEL_PROFILE=alpha\n",
+    "profiles/alpha.env": "BACKEND=runpod\nMODEL_REPO=org/alpha\nSERVED_MODEL_NAME=qwen3.8-abliterated\nVLLM_IMAGE=vllm/vllm-openai:v0.27.1\nCUDA_VERSIONS=13.0\nTOOL_CALL_PARSER=qwen3_xml\nMAX_MODEL_LEN=65536\nMAX_TOKENS=16384\nPOD_NAME=qwen38-abliterated\nNETWORK_VOLUME_NAME=qwen38-weights\nNETWORK_VOLUME_ID=\nGPU_TYPE_IDS=NVIDIA A100 80GB PCIe,NVIDIA A100-SXM4-80GB,NVIDIA RTX PRO 6000 Blackwell Server Edition,NVIDIA H100 NVL,NVIDIA H100 80GB HBM3,NVIDIA H200,NVIDIA B200\nSTARTUP_CACHE=1\nMODEL_CACHE_MODE=auto\nSAFETENSORS_LOAD_STRATEGY=prefetch\nWEIGHTS_PREWARM=1\nMM_WARMUP=0\nPREFIX_CACHING=1\nENDPOINT_URL=\nENDPOINT_MODEL=\nLOCAL_VLLM_PORT=\n"
+   }
+  },
+  {
+   "name": "add_without_a_name",
+   "global_config": null,
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "argv": [
+    "add"
+   ],
+   "exit": 1,
+   "stdout": "",
+   "stderr": "rp model add needs a profile name\n",
+   "files": {}
+  }
+ ]
+}

@@ -8,6 +8,7 @@
 pub mod config;
 mod defaults;
 pub mod paths;
+pub mod profiles;
 pub mod project;
 
 pub use config::Config;

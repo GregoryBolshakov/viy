@@ -1,7 +1,11 @@
 //! The `viy` command: argument parsing and dispatch, rpctl's `__main__.py`.
 //!
 //! Until the clap CLI with rpctl's 19 subcommands lands (WP 1.6), only
-//! `--version` is understood; everything else is a usage error.
+//! `--version` is understood; everything else is a usage error. The
+//! subcommands are written as their work packages come (`model`, WP 1.3) and
+//! wired to the parser in WP 1.6.
+
+pub mod model;
 
 use std::ffi::OsString;
 use std::io::Write;

@@ -1,0 +1,280 @@
+{
+ "rpctl_commit": "6bfec96bcd5087080a1ad17df165a663a4e5e77e",
+ "generator": "tools/fixtures.py config/persist",
+ "about": "rpctl config.persist(cfg, KEY, VALUE) after config.load() in a synthetic tree: cfg[KEY] afterwards and the files under $T/config/rpctl",
+ "cases": [
+  {
+   "name": "appends_a_new_key",
+   "global_config": "# rp\nPOD_NAME=p\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "# rp\nPOD_NAME=p\nNETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "replaces_in_place_keeping_comments_and_order",
+   "global_config": "# rp\nPOD_NAME=p\nNETWORK_VOLUME_ID=vol-old\n\n# tail\nX=1\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "# rp\nPOD_NAME=p\nNETWORK_VOLUME_ID=vol-new\n\n# tail\nX=1\n"
+   }
+  },
+  {
+   "name": "uncomments_a_commented_key",
+   "global_config": "#NETWORK_VOLUME_ID=vol-old\nPOD_NAME=p\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "NETWORK_VOLUME_ID=vol-new\nPOD_NAME=p\n"
+   }
+  },
+  {
+   "name": "a_spaced_comment_is_not_the_key",
+   "global_config": "# NETWORK_VOLUME_ID=vol-old\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "# NETWORK_VOLUME_ID=vol-old\nNETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "a_spaced_assignment_is_not_matched",
+   "global_config": "NETWORK_VOLUME_ID = vol-old\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "NETWORK_VOLUME_ID = vol-old\nNETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "an_indented_line_loses_its_indent",
+   "global_config": "  NETWORK_VOLUME_ID=vol-old\n\tPOD_NAME=p\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "NETWORK_VOLUME_ID=vol-new\n\tPOD_NAME=p\n"
+   }
+  },
+  {
+   "name": "a_longer_key_is_not_the_key",
+   "global_config": "NETWORK_VOLUME_ID_OLD=x\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "NETWORK_VOLUME_ID_OLD=x\nNETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "only_the_first_of_two_lines",
+   "global_config": "NETWORK_VOLUME_ID=a\nNETWORK_VOLUME_ID=b\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "NETWORK_VOLUME_ID=vol-new\nNETWORK_VOLUME_ID=b\n"
+   }
+  },
+  {
+   "name": "crlf_becomes_lf",
+   "global_config": "POD_NAME=p\r\nNETWORK_VOLUME_ID=vol-old\r\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "POD_NAME=p\nNETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "no_final_newline",
+   "global_config": "POD_NAME=p",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "POD_NAME=p\nNETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "an_empty_value",
+   "global_config": "NETWORK_VOLUME_ID=vol-old\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "",
+   "cfg_value": "",
+   "files": {
+    "config": "NETWORK_VOLUME_ID=\n"
+   }
+  },
+  {
+   "name": "creates_the_global_file_and_dir",
+   "global_config": null,
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "NETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "the_active_profile_gets_it",
+   "global_config": "MODEL_PROFILE=alpha\nNETWORK_VOLUME_ID=vol-global\n",
+   "profiles": {
+    "alpha": "MODEL_REPO=a\nNETWORK_VOLUME_ID=\n"
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "MODEL_PROFILE=alpha\nNETWORK_VOLUME_ID=vol-global\n",
+    "profiles/alpha.env": "MODEL_REPO=a\nNETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "creates_a_missing_active_profile",
+   "global_config": "MODEL_PROFILE=alpha\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "MODEL_PROFILE=alpha\n",
+    "profiles/alpha.env": "NETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "the_profile_named_by_the_environment",
+   "global_config": "MODEL_PROFILE=alpha\n",
+   "profiles": {
+    "alpha": "",
+    "other": ""
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {
+    "MODEL_PROFILE": "other"
+   },
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "MODEL_PROFILE=alpha\n",
+    "profiles/alpha.env": "",
+    "profiles/other.env": "NETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "the_profile_named_by_the_project_file",
+   "global_config": "MODEL_PROFILE=alpha\n",
+   "profiles": {
+    "alpha": "",
+    "other": ""
+   },
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": "MODEL_PROFILE=other\n",
+   "env": {},
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "MODEL_PROFILE=alpha\n",
+    "profiles/alpha.env": "",
+    "profiles/other.env": "NETWORK_VOLUME_ID=vol-new\n"
+   }
+  },
+  {
+   "name": "a_blank_active_profile_means_the_global_file",
+   "global_config": "POD_NAME=p\n",
+   "profiles": {},
+   "profiles_dir": false,
+   "other_files": {},
+   "project_config": null,
+   "env": {
+    "MODEL_PROFILE": "  "
+   },
+   "key": "NETWORK_VOLUME_ID",
+   "value": "vol-new",
+   "cfg_value": "vol-new",
+   "files": {
+    "config": "POD_NAME=p\nNETWORK_VOLUME_ID=vol-new\n"
+   }
+  }
+ ]
+}

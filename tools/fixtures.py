@@ -277,8 +277,209 @@ def gen_config_project(snap):
     }
 
 
+# ------------------------------------------------ config/model, config/persist
+
+# One case: the global config, the profiles, the project's .rpctl/config and
+# the environment as in config/layering, and what to run. The output is what
+# the command printed, its exit status, and every file under rpctl's config
+# directory afterwards (path relative to it -> text), with the case's root T
+# written as "$T".
+MODEL_CASES = [
+    dict(name="list_without_a_profiles_dir", argv=["list"]),
+    dict(name="list_with_an_empty_profiles_dir", argv=["list"], profiles_dir=True,
+         global_config="MODEL_PROFILE=ghost\n"),
+    dict(name="list_marks_the_active_one_and_sorts_by_code_point", argv=["list"],
+         global_config="MODEL_PROFILE=beta\n",
+         profiles={"beta": "MODEL_REPO=org/beta-repo\n",
+                   "alpha": "SERVED_MODEL_NAME=alpha-served\nMODEL_REPO=org/alpha\n",
+                   "Zeta": "POD_NAME=z\n",
+                   "blank-served": "SERVED_MODEL_NAME=\nMODEL_REPO=org/blank\n"},
+         other_files={"profiles/README": "not a profile\n"}),
+    dict(name="list_with_an_active_profile_that_has_no_file", argv=["list"],
+         global_config="MODEL_PROFILE=ghost\n", profiles={"alpha": "MODEL_REPO=a\n"}),
+    dict(name="list_active_from_the_project_file", argv=["list"],
+         global_config="MODEL_PROFILE=alpha\n", project_config="MODEL_PROFILE=beta\n",
+         profiles={"alpha": "MODEL_REPO=a\n", "beta": "MODEL_REPO=b\n"}),
+    dict(name="show_the_active_profile_in_profile_key_order", argv=["show"],
+         global_config="MODEL_PROFILE=alpha\n",
+         profiles={"alpha": "EXTRA_ONE=1\nPOD_NAME=alpha-pod\nBACKEND=runpod\n"
+                            "# a comment\nNETWORK_VOLUME_ID=\nEXTRA_TWO=2\n"}),
+    dict(name="show_a_named_profile", argv=["show", "beta"],
+         global_config="MODEL_PROFILE=alpha\n",
+         profiles={"alpha": "MODEL_REPO=a\n", "beta": "MODEL_REPO=b\nMAX_TOKENS=99\n"}),
+    dict(name="show_without_an_active_profile", argv=["show"]),
+    dict(name="show_a_missing_profile", argv=["show", "ghost"]),
+    dict(name="show_an_empty_profile", argv=["show", "empty"], profiles={"empty": ""}),
+    dict(name="use_appends_to_the_global_file", argv=["use", "alpha"],
+         global_config="# rp config\nRUNPOD_API_KEY=k\n\nPOD_NAME=p", profiles={"alpha": ""}),
+    dict(name="use_replaces_the_line_in_place", argv=["use", "beta"],
+         global_config="POD_NAME=p\nMODEL_PROFILE=alpha\nTAVILY_API_KEY=t\n",
+         profiles={"alpha": "", "beta": "MODEL_REPO=b\n"}),
+    dict(name="use_uncomments_a_commented_line", argv=["use", "beta"],
+         global_config="POD_NAME=p\n#MODEL_PROFILE=alpha\n",
+         profiles={"beta": "MODEL_REPO=b\n"}),
+    dict(name="use_rewrites_only_the_first_of_two_lines", argv=["use", "beta"],
+         global_config="MODEL_PROFILE=alpha\nPOD_NAME=p\nMODEL_PROFILE=gamma\n",
+         profiles={"beta": "MODEL_REPO=b\n"}),
+    dict(name="use_creates_the_global_file", argv=["use", "alpha"],
+         profiles={"alpha": "MODEL_REPO=a\n"}),
+    dict(name="use_a_missing_profile", argv=["use", "ghost"],
+         global_config="POD_NAME=p\n", profiles={"alpha": ""}),
+    dict(name="use_without_a_name", argv=["use"]),
+    dict(name="add_seeds_from_the_effective_config", argv=["add", "new"],
+         global_config="POD_NAME=global-pod\nNETWORK_VOLUME_ID=vol-old\nRUNPOD_API_KEY=k\n"
+                       "MODEL_REPO=org/global\n",
+         env={"MAX_TOKENS": "4096"}),
+    dict(name="add_refuses_an_existing_profile", argv=["add", "alpha"],
+         profiles={"alpha": "MODEL_REPO=keep\n"}),
+    dict(name="add_force_overwrites", argv=["add", "alpha", "--force"],
+         global_config="MODEL_PROFILE=alpha\n",
+         profiles={"alpha": "MODEL_REPO=org/alpha\nNETWORK_VOLUME_ID=vol-a\nEXTRA=x\n"}),
+    dict(name="add_without_a_name", argv=["add"]),
+]
+
+MODEL_RUNNER = r"""
+import sys
+sys.path.insert(0, sys.argv[1])
+sys.argv = ["rp", "model", *sys.argv[2:]]
+from rpctl.__main__ import main
+main()
+"""
+
+# persist(cfg, key, value) after load(): _write_kv into the active profile,
+# else into the global file.
+PERSIST_CASES = [
+    dict(name="appends_a_new_key", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="# rp\nPOD_NAME=p\n"),
+    dict(name="replaces_in_place_keeping_comments_and_order", key="NETWORK_VOLUME_ID",
+         value="vol-new",
+         global_config="# rp\nPOD_NAME=p\nNETWORK_VOLUME_ID=vol-old\n\n# tail\nX=1\n"),
+    dict(name="uncomments_a_commented_key", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="#NETWORK_VOLUME_ID=vol-old\nPOD_NAME=p\n"),
+    dict(name="a_spaced_comment_is_not_the_key", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="# NETWORK_VOLUME_ID=vol-old\n"),
+    dict(name="a_spaced_assignment_is_not_matched", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="NETWORK_VOLUME_ID = vol-old\n"),
+    dict(name="an_indented_line_loses_its_indent", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="  NETWORK_VOLUME_ID=vol-old\n\tPOD_NAME=p\n"),
+    dict(name="a_longer_key_is_not_the_key", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="NETWORK_VOLUME_ID_OLD=x\n"),
+    dict(name="only_the_first_of_two_lines", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="NETWORK_VOLUME_ID=a\nNETWORK_VOLUME_ID=b\n"),
+    dict(name="crlf_becomes_lf", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="POD_NAME=p\r\nNETWORK_VOLUME_ID=vol-old\r\n"),
+    dict(name="no_final_newline", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="POD_NAME=p"),
+    dict(name="an_empty_value", key="NETWORK_VOLUME_ID", value="",
+         global_config="NETWORK_VOLUME_ID=vol-old\n"),
+    dict(name="creates_the_global_file_and_dir", key="NETWORK_VOLUME_ID", value="vol-new"),
+    dict(name="the_active_profile_gets_it", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="MODEL_PROFILE=alpha\nNETWORK_VOLUME_ID=vol-global\n",
+         profiles={"alpha": "MODEL_REPO=a\nNETWORK_VOLUME_ID=\n"}),
+    dict(name="creates_a_missing_active_profile", key="NETWORK_VOLUME_ID", value="vol-new",
+         global_config="MODEL_PROFILE=alpha\n"),
+    dict(name="the_profile_named_by_the_environment", key="NETWORK_VOLUME_ID",
+         value="vol-new", global_config="MODEL_PROFILE=alpha\n",
+         profiles={"alpha": "", "other": ""}, env={"MODEL_PROFILE": "other"}),
+    dict(name="the_profile_named_by_the_project_file", key="NETWORK_VOLUME_ID",
+         value="vol-new", global_config="MODEL_PROFILE=alpha\n",
+         profiles={"alpha": "", "other": ""}, project_config="MODEL_PROFILE=other\n"),
+    dict(name="a_blank_active_profile_means_the_global_file", key="NETWORK_VOLUME_ID",
+         value="vol-new", global_config="POD_NAME=p\n", env={"MODEL_PROFILE": "  "}),
+]
+
+PERSIST_RUNNER = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import config
+cfg = config.load()
+config.persist(cfg, sys.argv[2], sys.argv[3])
+print(json.dumps(cfg[sys.argv[2]]))
+"""
+
+
+def tree_run(snap, case, runner, args):
+    """Runs `runner` in a fresh tree laid out as the case says; returns the
+    exit status, the output, and the files under rpctl's config dir."""
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+        for name, sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"),
+                          ("XDG_STATE_HOME", "state"), ("XDG_DATA_HOME", "data"),
+                          ("XDG_CACHE_HOME", "cache")):
+            (tmp / sub).mkdir()
+            env[name] = str(tmp / sub)
+        cfgdir = tmp / "config" / "rpctl"
+        files = {}
+        if case.get("global_config") is not None:
+            files["config"] = case["global_config"]
+        for pname, text in case.get("profiles", {}).items():
+            files[f"profiles/{pname}.env"] = text
+        files.update(case.get("other_files", {}))
+        for rel, text in files.items():
+            (cfgdir / rel).parent.mkdir(parents=True, exist_ok=True)
+            (cfgdir / rel).write_bytes(text.encode())
+        if case.get("profiles_dir"):
+            (cfgdir / "profiles").mkdir(parents=True, exist_ok=True)
+        project = tmp / "project"
+        (project / ".rpctl").mkdir(parents=True)
+        if case.get("project_config") is not None:
+            (project / ".rpctl" / "config").write_bytes(case["project_config"].encode())
+        env.update(case.get("env", {}))
+        out = subprocess.run([sys.executable, "-I", "-c", runner, str(snap), *args],
+                             cwd=project, env=env, capture_output=True)
+        after = {str(p.relative_to(cfgdir)): p.read_bytes().decode()
+                 for p in sorted(cfgdir.rglob("*")) if p.is_file()}
+        t = lambda s: s.replace(str(tmp), "$T")
+        return {"exit": out.returncode, "stdout": t(out.stdout.decode()),
+                "stderr": t(out.stderr.decode()), "files": after}
+
+
+def tree_inputs(case):
+    return {
+        "name": case["name"],
+        "global_config": case.get("global_config"),
+        "profiles": case.get("profiles", {}),
+        "profiles_dir": case.get("profiles_dir", False),
+        "other_files": case.get("other_files", {}),
+        "project_config": case.get("project_config"),
+        "env": case.get("env", {}),
+    }
+
+
+def gen_config_model(snap):
+    cases = []
+    for case in MODEL_CASES:
+        out = tree_run(snap, case, MODEL_RUNNER, case["argv"])
+        cases.append({**tree_inputs(case), "argv": case["argv"], **out})
+    return {
+        "about": "`rp model ARGV` (rpctl __main__.cmd_model after config.load()) in a "
+                 "synthetic tree: exit status, stdout, stderr, and the files under "
+                 "$T/config/rpctl afterwards; HOME is $T/home, XDG_CONFIG_HOME $T/config, "
+                 "the project $T/project with a .rpctl/ marker",
+        "cases": cases,
+    }
+
+
+def gen_config_persist(snap):
+    cases = []
+    for case in PERSIST_CASES:
+        out = tree_run(snap, case, PERSIST_RUNNER, [case["key"], case["value"]])
+        if out["exit"] != 0:
+            raise SystemExit(f"config/persist {case['name']}: {out['stderr']}")
+        cases.append({**tree_inputs(case), "key": case["key"], "value": case["value"],
+                      "cfg_value": json.loads(out["stdout"]), "files": out["files"]})
+    return {
+        "about": "rpctl config.persist(cfg, KEY, VALUE) after config.load() in a synthetic "
+                 "tree: cfg[KEY] afterwards and the files under $T/config/rpctl",
+        "cases": cases,
+    }
+
+
 GENERATORS = {
     "config/layering": gen_config_layering,
+    "config/model": gen_config_model,
+    "config/persist": gen_config_persist,
     "config/project": gen_config_project,
 }
 

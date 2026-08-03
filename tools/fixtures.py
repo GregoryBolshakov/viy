@@ -113,6 +113,8 @@ LAYERING_CASES = [
              "CONSULT_APPROVAL=ask\n"
              "CONSULT_MODE=advise\n"
          )),
+    dict(name="project_host_network_in_any_case",
+         project_config="SANDBOX_NET=  HoSt  \nNEW_PROJECT_KEY=added\n"),
     dict(name="project_chat_mode_case_is_not_normalised",
          global_config="CHAT_MODE=auto-yes\n",
          project_config="CHAT_MODE=Normal\n"),

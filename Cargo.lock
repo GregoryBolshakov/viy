@@ -1556,6 +1556,7 @@ version = "0.1.0"
 name = "viy-config"
 version = "0.1.0"
 dependencies = [
+ "indexmap",
  "pretty_assertions",
  "serde_json",
  "viy-testkit",

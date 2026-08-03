@@ -33,6 +33,7 @@ viy-tools = { path = "crates/viy-tools" }
 # recorded as a fact (ROADMAP phase 0).
 # preserve_order: object keys keep their order, as in Python dicts (kb d011).
 crossterm = "0.29.0"
+indexmap = "2.14.0"
 pretty_assertions = "1.4.1"
 # Codex's features (codex-rs/Cargo.toml).
 ratatui = { version = "0.30.2", default-features = false, features = [

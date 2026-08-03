@@ -5,8 +5,13 @@
 //! redaction. Ported from rpctl's `config.py`, `vault.py` and `redact.py`
 //! (ROADMAP phase 1).
 
+pub mod config;
+mod defaults;
 pub mod paths;
 pub mod project;
 
+pub use config::Config;
+pub use config::Layers;
+pub use defaults::DEFAULTS;
 pub use paths::Paths;
 pub use project::Project;

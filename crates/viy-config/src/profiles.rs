@@ -1,8 +1,8 @@
 //! Model profiles and writing config keys back (rpctl's `config.py` from
 //! `_write_kv` to `persist`). A profile bundles the model and serving keys
-//! for one model at `~/.config/viy/profiles/<name>.env`; the global file's
-//! MODEL_PROFILE selects it, and [`crate::Layers`] layers it between the
-//! global and the project files.
+//! for one model at `~/.config/viy/profiles/<name>.env`; MODEL_PROFILE in
+//! the environment or else the global file selects it, and
+//! [`crate::Layers`] layers it between the global and the project files.
 //!
 //! Every write replaces the file atomically, through a symlink to its
 //! target, as Codex's `write_atomically` does, and leaves it readable by its
@@ -20,6 +20,7 @@ use indexmap::IndexMap;
 
 use crate::Config;
 use crate::Paths;
+use crate::config::assignment;
 use crate::config::parse_env_file;
 
 /// `profiles/<name>.env`.
@@ -100,30 +101,40 @@ pub fn persist(cfg: &mut Config, paths: &Paths, key: &str, value: &str) -> io::R
     Ok(())
 }
 
-/// Sets `key=value` in a `KEY=value` file, keeping its comments and order:
-/// the first line that sets the key, or sets it commented out (`#KEY=`),
-/// becomes `KEY=value`; with none, the line goes last.
+/// Sets `key=value` in a `KEY=value` file, keeping its comments and order.
+/// The first line that sets the key, as [`parse_env_file`] reads it,
+/// becomes `KEY=value` and later ones go, since the last would win on load;
+/// with none, the first `#KEY=` line is uncommented, else the line goes last.
 fn write_kv(path: &Path, key: &str, value: &str) -> io::Result<()> {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(io::Error::new(e.kind(), format!("{}: {e}", path.display()))),
     };
-    let assign = format!("{key}=");
+    let commented = format!("#{key}=");
+    let sets = |raw: &str| assignment(raw).is_some_and(|(k, _)| k == key);
+    let lines: Vec<&str> = text.lines().collect();
+    let target = lines.iter().position(|raw| sets(raw)).or_else(|| {
+        lines
+            .iter()
+            .position(|raw| raw.trim().starts_with(&commented))
+    });
     let line = format!("{key}={value}");
-    let mut lines: Vec<&str> = text.lines().collect();
-    match lines.iter().position(|raw| {
-        let raw = raw.trim();
-        raw.starts_with(&assign)
-            || raw
-                .strip_prefix('#')
-                .is_some_and(|r| r.starts_with(&assign))
-    }) {
-        Some(i) => lines[i] = &line,
-        None => lines.push(&line),
+    let mut out = String::new();
+    for (i, raw) in lines.iter().enumerate() {
+        if Some(i) == target {
+            out.push_str(&line);
+        } else if sets(raw) {
+            continue;
+        } else {
+            out.push_str(raw);
+        }
+        out.push('\n');
     }
-    let mut out = lines.join("\n");
-    out.push('\n');
+    if target.is_none() {
+        out.push_str(&line);
+        out.push('\n');
+    }
     write_atomically(path, &out)
 }
 

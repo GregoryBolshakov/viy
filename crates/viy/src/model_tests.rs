@@ -50,7 +50,7 @@ fn as_viy(text: &str, tree: &ConfigTree) -> String {
 #[test]
 fn viy_model_does_what_rp_model_does() {
     let fixture = fixtures::load("config/model").unwrap();
-    assert_eq!(fixture.cases.len(), 21);
+    assert_eq!(fixture.cases.len(), 22);
     for marker in [".viy", ".rpctl"] {
         for case in &fixture.cases {
             let name = case["name"].as_str().unwrap();

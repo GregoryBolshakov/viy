@@ -29,7 +29,7 @@ fn load(tree: &ConfigTree, case: &serde_json::Value) -> Config {
 #[test]
 fn persist_writes_where_rpctl_writes() {
     let fixture = fixtures::load("config/persist").unwrap();
-    assert_eq!(fixture.cases.len(), 17);
+    assert_eq!(fixture.cases.len(), 18);
     for case in &fixture.cases {
         let name = case["name"].as_str().unwrap();
         let tree = ConfigTree::new(case, ".viy").unwrap();
@@ -131,5 +131,75 @@ fn write_profile_writes_the_mapping_in_order() {
     assert_eq!(
         read.keys().collect::<Vec<_>>(),
         ["POD_NAME", "NETWORK_VOLUME_ID"]
+    );
+}
+
+#[test]
+fn write_kv_sets_what_load_reads() {
+    let scratch = ScratchDir::new("profiles").unwrap();
+    let path = scratch.path().join("config");
+    for (before, after) in [
+        ("MODEL_PROFILE=a\nMODEL_PROFILE=b\n", "MODEL_PROFILE=new\n"),
+        (
+            "#MODEL_PROFILE=old\nMODEL_PROFILE=b\n",
+            "#MODEL_PROFILE=old\nMODEL_PROFILE=new\n",
+        ),
+        (
+            "MODEL_PROFILE = b\nPOD_NAME=p\n",
+            "MODEL_PROFILE=new\nPOD_NAME=p\n",
+        ),
+        // with nothing setting the key, a commented line still comes back
+        (
+            "POD_NAME=p\n#MODEL_PROFILE=old\n",
+            "POD_NAME=p\nMODEL_PROFILE=new\n",
+        ),
+    ] {
+        fs::write(&path, before).unwrap();
+        write_kv(&path, "MODEL_PROFILE", "new").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), after, "{before:?}");
+        assert_eq!(parse_env_file(&path).unwrap()["MODEL_PROFILE"], "new");
+    }
+}
+
+#[test]
+fn persist_writes_to_the_profile_load_layered() {
+    let scratch = ScratchDir::new("profiles").unwrap();
+    let paths = Paths::under(scratch.path());
+    fs::create_dir_all(paths.profiles_dir()).unwrap();
+    fs::write(paths.config_file(), "MODEL_PROFILE=a\n").unwrap();
+    for name in ["a", "b"] {
+        fs::write(profile_path(&paths, name), format!("POD_NAME=pod-{name}\n")).unwrap();
+    }
+    let project = scratch.path().join("project-config");
+    fs::write(&project, "MODEL_PROFILE=b\n").unwrap();
+    let layers = Layers {
+        global: paths.config_file(),
+        profiles_dir: paths.profiles_dir(),
+        project: vec![project],
+    };
+    let env = |profile: Option<&'static str>| {
+        move |key: &str| {
+            profile
+                .filter(|_| key == "MODEL_PROFILE")
+                .map(str::to_string)
+        }
+    };
+    // a project does not pick the profile
+    let mut cfg = layers.load(env(None)).unwrap();
+    assert_eq!(cfg.get("MODEL_PROFILE"), Some("a"));
+    assert_eq!(cfg.get("POD_NAME"), Some("pod-a"));
+    persist(&mut cfg, &paths, "NETWORK_VOLUME_ID", "vol-a").unwrap();
+    let cfg = layers.load(env(None)).unwrap();
+    assert_eq!(cfg.get("NETWORK_VOLUME_ID"), Some("vol-a"));
+    // the environment does
+    let mut cfg = layers.load(env(Some("b"))).unwrap();
+    assert_eq!(cfg.get("MODEL_PROFILE"), Some("b"));
+    assert_eq!(cfg.get("POD_NAME"), Some("pod-b"));
+    persist(&mut cfg, &paths, "NETWORK_VOLUME_ID", "vol-b").unwrap();
+    let cfg = layers.load(env(Some("b"))).unwrap();
+    assert_eq!(cfg.get("NETWORK_VOLUME_ID"), Some("vol-b"));
+    assert_eq!(
+        fs::read_to_string(profile_path(&paths, "a")).unwrap(),
+        "POD_NAME=pod-a\nNETWORK_VOLUME_ID=vol-a\n"
     );
 }

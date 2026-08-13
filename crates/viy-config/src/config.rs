@@ -166,8 +166,14 @@ impl Layers {
     pub fn load(&self, env: impl Fn(&str) -> Option<String>) -> io::Result<Config> {
         let mut cfg = Config::defaults();
         cfg.apply(&self.global, &[])?;
-        // The profile is named by the global layer alone.
-        if let Some(profile) = cfg.get("MODEL_PROFILE").filter(|p| !p.is_empty()) {
+        // The environment may pick the profile, a project may not: the
+        // profile sits below the project's files. cfg keeps the one layered
+        // here, so persist writes to the file this load read.
+        let profile = env("MODEL_PROFILE")
+            .filter(|p| !p.is_empty())
+            .or_else(|| cfg.get("MODEL_PROFILE").map(str::to_string))
+            .unwrap_or_default();
+        if !profile.is_empty() {
             let path = self.profiles_dir.join(format!("{profile}.env"));
             cfg.apply(&path, PROFILE_KEYS)?;
         }
@@ -179,6 +185,7 @@ impl Layers {
                 *value = set;
             }
         }
+        cfg.set("MODEL_PROFILE", &profile);
         Ok(cfg)
     }
 }
@@ -198,18 +205,22 @@ pub fn parse_env_file(path: &Path) -> io::Result<IndexMap<String, String>> {
         Err(e) => return Err(io::Error::new(e.kind(), format!("{}: {e}", path.display()))),
     };
     let mut out = IndexMap::new();
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
+    for (key, value) in text.lines().filter_map(assignment) {
         let value = value.trim().trim_matches('"').trim_matches('\'');
-        out.insert(key.trim().to_string(), value.to_string());
+        out.insert(key.to_string(), value.to_string());
     }
     Ok(out)
+}
+
+/// The trimmed key and the raw value a line of a `KEY=value` file sets, as
+/// [`parse_env_file`] reads it; the writer matches lines with it too.
+pub(crate) fn assignment(line: &str) -> Option<(&str, &str)> {
+    let line = line.trim();
+    if line.starts_with('#') {
+        return None;
+    }
+    let (key, value) = line.split_once('=')?;
+    Some((key.trim(), value))
 }
 
 /// Whether SANDBOX_NET asks for the host's network. The project guard and

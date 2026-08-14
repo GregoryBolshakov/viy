@@ -101,16 +101,18 @@ impl Tok {
     }
 }
 
-/// The first executable file called `name` in the directories of `path`.
-/// An empty or unset PATH finds nothing, as rpctl's `shutil.which`.
+/// The first executable file called `name` in the absolute directories of
+/// `path`. Empty and relative entries name the working directory, which in a
+/// project folder may hold a `tok` the model wrote, so they are skipped, as
+/// rpctl's main drops them from PATH (7fe286b).
 fn find_executable(path: Option<&OsStr>, name: &str) -> Option<PathBuf> {
-    std::env::split_paths(path.filter(|path| !path.is_empty())?)
+    std::env::split_paths(path?)
+        .filter(|dir| dir.is_absolute())
         .map(|dir| dir.join(name))
         .find(|file| {
             file.metadata()
                 .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
         })
-        .and_then(|file| std::path::absolute(file).ok())
 }
 
 /// Waits for `child` and for its output, both within `timeout`; kills the

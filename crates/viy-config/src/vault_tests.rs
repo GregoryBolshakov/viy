@@ -111,12 +111,36 @@ fn tok_missing_failing_or_empty() {
     );
 }
 
-/// Not in rpctl's tests: an empty PATH finds no tok, not one in the
-/// working directory, as `shutil.which` (the review of WP 1.4).
+/// rpctl's `test_tok_planted_in_the_working_directory_is_not_run`: an
+/// empty or relative PATH entry does not find a tok in the working
+/// directory. The test does not change directory (cargo's tests share it), so
+/// the relative entry leads from it to the fake.
 #[test]
-fn an_empty_path_finds_no_tok() {
-    let tok = Tok::with_env([(OsString::from("PATH"), OsString::new())]);
-    assert_eq!(tok.open_token("a"), Err("tok is not installed".to_string()));
+fn tok_planted_in_the_working_directory_is_not_run() {
+    let (dir, _) = fake_tok(FAKE);
+    let cwd = std::env::current_dir().unwrap();
+    let mut relative = std::path::PathBuf::new();
+    for _ in cwd.components().skip(1) {
+        relative.push("..");
+    }
+    relative.push(dir.path().strip_prefix("/").unwrap());
+    assert!(relative.join("tok").is_file());
+    let relative = relative.into_os_string();
+    let mut leading = OsString::from(":");
+    leading.push(&relative);
+    for path in [
+        relative.clone(),
+        leading,
+        OsString::from(":/nonexistent"),
+        OsString::new(),
+    ] {
+        let tok = Tok::with_env([(OsString::from("PATH"), path.clone())]);
+        assert_eq!(
+            tok.open_token("tavily-dev"),
+            Err("tok is not installed".to_string()),
+            "{path:?}"
+        );
+    }
 }
 
 /// Not in rpctl's tests: tok that exits while a process it started keeps

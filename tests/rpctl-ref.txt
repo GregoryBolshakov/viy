@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: cf74f33f5afa2ee15ae846a7a6a2477703ca8315
+commit: 7fe286b2e6a0dc1b8b8d5eae7f0613339004f3ec
 branch: leak-protection
 pinned: 2026-07-14
-subject: Make rp's persist write to the model profile load() layered
+subject: Make rp drop empty and relative PATH entries before it runs anything

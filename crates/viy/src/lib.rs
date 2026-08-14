@@ -2,9 +2,11 @@
 //!
 //! Until the clap CLI with rpctl's 19 subcommands lands (WP 1.6), only
 //! `--version` is understood; everything else is a usage error. The
-//! subcommands are written as their work packages come (`model`, WP 1.3) and
-//! wired to the parser in WP 1.6.
+//! subcommands are written as their work packages come (`model`, WP 1.3;
+//! `init` and `migrate`, WP 1.5) and wired to the parser in WP 1.6.
 
+pub mod init;
+pub mod migrate;
 pub mod model;
 
 use std::ffi::OsString;

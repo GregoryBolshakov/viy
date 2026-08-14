@@ -485,7 +485,83 @@ def gen_config_persist(snap):
     }
 
 
+# ---------------------------------------------------------------- config/init
+
+# `rp init` in $T/project/<cwd>: `project_files` are laid out first (a
+# trailing "/" makes a directory), `global_config` under $T/config/rpctl/.
+INIT_CASES = [
+    dict(name="a_fresh_folder"),
+    dict(name="a_fresh_folder_with_a_global_config", global_config="POD_NAME=p\n"),
+    dict(name="already_a_project", project_files={".rpctl/": ""}),
+    dict(name="a_marker_with_only_a_config_gets_the_rest",
+         project_files={".rpctl/config": "CHAT_MODE=normal\n"}),
+    dict(name="an_existing_gitignore_is_kept", project_files={".rpctl/.gitignore": "mine\n"}),
+    dict(name="a_subfolder_of_a_project_gets_its_own_marker",
+         project_files={".rpctl/": "", "sub/": ""}, cwd="sub"),
+    dict(name="a_marker_that_is_a_file", project_files={".rpctl": "not a dir\n"}),
+]
+
+INIT_RUNNER = r"""
+import sys
+sys.path.insert(0, sys.argv[1])
+sys.argv = ["rp", "init"]
+from rpctl.__main__ import main
+main()
+"""
+
+
+def init_case(snap, case):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+        for name, sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"),
+                          ("XDG_STATE_HOME", "state"), ("XDG_DATA_HOME", "data"),
+                          ("XDG_CACHE_HOME", "cache")):
+            (tmp / sub).mkdir()
+            env[name] = str(tmp / sub)
+        if case.get("global_config") is not None:
+            (tmp / "config" / "rpctl").mkdir()
+            (tmp / "config" / "rpctl" / "config").write_bytes(case["global_config"].encode())
+        project = tmp / "project"
+        project.mkdir()
+        for rel, text in case.get("project_files", {}).items():
+            if rel.endswith("/"):
+                (project / rel).mkdir(parents=True, exist_ok=True)
+            else:
+                (project / rel).parent.mkdir(parents=True, exist_ok=True)
+                (project / rel).write_bytes(text.encode())
+        out = subprocess.run([sys.executable, "-I", "-c", INIT_RUNNER, str(snap)],
+                             cwd=project / case.get("cwd", ""), env=env, capture_output=True)
+        after = {}
+        for q in sorted(project.rglob("*")):
+            rel = str(q.relative_to(project))
+            after[rel + "/" if q.is_dir() else rel] = "" if q.is_dir() else q.read_bytes().decode()
+        t = lambda s: s.replace(str(tmp), "$T")
+        stderr = t(out.stderr.decode())
+        # A traceback is Python's; the case records only its last line.
+        if "Traceback" in stderr:
+            stderr = stderr.strip().splitlines()[-1] + "\n"
+        return {"exit": out.returncode, "stdout": t(out.stdout.decode()),
+                "stderr": stderr, "project_files_after": after}
+
+
+def gen_config_init(snap):
+    cases = []
+    for case in INIT_CASES:
+        inputs = {"name": case["name"], "global_config": case.get("global_config"),
+                  "project_files": case.get("project_files", {}), "cwd": case.get("cwd", "")}
+        cases.append({**inputs, **init_case(snap, case)})
+    return {
+        "about": "`rp init` (rpctl __main__.cmd_init) in $T/project/<cwd> after laying out "
+                 "project_files (a trailing / is a directory): exit status, stdout, stderr "
+                 "(a traceback's last line only), and every path under $T/project "
+                 "afterwards; HOME is $T/home, XDG_CONFIG_HOME $T/config",
+        "cases": cases,
+    }
+
+
 GENERATORS = {
+    "config/init": gen_config_init,
     "config/layering": gen_config_layering,
     "config/model": gen_config_model,
     "config/persist": gen_config_persist,

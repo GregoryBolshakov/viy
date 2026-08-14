@@ -189,3 +189,18 @@ fn a_missing_start_is_an_error() {
     let scratch = ScratchDir::new("project").unwrap();
     assert!(Project::find(&scratch.path().join("gone")).is_err());
 }
+
+/// Not in rpctl, which writes through it: a dangling `.gitignore` symlink
+/// in the marker is left alone, not followed.
+#[test]
+fn init_does_not_write_through_a_gitignore_symlink() {
+    let scratch = ScratchDir::new("init").unwrap();
+    let marker = scratch.path().join(MARKER);
+    std::fs::create_dir(&marker).unwrap();
+    let elsewhere = scratch.path().join("elsewhere");
+    std::os::unix::fs::symlink(&elsewhere, marker.join(".gitignore")).unwrap();
+    let (project, created) = Project::init(scratch.path()).unwrap();
+    assert!(!created);
+    assert!(project.transcripts_dir().is_dir());
+    assert!(!elsewhere.exists());
+}

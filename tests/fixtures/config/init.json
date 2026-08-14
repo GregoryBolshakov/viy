@@ -1,0 +1,117 @@
+{
+ "rpctl_commit": "7fe286b2e6a0dc1b8b8d5eae7f0613339004f3ec",
+ "generator": "tools/fixtures.py config/init",
+ "about": "`rp init` (rpctl __main__.cmd_init) in $T/project/<cwd> after laying out project_files (a trailing / is a directory): exit status, stdout, stderr (a traceback's last line only), and every path under $T/project afterwards; HOME is $T/home, XDG_CONFIG_HOME $T/config",
+ "cases": [
+  {
+   "name": "a_fresh_folder",
+   "global_config": null,
+   "project_files": {},
+   "cwd": "",
+   "exit": 0,
+   "stdout": "initialised project at $T/project\n  .rpctl/ holds this project's transcripts and history\n  the agent's file + shell tools operate on $T/project\n  next: put RUNPOD_API_KEY in $T/config/rpctl/config\n",
+   "stderr": "",
+   "project_files_after": {
+    ".rpctl/": "",
+    ".rpctl/.gitignore": "history\ntranscripts/\n",
+    ".rpctl/transcripts/": ""
+   }
+  },
+  {
+   "name": "a_fresh_folder_with_a_global_config",
+   "global_config": "POD_NAME=p\n",
+   "project_files": {},
+   "cwd": "",
+   "exit": 0,
+   "stdout": "initialised project at $T/project\n  .rpctl/ holds this project's transcripts and history\n  the agent's file + shell tools operate on $T/project\n",
+   "stderr": "",
+   "project_files_after": {
+    ".rpctl/": "",
+    ".rpctl/.gitignore": "history\ntranscripts/\n",
+    ".rpctl/transcripts/": ""
+   }
+  },
+  {
+   "name": "already_a_project",
+   "global_config": null,
+   "project_files": {
+    ".rpctl/": ""
+   },
+   "cwd": "",
+   "exit": 0,
+   "stdout": "already a project at $T/project\n  .rpctl/ holds this project's transcripts and history\n  the agent's file + shell tools operate on $T/project\n  next: put RUNPOD_API_KEY in $T/config/rpctl/config\n",
+   "stderr": "",
+   "project_files_after": {
+    ".rpctl/": "",
+    ".rpctl/.gitignore": "history\ntranscripts/\n",
+    ".rpctl/transcripts/": ""
+   }
+  },
+  {
+   "name": "a_marker_with_only_a_config_gets_the_rest",
+   "global_config": null,
+   "project_files": {
+    ".rpctl/config": "CHAT_MODE=normal\n"
+   },
+   "cwd": "",
+   "exit": 0,
+   "stdout": "already a project at $T/project\n  .rpctl/ holds this project's transcripts and history\n  the agent's file + shell tools operate on $T/project\n  next: put RUNPOD_API_KEY in $T/config/rpctl/config\n",
+   "stderr": "",
+   "project_files_after": {
+    ".rpctl/": "",
+    ".rpctl/.gitignore": "history\ntranscripts/\n",
+    ".rpctl/config": "CHAT_MODE=normal\n",
+    ".rpctl/transcripts/": ""
+   }
+  },
+  {
+   "name": "an_existing_gitignore_is_kept",
+   "global_config": null,
+   "project_files": {
+    ".rpctl/.gitignore": "mine\n"
+   },
+   "cwd": "",
+   "exit": 0,
+   "stdout": "already a project at $T/project\n  .rpctl/ holds this project's transcripts and history\n  the agent's file + shell tools operate on $T/project\n  next: put RUNPOD_API_KEY in $T/config/rpctl/config\n",
+   "stderr": "",
+   "project_files_after": {
+    ".rpctl/": "",
+    ".rpctl/.gitignore": "mine\n",
+    ".rpctl/transcripts/": ""
+   }
+  },
+  {
+   "name": "a_subfolder_of_a_project_gets_its_own_marker",
+   "global_config": null,
+   "project_files": {
+    ".rpctl/": "",
+    "sub/": ""
+   },
+   "cwd": "sub",
+   "exit": 0,
+   "stdout": "initialised project at $T/project/sub\n  .rpctl/ holds this project's transcripts and history\n  the agent's file + shell tools operate on $T/project/sub\n  next: put RUNPOD_API_KEY in $T/config/rpctl/config\n",
+   "stderr": "",
+   "project_files_after": {
+    ".rpctl/": "",
+    "sub/": "",
+    "sub/.rpctl/": "",
+    "sub/.rpctl/.gitignore": "history\ntranscripts/\n",
+    "sub/.rpctl/transcripts/": ""
+   }
+  },
+  {
+   "name": "a_marker_that_is_a_file",
+   "global_config": null,
+   "project_files": {
+    ".rpctl": "not a dir\n"
+   },
+   "cwd": "",
+   "exit": 1,
+   "stdout": "",
+   "stderr": "NotADirectoryError: [Errno 20] Not a directory: '$T/project/.rpctl/transcripts'\n",
+   "project_files_after": {
+    ".rpctl": "not a dir\n"
+   }
+  }
+ ]
+}

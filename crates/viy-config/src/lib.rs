@@ -7,6 +7,7 @@
 
 pub mod config;
 mod defaults;
+pub mod migrate;
 pub mod paths;
 pub mod profiles;
 pub mod project;

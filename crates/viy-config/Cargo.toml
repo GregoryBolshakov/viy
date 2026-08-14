@@ -13,10 +13,15 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+# The oracle tests need python3 and the rpctl checkout; off in the pre-commit hook.
+oracle = ["viy-testkit/oracle"]
+
 [dependencies]
 indexmap = { workspace = true }
+regex = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
-serde_json = { workspace = true }
 viy-testkit = { workspace = true }

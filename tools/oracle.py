@@ -43,14 +43,31 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# The callable functions: request name -> (module, attribute). Add entries as
-# work packages need them; every rpctl entry must be free of I/O (plan 5.4).
+def redact_text(text, literals=()):
+    """redact.Redactor(literals).text(text): a method, so called through here."""
+    from rpctl import redact
+    return redact.Redactor(literals).text(text)
+
+
+def redact_any_pattern(text):
+    """Whether one of redact's token formats occurs in text, as netguard asks."""
+    from rpctl import redact
+    return any(p.search(text) for p in redact._PATTERNS)
+
+
+# The callable functions: request name -> (module, attribute), or a function
+# defined above. Add entries as work packages need them; every rpctl entry
+# must be free of I/O (plan 5.4).
 FUNCTIONS = {
     # rpctl
     "approve.destructive_reason": ("rpctl.approve", "destructive_reason"),
     "approve.net_ask_reason": ("rpctl.approve", "net_ask_reason"),
     "approve.plain_pipeline": ("rpctl.approve", "plain_pipeline"),
     "approve.prefix_for": ("rpctl.approve", "prefix_for"),
+    "redact.any_pattern": redact_any_pattern,
+    "redact.is_secret_name": ("rpctl.redact", "is_secret_name"),
+    "redact.literal_secrets": ("rpctl.redact", "literal_secrets"),
+    "redact.text": redact_text,
 }
 
 
@@ -119,14 +136,18 @@ def answer(req, commit):
         return {"ok": {"rpctl_commit": commit, "python": sys.version.split()[0]}}
     if name not in FUNCTIONS:
         return {"refused": f"not on the oracle's whitelist: {name}"}
-    module, attr = FUNCTIONS[name]
+    entry = FUNCTIONS[name]
     out, err = io.StringIO(), io.StringIO()
     stdin, sys.stdin = sys.stdin, io.StringIO()
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            fn = importlib.import_module(module)
-            for part in attr.split("."):
-                fn = getattr(fn, part)
+            if callable(entry):
+                fn = entry
+            else:
+                module, attr = entry
+                fn = importlib.import_module(module)
+                for part in attr.split("."):
+                    fn = getattr(fn, part)
             args = decode(req.get("args", []))
             kwargs = decode(req.get("kwargs", {}))
             result = {"ok": encode(fn(*args, **kwargs))}

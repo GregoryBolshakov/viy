@@ -41,6 +41,7 @@ ratatui = { version = "0.30.2", default-features = false, features = [
     "layout-cache",
     "underline-color",
 ] }
+regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["float_roundtrip", "preserve_order"] }
 unicode-width = "0.2"

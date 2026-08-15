@@ -11,6 +11,7 @@ fn run_capture(args: &[&str]) -> (i32, String, String) {
     )
 }
 
+/// Not in rp, which has no --version.
 #[test]
 fn version_long_and_short() {
     for flag in ["--version", "-V"] {
@@ -22,11 +23,46 @@ fn version_long_and_short() {
 }
 
 #[test]
-fn anything_else_is_a_usage_error() {
-    for args in [&[][..], &["chat"], &["--version", "extra"]] {
+fn usage_errors_exit_2_on_stderr() {
+    for args in [&[][..], &["bogus"], &["model"], &["down", "now"]] {
         let (code, out, err) = run_capture(args);
-        assert_eq!(code, EXIT_USAGE);
+        assert_eq!(code, 2, "{args:?}");
+        assert_eq!(out, "", "{args:?}");
+        assert!(err.contains("Usage: viy"), "{args:?}: {err}");
+    }
+}
+
+#[test]
+fn help_exits_0_on_stdout_with_rps_descriptions() {
+    let (code, out, err) = run_capture(&["--help"]);
+    assert_eq!((code, err.as_str()), (0, ""));
+    assert!(out.contains("viy - run Qwen3.8-27B-abliterated"), "{out}");
+    assert!(
+        out.contains("terminate the pod (weights stay on the volume)"),
+        "{out}"
+    );
+    let (code, out, _) = run_capture(&["shutdown", "-h"]);
+    assert_eq!(code, 0);
+    assert!(
+        out.contains("viy shutdown 23:30        at the next 23:30\n"),
+        "{out}"
+    );
+}
+
+#[test]
+fn commands_still_to_come_say_so() {
+    for (args, phase) in [
+        (&["up"][..], 2),
+        (&["volume", "list"], 2),
+        (&["chat", "-c"], 3),
+        (&["trace"], 7),
+    ] {
+        let (code, out, err) = run_capture(args);
+        assert_eq!(code, 1, "{args:?}");
         assert_eq!(out, "");
-        assert!(err.starts_with("usage: viy"), "{err:?}");
+        assert_eq!(
+            err,
+            format!("viy {}: not ported yet (ROADMAP phase {phase})\n", args[0])
+        );
     }
 }

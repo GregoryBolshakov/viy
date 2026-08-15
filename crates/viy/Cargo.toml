@@ -18,6 +18,8 @@ doctest = false
 workspace = true
 
 [dependencies]
+clap = { workspace = true }
+libc = { workspace = true }
 viy-config = { workspace = true }
 
 [dev-dependencies]

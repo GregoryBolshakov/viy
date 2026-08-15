@@ -16,25 +16,13 @@ fn paths(tree: &ConfigTree) -> Paths {
     })
 }
 
-/// argparse's view of `rp model ARGV`.
+/// `viy model ARGV` through viy's parser.
 fn parse(argv: &[Value]) -> ModelArgs {
-    let words: Vec<&str> = argv.iter().map(|a| a.as_str().unwrap()).collect();
-    let action = match words[0] {
-        "list" => ModelAction::List,
-        "show" => ModelAction::Show,
-        "use" => ModelAction::Use,
-        "add" => ModelAction::Add,
-        other => panic!("no such action in the fixture: {other}"),
-    };
-    let rest: Vec<&str> = words[1..]
-        .iter()
-        .copied()
-        .filter(|w| *w != "--force")
-        .collect();
-    ModelArgs {
-        action,
-        name: rest.first().map(ToString::to_string),
-        force: words.contains(&"--force"),
+    let words = argv.iter().map(|a| a.as_str().unwrap().into());
+    let cli = crate::cli::parse(std::iter::once("model".into()).chain(words)).unwrap();
+    match cli.command {
+        crate::cli::Command::Model(args) => args,
+        other => panic!("{other:?}"),
     }
 }
 

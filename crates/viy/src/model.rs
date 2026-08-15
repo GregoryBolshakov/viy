@@ -1,14 +1,16 @@
 //! `viy model list|show|use|add`: the model profiles (rpctl's `cmd_model`).
-//! The arguments come from the CLI parser (WP 1.6).
 
 use std::io::Write;
+
+use clap::Args;
+use clap::ValueEnum;
 
 use viy_config::Config;
 use viy_config::Paths;
 use viy_config::config::PROFILE_KEYS;
 use viy_config::profiles;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ModelAction {
     List,
     Show,
@@ -27,12 +29,15 @@ impl ModelAction {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Args)]
 pub struct ModelArgs {
+    #[arg(value_enum)]
     pub action: ModelAction,
-    /// The profile; required for `use` and `add`.
+    // The profile; required for `use` and `add`.
+    #[arg(help = "profile name (required for use/add)")]
     pub name: Option<String>,
-    /// `add`: overwrite an existing profile.
+    // `add`: overwrite an existing profile.
+    #[arg(long, help = "model add: overwrite an existing profile")]
     pub force: bool,
 }
 

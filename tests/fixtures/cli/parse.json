@@ -1,0 +1,1228 @@
+{
+ "rpctl_commit": "7fe286b2e6a0dc1b8b8d5eae7f0613339004f3ec",
+ "generator": "tools/fixtures.py cli/parse",
+ "about": "rpctl __main__.build_parser().parse_args(argv): the exit status and, on success, the namespace without fn, values as strings",
+ "cases": [
+  {
+   "argv": [],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "bogus"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "--help"
+   ],
+   "exit": 0
+  },
+  {
+   "argv": [
+    "model",
+    "-h"
+   ],
+   "exit": 0
+  },
+  {
+   "argv": [
+    "init"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "init"
+   }
+  },
+  {
+   "argv": [
+    "init",
+    "x"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "migrate"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "migrate"
+   }
+  },
+  {
+   "argv": [
+    "up"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "up",
+    "timeout": "2700"
+   }
+  },
+  {
+   "argv": [
+    "up",
+    "--timeout",
+    "30"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "up",
+    "timeout": "30"
+   }
+  },
+  {
+   "argv": [
+    "up",
+    "--timeout=30"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "up",
+    "timeout": "30"
+   }
+  },
+  {
+   "argv": [
+    "up",
+    "--time",
+    "30"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "up",
+    "timeout": "30"
+   }
+  },
+  {
+   "argv": [
+    "up",
+    "--timeout",
+    "abc"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "up",
+    "timeout": "abc"
+   }
+  },
+  {
+   "argv": [
+    "status"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "status"
+   }
+  },
+  {
+   "argv": [
+    "stop"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "stop"
+   }
+  },
+  {
+   "argv": [
+    "down"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "down"
+   }
+  },
+  {
+   "argv": [
+    "down",
+    "now"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "boots"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "boots",
+    "action": "list",
+    "boot": null,
+    "n": "10"
+   }
+  },
+  {
+   "argv": [
+    "boots",
+    "show"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "boots",
+    "action": "show",
+    "boot": null,
+    "n": "10"
+   }
+  },
+  {
+   "argv": [
+    "boots",
+    "show",
+    "abc"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "boots",
+    "action": "show",
+    "boot": "abc",
+    "n": "10"
+   }
+  },
+  {
+   "argv": [
+    "boots",
+    "list",
+    "-n",
+    "3"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "boots",
+    "action": "list",
+    "boot": null,
+    "n": "3"
+   }
+  },
+  {
+   "argv": [
+    "boots",
+    "-n5"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "boots",
+    "action": "list",
+    "boot": null,
+    "n": "5"
+   }
+  },
+  {
+   "argv": [
+    "boots",
+    "abc"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "boots",
+    "show",
+    "a",
+    "b"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "boots",
+    "-n",
+    "x"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "boots",
+    "-n",
+    "-3"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "boots",
+    "action": "list",
+    "boot": null,
+    "n": "-3"
+   }
+  },
+  {
+   "argv": [
+    "logs"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "logs",
+    "follow": false
+   }
+  },
+  {
+   "argv": [
+    "logs",
+    "-f"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "logs",
+    "follow": true
+   }
+  },
+  {
+   "argv": [
+    "logs",
+    "--follow"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "logs",
+    "follow": true
+   }
+  },
+  {
+   "argv": [
+    "reap"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "reap",
+    "install": false,
+    "quiet": false
+   }
+  },
+  {
+   "argv": [
+    "reap",
+    "--install"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "reap",
+    "install": true,
+    "quiet": false
+   }
+  },
+  {
+   "argv": [
+    "reap",
+    "--quiet"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "reap",
+    "install": false,
+    "quiet": true
+   }
+  },
+  {
+   "argv": [
+    "reap",
+    "--inst"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "reap",
+    "install": true,
+    "quiet": false
+   }
+  },
+  {
+   "argv": [
+    "shutdown"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "shutdown",
+    "when": null,
+    "no_poweroff": false,
+    "foreground": false,
+    "status": false,
+    "cancel": false,
+    "run_at": null
+   }
+  },
+  {
+   "argv": [
+    "shutdown",
+    "90m"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "shutdown",
+    "when": "90m",
+    "no_poweroff": false,
+    "foreground": false,
+    "status": false,
+    "cancel": false,
+    "run_at": null
+   }
+  },
+  {
+   "argv": [
+    "shutdown",
+    "--status"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "shutdown",
+    "when": null,
+    "no_poweroff": false,
+    "foreground": false,
+    "status": true,
+    "cancel": false,
+    "run_at": null
+   }
+  },
+  {
+   "argv": [
+    "shutdown",
+    "--cancel"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "shutdown",
+    "when": null,
+    "no_poweroff": false,
+    "foreground": false,
+    "status": false,
+    "cancel": true,
+    "run_at": null
+   }
+  },
+  {
+   "argv": [
+    "shutdown",
+    "23:30",
+    "--no-poweroff",
+    "-f"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "shutdown",
+    "when": "23:30",
+    "no_poweroff": true,
+    "foreground": true,
+    "status": false,
+    "cancel": false,
+    "run_at": null
+   }
+  },
+  {
+   "argv": [
+    "shutdown",
+    "--no-p",
+    "1h"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "shutdown",
+    "when": "1h",
+    "no_poweroff": true,
+    "foreground": false,
+    "status": false,
+    "cancel": false,
+    "run_at": null
+   }
+  },
+  {
+   "argv": [
+    "shutdown",
+    "--run-at",
+    "2026-07-14T23:30:00"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "shutdown",
+    "when": null,
+    "no_poweroff": false,
+    "foreground": false,
+    "status": false,
+    "cancel": false,
+    "run_at": "2026-07-14T23:30:00"
+   }
+  },
+  {
+   "argv": [
+    "shutdown",
+    "1h",
+    "2h"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "tunnel"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "tunnel",
+    "background": false,
+    "stop": false,
+    "status": false,
+    "forget_key": false
+   }
+  },
+  {
+   "argv": [
+    "tunnel",
+    "-b"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "tunnel",
+    "background": true,
+    "stop": false,
+    "status": false,
+    "forget_key": false
+   }
+  },
+  {
+   "argv": [
+    "tunnel",
+    "--background",
+    "--stop"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "tunnel",
+    "background": true,
+    "stop": true,
+    "status": false,
+    "forget_key": false
+   }
+  },
+  {
+   "argv": [
+    "tunnel",
+    "--status"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "tunnel",
+    "background": false,
+    "stop": false,
+    "status": true,
+    "forget_key": false
+   }
+  },
+  {
+   "argv": [
+    "tunnel",
+    "--forget-key"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "tunnel",
+    "background": false,
+    "stop": false,
+    "status": false,
+    "forget_key": true
+   }
+  },
+  {
+   "argv": [
+    "tunnel",
+    "--forget"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "tunnel",
+    "background": false,
+    "stop": false,
+    "status": false,
+    "forget_key": true
+   }
+  },
+  {
+   "argv": [
+    "tunnel",
+    "--st"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "chat"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chat",
+    "url": null,
+    "system": null,
+    "cont": false,
+    "resume": null
+   }
+  },
+  {
+   "argv": [
+    "chat",
+    "-c"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chat",
+    "url": null,
+    "system": null,
+    "cont": true,
+    "resume": null
+   }
+  },
+  {
+   "argv": [
+    "chat",
+    "--continue"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chat",
+    "url": null,
+    "system": null,
+    "cont": true,
+    "resume": null
+   }
+  },
+  {
+   "argv": [
+    "chat",
+    "--cont"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chat",
+    "url": null,
+    "system": null,
+    "cont": true,
+    "resume": null
+   }
+  },
+  {
+   "argv": [
+    "chat",
+    "-r"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chat",
+    "url": null,
+    "system": null,
+    "cont": false,
+    "resume": ""
+   }
+  },
+  {
+   "argv": [
+    "chat",
+    "-r",
+    "foo"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chat",
+    "url": null,
+    "system": null,
+    "cont": false,
+    "resume": "foo"
+   }
+  },
+  {
+   "argv": [
+    "chat",
+    "--resume=foo bar"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chat",
+    "url": null,
+    "system": null,
+    "cont": false,
+    "resume": "foo bar"
+   }
+  },
+  {
+   "argv": [
+    "chat",
+    "-r",
+    "-c"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chat",
+    "url": null,
+    "system": null,
+    "cont": true,
+    "resume": ""
+   }
+  },
+  {
+   "argv": [
+    "chat",
+    "--url",
+    "http://127.0.0.1:8000",
+    "--system",
+    "be terse"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chat",
+    "url": "http://127.0.0.1:8000",
+    "system": "be terse",
+    "cont": false,
+    "resume": null
+   }
+  },
+  {
+   "argv": [
+    "chat",
+    "-c",
+    "extra"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "chats"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chats",
+    "words": [],
+    "all": false
+   }
+  },
+  {
+   "argv": [
+    "chats",
+    "foo",
+    "bar"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chats",
+    "words": [
+     "foo",
+     "bar"
+    ],
+    "all": false
+   }
+  },
+  {
+   "argv": [
+    "chats",
+    "show",
+    "abc",
+    "-a"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chats",
+    "words": [
+     "show",
+     "abc"
+    ],
+    "all": true
+   }
+  },
+  {
+   "argv": [
+    "chats",
+    "-a",
+    "rename",
+    "x",
+    "new",
+    "title"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chats",
+    "words": [
+     "rename",
+     "x",
+     "new",
+     "title"
+    ],
+    "all": true
+   }
+  },
+  {
+   "argv": [
+    "chats",
+    "rm",
+    "x"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chats",
+    "words": [
+     "rm",
+     "x"
+    ],
+    "all": false
+   }
+  },
+  {
+   "argv": [
+    "chats",
+    "import"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chats",
+    "words": [
+     "import"
+    ],
+    "all": false
+   }
+  },
+  {
+   "argv": [
+    "chats",
+    "--all"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "chats",
+    "words": [],
+    "all": true
+   }
+  },
+  {
+   "argv": [
+    "chats",
+    "foo",
+    "-a",
+    "bar"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "ask"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "ask",
+    "prompt": null,
+    "url": null,
+    "system": null,
+    "think": false,
+    "save": false
+   }
+  },
+  {
+   "argv": [
+    "ask",
+    "hi"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "ask",
+    "prompt": "hi",
+    "url": null,
+    "system": null,
+    "think": false,
+    "save": false
+   }
+  },
+  {
+   "argv": [
+    "ask",
+    "hi",
+    "--think",
+    "--save"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "ask",
+    "prompt": "hi",
+    "url": null,
+    "system": null,
+    "think": true,
+    "save": true
+   }
+  },
+  {
+   "argv": [
+    "ask",
+    "a",
+    "b"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "ask",
+    "--url",
+    "u",
+    "--system",
+    "s",
+    "hi"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "ask",
+    "prompt": "hi",
+    "url": "u",
+    "system": "s",
+    "think": false,
+    "save": false
+   }
+  },
+  {
+   "argv": [
+    "ask",
+    "--",
+    "--not-a-flag"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "ask",
+    "prompt": "--not-a-flag",
+    "url": null,
+    "system": null,
+    "think": false,
+    "save": false
+   }
+  },
+  {
+   "argv": [
+    "trace"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "trace",
+    "what": "",
+    "n": null
+   }
+  },
+  {
+   "argv": [
+    "trace",
+    "alarms"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "trace",
+    "what": "alarms",
+    "n": null
+   }
+  },
+  {
+   "argv": [
+    "trace",
+    "-n",
+    "5"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "trace",
+    "what": "",
+    "n": "5"
+   }
+  },
+  {
+   "argv": [
+    "trace",
+    "abc123",
+    "-n",
+    "3"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "trace",
+    "what": "abc123",
+    "n": "3"
+   }
+  },
+  {
+   "argv": [
+    "trace",
+    "a",
+    "b"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "toolbox"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "toolbox",
+    "toolbox_action": "list",
+    "arg": [],
+    "glob": false
+   }
+  },
+  {
+   "argv": [
+    "toolbox",
+    "list"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "toolbox",
+    "toolbox_action": "list",
+    "arg": [],
+    "glob": false
+   }
+  },
+  {
+   "argv": [
+    "toolbox",
+    "find",
+    "a",
+    "b"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "toolbox",
+    "toolbox_action": "find",
+    "arg": [
+     "a",
+     "b"
+    ],
+    "glob": false
+   }
+  },
+  {
+   "argv": [
+    "toolbox",
+    "add",
+    "dir",
+    "--global"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "toolbox",
+    "toolbox_action": "add",
+    "arg": [
+     "dir"
+    ],
+    "glob": true
+   }
+  },
+  {
+   "argv": [
+    "toolbox",
+    "rm",
+    "t",
+    "--global"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "toolbox",
+    "toolbox_action": "rm",
+    "arg": [
+     "t"
+    ],
+    "glob": true
+   }
+  },
+  {
+   "argv": [
+    "toolbox",
+    "bogus"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "toolbox",
+    "show",
+    "x"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "toolbox",
+    "toolbox_action": "show",
+    "arg": [
+     "x"
+    ],
+    "glob": false
+   }
+  },
+  {
+   "argv": [
+    "toolbox",
+    "--global"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "toolbox",
+    "toolbox_action": "list",
+    "arg": [],
+    "glob": true
+   }
+  },
+  {
+   "argv": [
+    "model"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "model",
+    "list"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "model",
+    "model_action": "list",
+    "name": null,
+    "force": false
+   }
+  },
+  {
+   "argv": [
+    "model",
+    "show"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "model",
+    "model_action": "show",
+    "name": null,
+    "force": false
+   }
+  },
+  {
+   "argv": [
+    "model",
+    "use",
+    "beta"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "model",
+    "model_action": "use",
+    "name": "beta",
+    "force": false
+   }
+  },
+  {
+   "argv": [
+    "model",
+    "add",
+    "x",
+    "--force"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "model",
+    "model_action": "add",
+    "name": "x",
+    "force": true
+   }
+  },
+  {
+   "argv": [
+    "model",
+    "bogus"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "model",
+    "use",
+    "a",
+    "b"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "backup"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "backup",
+    "samples": "1"
+   }
+  },
+  {
+   "argv": [
+    "backup",
+    "--samples",
+    "3"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "backup",
+    "samples": "3"
+   }
+  },
+  {
+   "argv": [
+    "backup",
+    "--samples",
+    "x"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "volume"
+   ],
+   "exit": 2
+  },
+  {
+   "argv": [
+    "volume",
+    "list"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "volume",
+    "volume_action": "list",
+    "volume_id": null
+   }
+  },
+  {
+   "argv": [
+    "volume",
+    "create"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "volume",
+    "volume_action": "create",
+    "volume_id": null
+   }
+  },
+  {
+   "argv": [
+    "volume",
+    "delete",
+    "--volume-id",
+    "v1"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "volume",
+    "volume_action": "delete",
+    "volume_id": "v1"
+   }
+  },
+  {
+   "argv": [
+    "volume",
+    "delete"
+   ],
+   "exit": 0,
+   "args": {
+    "cmd": "volume",
+    "volume_action": "delete",
+    "volume_id": null
+   }
+  },
+  {
+   "argv": [
+    "volume",
+    "bogus"
+   ],
+   "exit": 2
+  }
+ ]
+}

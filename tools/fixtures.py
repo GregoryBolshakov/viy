@@ -560,7 +560,132 @@ def gen_config_init(snap):
     }
 
 
+# ------------------------------------------------------------------ cli/flags
+
+# argv after `rp`. Abbreviated long options, `-n5`, `--opt=value` and `--`
+# are argparse's and kept; values that argparse takes and the command later
+# rejects (`up --timeout abc`) are here too, so the Rust test names each
+# place viy refuses them at parse time instead.
+CLI_CASES = [
+    [], ["bogus"], ["--help"], ["model", "-h"],
+    ["init"], ["init", "x"], ["migrate"],
+    ["up"], ["up", "--timeout", "30"], ["up", "--timeout=30"], ["up", "--time", "30"],
+    ["up", "--timeout", "abc"],
+    ["status"], ["stop"], ["down"], ["down", "now"],
+    ["boots"], ["boots", "show"], ["boots", "show", "abc"], ["boots", "list", "-n", "3"],
+    ["boots", "-n5"], ["boots", "abc"], ["boots", "show", "a", "b"], ["boots", "-n", "x"],
+    ["boots", "-n", "-3"],
+    ["logs"], ["logs", "-f"], ["logs", "--follow"],
+    ["reap"], ["reap", "--install"], ["reap", "--quiet"], ["reap", "--inst"],
+    ["shutdown"], ["shutdown", "90m"], ["shutdown", "--status"], ["shutdown", "--cancel"],
+    ["shutdown", "23:30", "--no-poweroff", "-f"], ["shutdown", "--no-p", "1h"],
+    ["shutdown", "--run-at", "2026-07-14T23:30:00"], ["shutdown", "1h", "2h"],
+    ["tunnel"], ["tunnel", "-b"], ["tunnel", "--background", "--stop"],
+    ["tunnel", "--status"], ["tunnel", "--forget-key"], ["tunnel", "--forget"],
+    ["tunnel", "--st"],
+    ["chat"], ["chat", "-c"], ["chat", "--continue"], ["chat", "--cont"], ["chat", "-r"],
+    ["chat", "-r", "foo"], ["chat", "--resume=foo bar"], ["chat", "-r", "-c"],
+    ["chat", "--url", "http://127.0.0.1:8000", "--system", "be terse"],
+    ["chat", "-c", "extra"],
+    ["chats"], ["chats", "foo", "bar"], ["chats", "show", "abc", "-a"],
+    ["chats", "-a", "rename", "x", "new", "title"], ["chats", "rm", "x"],
+    ["chats", "import"], ["chats", "--all"], ["chats", "foo", "-a", "bar"],
+    ["ask"], ["ask", "hi"], ["ask", "hi", "--think", "--save"], ["ask", "a", "b"],
+    ["ask", "--url", "u", "--system", "s", "hi"], ["ask", "--", "--not-a-flag"],
+    ["trace"], ["trace", "alarms"], ["trace", "-n", "5"], ["trace", "abc123", "-n", "3"],
+    ["trace", "a", "b"],
+    ["toolbox"], ["toolbox", "list"], ["toolbox", "find", "a", "b"],
+    ["toolbox", "add", "dir", "--global"], ["toolbox", "rm", "t", "--global"],
+    ["toolbox", "bogus"], ["toolbox", "show", "x"], ["toolbox", "--global"],
+    ["model"], ["model", "list"], ["model", "show"], ["model", "use", "beta"],
+    ["model", "add", "x", "--force"], ["model", "bogus"], ["model", "use", "a", "b"],
+    ["backup"], ["backup", "--samples", "3"], ["backup", "--samples", "x"],
+    ["volume"], ["volume", "list"], ["volume", "create"],
+    ["volume", "delete", "--volume-id", "v1"], ["volume", "delete"], ["volume", "bogus"],
+]
+
+CLI_RUNNER = r"""
+import argparse, contextlib, io, json, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl.__main__ import build_parser
+
+def value(v):
+    if v is None or isinstance(v, bool):
+        return v
+    if isinstance(v, list):
+        return [value(x) for x in v]
+    return str(v)
+
+parser = build_parser()
+sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+helps = {c.dest: c.help for c in sub._choices_actions}
+table = [{"name": "", "help": None, "description": parser.description, "args": []}]
+for name, p in sub.choices.items():
+    args = []
+    for a in p._actions:
+        if isinstance(a, argparse._HelpAction):
+            continue
+        args.append({
+            "flags": a.option_strings,
+            "nargs": a.nargs,
+            "flag": isinstance(a, argparse._StoreTrueAction),
+            "const": value(a.const),
+            "default": value(a.default),
+            "type": a.type.__name__ if a.type else None,
+            "choices": list(a.choices) if a.choices else None,
+            "required": a.required,
+            "hidden": a.help == argparse.SUPPRESS,
+            "help": None if a.help == argparse.SUPPRESS else a.help,
+        })
+    table.append({"name": name, "help": helps[name], "description": p.description,
+                  "args": args})
+
+parses = []
+for argv in json.loads(sys.argv[2]):
+    out, err = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            ns = parser.parse_args(argv)
+        parses.append({"argv": argv, "exit": 0,
+                       "args": {k: value(v) for k, v in vars(ns).items() if k != "fn"}})
+    except SystemExit as e:
+        parses.append({"argv": argv, "exit": e.code})
+print(json.dumps({"flags": table, "parse": parses}))
+"""
+
+
+def cli_run(snap):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": tmp,
+               "XDG_CONFIG_HOME": tmp, "XDG_STATE_HOME": tmp, "XDG_DATA_HOME": tmp}
+        out = subprocess.run([sys.executable, "-I", "-c", CLI_RUNNER, str(snap),
+                              json.dumps(CLI_CASES)],
+                             cwd=tmp, env=env, check=True, capture_output=True, text=True)
+    return json.loads(out.stdout)
+
+
+def gen_cli_flags(snap):
+    return {
+        "about": "rpctl __main__.build_parser(): the program (name \"\") and each "
+                 "subcommand in order, with its help, description and arguments (option "
+                 "strings, nargs, whether a store_true flag, const, default, type, choices, "
+                 "required, hidden, help; values as strings). Help and usage layout are "
+                 "argparse's and not recorded (flags.md F31)",
+        "cases": cli_run(snap)["flags"],
+    }
+
+
+def gen_cli_parse(snap):
+    return {
+        "about": "rpctl __main__.build_parser().parse_args(argv): the exit status and, on "
+                 "success, the namespace without fn, values as strings",
+        "cases": cli_run(snap)["parse"],
+    }
+
+
 GENERATORS = {
+    "cli/flags": gen_cli_flags,
+    "cli/parse": gen_cli_parse,
     "config/init": gen_config_init,
     "config/layering": gen_config_layering,
     "config/model": gen_config_model,

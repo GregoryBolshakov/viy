@@ -1,0 +1,691 @@
+{
+ "rpctl_commit": "7fe286b2e6a0dc1b8b8d5eae7f0613339004f3ec",
+ "generator": "tools/fixtures.py cli/flags",
+ "about": "rpctl __main__.build_parser(): the program (name \"\") and each subcommand in order, with its help, description and arguments (option strings, nargs, whether a store_true flag, const, default, type, choices, required, hidden, help; values as strings). Help and usage layout are argparse's and not recorded (flags.md F31)",
+ "cases": [
+  {
+   "name": "",
+   "help": null,
+   "description": "rp - run Qwen3.8-27B-abliterated on a RunPod GPU pod and chat with it.",
+   "args": []
+  },
+  {
+   "name": "init",
+   "help": "mark the current folder as a project (.rpctl/)",
+   "description": null,
+   "args": []
+  },
+  {
+   "name": "migrate",
+   "help": "copy an old in-repo .env/.pod_state.json to the global config",
+   "description": null,
+   "args": []
+  },
+  {
+   "name": "up",
+   "help": "create/resume the pod and wait for vLLM",
+   "description": null,
+   "args": [
+    {
+     "flags": [
+      "--timeout"
+     ],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": "2700",
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "seconds to wait for readiness"
+    }
+   ]
+  },
+  {
+   "name": "status",
+   "help": "pod state, GPU, hourly cost, vLLM readiness",
+   "description": null,
+   "args": []
+  },
+  {
+   "name": "boots",
+   "help": "stage timings of recent boots against the budget",
+   "description": null,
+   "args": [
+    {
+     "flags": [],
+     "nargs": "?",
+     "flag": false,
+     "const": null,
+     "default": "list",
+     "type": null,
+     "choices": [
+      "list",
+      "show"
+     ],
+     "required": false,
+     "hidden": false,
+     "help": null
+    },
+    {
+     "flags": [],
+     "nargs": "?",
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "boot id (or part of it) for show; default latest"
+    },
+    {
+     "flags": [
+      "-n"
+     ],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": "10",
+     "type": "int",
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "how many to list"
+    }
+   ]
+  },
+  {
+   "name": "logs",
+   "help": "read platform and container logs (no SSH required)",
+   "description": null,
+   "args": [
+    {
+     "flags": [
+      "-f",
+      "--follow"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": null
+    }
+   ]
+  },
+  {
+   "name": "stop",
+   "help": "stop the pod (resumable; ends GPU billing)",
+   "description": null,
+   "args": []
+  },
+  {
+   "name": "down",
+   "help": "terminate the pod (weights stay on the volume)",
+   "description": null,
+   "args": []
+  },
+  {
+   "name": "reap",
+   "help": "rp down if nothing streamed for IDLE_TTL_MIN + REAP_GRACE_MIN (backup for the pod's own idle watchdog)",
+   "description": null,
+   "args": [
+    {
+     "flags": [
+      "--install"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "run rp reap every 5 minutes with a systemd user timer"
+    },
+    {
+     "flags": [
+      "--quiet"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "print nothing (for the timer)"
+    }
+   ]
+  },
+  {
+   "name": "shutdown",
+   "help": "after a timeout: close open chats, rp down, power off this PC",
+   "description": "rp shutdown 90m          in 90 minutes (also 1h30m, 45s, 2h; a bare number is minutes)\nrp shutdown 23:30        at the next 23:30\nrp shutdown --status     what is scheduled\nrp shutdown --cancel     cancel it\nOpen chats are saved and closed, then rp down runs; the PC powers off\nonly once rp down has confirmed no pod is running. Anything that can't\nhappen is flagged now and, with a desktop notification, when it fires.",
+   "args": [
+    {
+     "flags": [],
+     "nargs": "?",
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "duration (90m, 1h30m) or clock time (23:30)"
+    },
+    {
+     "flags": [
+      "--no-poweroff"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "close chats and rp down, but leave this PC on"
+    },
+    {
+     "flags": [
+      "-f",
+      "--foreground"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "count down in this terminal instead of the background"
+    },
+    {
+     "flags": [
+      "--status"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "show the scheduled shutdown"
+    },
+    {
+     "flags": [
+      "--cancel"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "cancel the scheduled shutdown"
+    },
+    {
+     "flags": [
+      "--run-at"
+     ],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": true,
+     "help": null
+    }
+   ]
+  },
+  {
+   "name": "tunnel",
+   "help": "SSH forward to vLLM (the encrypted path; keeps RunPod's proxy out)",
+   "description": null,
+   "args": [
+    {
+     "flags": [
+      "-b",
+      "--background"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "detach instead of holding the terminal"
+    },
+    {
+     "flags": [
+      "--stop"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "stop a backgrounded tunnel"
+    },
+    {
+     "flags": [
+      "--status"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "show tunnel state and the pinned host key"
+    },
+    {
+     "flags": [
+      "--forget-key"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "drop the pinned SSH host key (only for a known-good change)"
+    }
+   ]
+  },
+  {
+   "name": "chat",
+   "help": "interactive streaming chat",
+   "description": null,
+   "args": [
+    {
+     "flags": [
+      "--url"
+     ],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "override the endpoint base URL"
+    },
+    {
+     "flags": [
+      "--system"
+     ],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "initial system prompt"
+    },
+    {
+     "flags": [
+      "-c",
+      "--continue"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "continue the most recent chat in this project"
+    },
+    {
+     "flags": [
+      "-r",
+      "--resume"
+     ],
+     "nargs": "?",
+     "flag": false,
+     "const": "",
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "pick a saved chat to continue (optionally searching)"
+    }
+   ]
+  },
+  {
+   "name": "chats",
+   "help": "list, search, show, rename or remove saved chats",
+   "description": "rp chats [QUERY]          list this project's chats, or search them\nrp chats show REF         print a chat as Markdown\nrp chats rename REF TITLE\nrp chats rm REF           move a chat to the trash\nrp chats import [DIR]     absorb old /save transcripts\nREF is a chat id, an id prefix, or a search query.",
+   "args": [
+    {
+     "flags": [],
+     "nargs": "*",
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": true,
+     "hidden": false,
+     "help": null
+    },
+    {
+     "flags": [
+      "-a",
+      "--all"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "every project, not just this one"
+    }
+   ]
+  },
+  {
+   "name": "ask",
+   "help": "one-shot prompt (reads stdin if omitted)",
+   "description": null,
+   "args": [
+    {
+     "flags": [],
+     "nargs": "?",
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": null
+    },
+    {
+     "flags": [
+      "--url"
+     ],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": null
+    },
+    {
+     "flags": [
+      "--system"
+     ],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": null
+    },
+    {
+     "flags": [
+      "--think"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "also print the reasoning trace"
+    },
+    {
+     "flags": [
+      "--save"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "keep this exchange as a saved chat (rp chats, rp chat -c)"
+    }
+   ]
+  },
+  {
+   "name": "trace",
+   "help": "per-turn metrics, alarms and traces of rp chat",
+   "description": "rp trace                 recent turns: rounds, tool calls, time, alarms\nrp trace alarms          recent alarms (loops, errors, no answer, ...)\nrp trace stats           totals over recent turns\nrp trace SESSION_ID      one chat's timeline: rounds, tool calls, helpers",
+   "args": [
+    {
+     "flags": [],
+     "nargs": "?",
+     "flag": false,
+     "const": null,
+     "default": "",
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": null
+    },
+    {
+     "flags": [
+      "-n"
+     ],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": "int",
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "how many rows (default 30; a session's whole timeline)"
+    }
+   ]
+  },
+  {
+   "name": "toolbox",
+   "help": "command-line tools the model keeps between chats",
+   "description": null,
+   "args": [
+    {
+     "flags": [],
+     "nargs": "?",
+     "flag": false,
+     "const": null,
+     "default": "list",
+     "type": null,
+     "choices": [
+      "list",
+      "show",
+      "find",
+      "check",
+      "path",
+      "add",
+      "rm"
+     ],
+     "required": false,
+     "hidden": false,
+     "help": null
+    },
+    {
+     "flags": [],
+     "nargs": "*",
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": true,
+     "hidden": false,
+     "help": "show/rm: a tool name; find: words; add: a directory"
+    },
+    {
+     "flags": [
+      "--global"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "add/rm: the global toolbox instead of this project's"
+    }
+   ]
+  },
+  {
+   "name": "model",
+   "help": "manage model profiles (for a model swap)",
+   "description": null,
+   "args": [
+    {
+     "flags": [],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": [
+      "list",
+      "show",
+      "use",
+      "add"
+     ],
+     "required": true,
+     "hidden": false,
+     "help": null
+    },
+    {
+     "flags": [],
+     "nargs": "?",
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "profile name (required for use/add)"
+    },
+    {
+     "flags": [
+      "--force"
+     ],
+     "nargs": 0,
+     "flag": true,
+     "const": true,
+     "default": false,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "model add: overwrite an existing profile"
+    }
+   ]
+  },
+  {
+   "name": "backup",
+   "help": "primary and backup region, the backup's idle countdown, and RunPod's A100 stock per region",
+   "description": null,
+   "args": [
+    {
+     "flags": [
+      "--samples"
+     ],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": "1",
+     "type": "int",
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": "stock queries 5s apart (stock flickers; default 1)"
+    }
+   ]
+  },
+  {
+   "name": "volume",
+   "help": "manage the weights network volume",
+   "description": null,
+   "args": [
+    {
+     "flags": [],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": [
+      "list",
+      "create",
+      "delete"
+     ],
+     "required": true,
+     "hidden": false,
+     "help": null
+    },
+    {
+     "flags": [
+      "--volume-id"
+     ],
+     "nargs": null,
+     "flag": false,
+     "const": null,
+     "default": null,
+     "type": null,
+     "choices": null,
+     "required": false,
+     "hidden": false,
+     "help": null
+    }
+   ]
+  }
+ ]
+}

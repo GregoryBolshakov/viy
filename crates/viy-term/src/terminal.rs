@@ -31,6 +31,12 @@
 use std::io;
 use std::io::Write;
 
+use crossterm::cursor::Hide;
+use crossterm::cursor::MoveTo;
+use crossterm::cursor::Show;
+use crossterm::queue;
+use crossterm::terminal::BeginSynchronizedUpdate;
+use crossterm::terminal::EndSynchronizedUpdate;
 use ratatui::backend::Backend;
 use ratatui::buffer::Buffer;
 use ratatui::buffer::CellDiffOption;
@@ -76,7 +82,9 @@ where
     /// difference.
     buffers: [Buffer; 2],
     current: usize,
-    hidden_cursor: bool,
+    /// Where the cursor is shown, `None` when hidden. It starts shown at a
+    /// position no frame asks for, so the first frame places or hides it.
+    cursor_shown: Option<Position>,
 }
 
 impl<B> Drop for Terminal<B>
@@ -84,7 +92,7 @@ where
     B: Backend<Error = io::Error> + Write,
 {
     fn drop(&mut self) {
-        if self.hidden_cursor {
+        if self.cursor_shown.is_none() {
             let _ = self.backend.show_cursor();
             let _ = Backend::flush(&mut self.backend);
         }
@@ -102,7 +110,7 @@ where
             backend,
             buffers: [Buffer::empty(area), Buffer::empty(area)],
             current: 0,
-            hidden_cursor: false,
+            cursor_shown: Some(Position::new(u16::MAX, u16::MAX)),
         };
         terminal.clear()?;
         Ok(terminal)
@@ -120,28 +128,45 @@ where
         self.buffers[self.current].area.as_size()
     }
 
-    /// Takes the new screen size and repaints everything on the next draw.
-    pub fn resize(&mut self, size: Size) -> io::Result<()> {
+    /// Takes the new screen size; the next draw rewrites every cell. Nothing
+    /// is written until then, so no blank screen shows between the resize
+    /// and that frame: clearing first made a resize flicker in GNOME
+    /// Terminal, a blank screen for each resize event.
+    pub fn resize(&mut self, size: Size) {
         let area = Rect::from((Position::ORIGIN, size));
         for buffer in &mut self.buffers {
             buffer.resize(area);
         }
-        self.clear()
+        self.invalidate();
     }
 
-    /// Clears the visible screen (`CSI 2J`, never `CSI 3J`) and writes every
-    /// cell on the next draw.
-    pub fn clear(&mut self) -> io::Result<()> {
-        self.backend.clear()?;
+    /// Makes the next draw rewrite every cell, spaces included, so whatever
+    /// the terminal shows now (a reflow, a stray write) is overwritten in one
+    /// frame without clearing first (Codex's `invalidate_viewport`).
+    pub fn invalidate(&mut self) {
         let previous = &mut self.buffers[1 - self.current];
         previous.reset();
         for cell in &mut previous.content {
             cell.set_diff_option(CellDiffOption::AlwaysUpdate);
         }
+    }
+
+    /// Clears the visible screen (`CSI 2J`, never `CSI 3J`) and writes every
+    /// cell on the next draw. The screen is blank until then; a repaint
+    /// while running uses [`Terminal::invalidate`].
+    pub fn clear(&mut self) -> io::Result<()> {
+        self.backend.clear()?;
+        self.invalidate();
         Ok(())
     }
 
-    /// Renders one frame and writes the cells that changed since the last.
+    /// Renders one frame and writes the cells that changed since the last,
+    /// inside a synchronized update (`CSI ?2026h` ... `CSI ?2026l`). The
+    /// frame is queued whole and flushed once: the backend's own cursor
+    /// calls flush each, which cut a frame into several writes that a
+    /// terminal without synchronized output (GNOME Terminal's VTE) may show
+    /// half drawn. Writes nothing when neither a cell nor the cursor
+    /// changed.
     pub fn draw(&mut self, render: impl FnOnce(&mut Frame)) -> io::Result<()> {
         let area = self.buffers[self.current].area;
         let mut frame = Frame {
@@ -155,25 +180,25 @@ where
         let updates = self.buffers[1 - self.current].diff(&self.buffers[self.current]);
         // An empty diff writes nothing: the backend's draw resets the
         // colours even when it has no cells.
-        if !updates.is_empty() {
-            if !self.hidden_cursor {
-                self.backend.hide_cursor()?;
-                self.hidden_cursor = true;
+        // Writing cells moves the terminal's cursor: hidden while they are
+        // written, placed again after.
+        let cells = !updates.is_empty();
+        let hide = self.cursor_shown.is_some() && (cells || cursor.is_none());
+        let place = cursor.filter(|&p| cells || hide || Some(p) != self.cursor_shown);
+        if cells || hide || place.is_some() {
+            queue!(self.backend, BeginSynchronizedUpdate)?;
+            if hide {
+                queue!(self.backend, Hide)?;
+                self.cursor_shown = None;
             }
-            self.backend.draw(updates.into_iter())?;
-        }
-
-        match cursor {
-            Some(position) => {
-                self.backend.set_cursor_position(position)?;
-                self.backend.show_cursor()?;
-                self.hidden_cursor = false;
+            if cells {
+                self.backend.draw(updates.into_iter())?;
             }
-            None if !self.hidden_cursor => {
-                self.backend.hide_cursor()?;
-                self.hidden_cursor = true;
+            if let Some(position) = place {
+                queue!(self.backend, MoveTo(position.x, position.y), Show)?;
+                self.cursor_shown = Some(position);
             }
-            None => {}
+            queue!(self.backend, EndSynchronizedUpdate)?;
         }
 
         self.current = 1 - self.current;

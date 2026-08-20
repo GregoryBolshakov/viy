@@ -13,13 +13,16 @@
 //! newline, Shift+Tab cycles the mode, Ctrl-C stops the stream or exits,
 //! Ctrl-L repaints, PageUp/PageDown and the mouse wheel scroll the
 //! transcript, End follows it again. With the mouse captured, Shift+drag is
-//! the terminal's own selection. Commands: `/rewind` (the last exchange
-//! gone, its message back in the box), `/flood N` (N transcript lines),
-//! `/redraw`, `/panic` (the terminal must come back usable), `/quit`.
+//! the terminal's own selection. Esc twice, or `/rewind`, picks one of your
+//! messages: the last is highlighted, Up/Down move between them, Enter
+//! takes the chat back to before it with the message in the box to edit and
+//! send again, Esc leaves the chat as it was (ui-plan 4, Codex's backtrack).
+//! Commands: `/flood N` (N transcript lines), `/redraw`, `/panic` (the
+//! terminal must come back usable), `/quit`.
 
 use std::io;
+use std::io::BufWriter;
 use std::io::Stdout;
-use std::io::Write;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -36,10 +39,7 @@ use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
 use crossterm::event::MouseEventKind;
 use crossterm::execute;
-use crossterm::queue;
 use crossterm::terminal;
-use crossterm::terminal::BeginSynchronizedUpdate;
-use crossterm::terminal::EndSynchronizedUpdate;
 use crossterm::terminal::EnterAlternateScreen;
 use crossterm::terminal::LeaveAlternateScreen;
 use ratatui::backend::CrosstermBackend;
@@ -64,6 +64,12 @@ const MODES: [&str; 2] = ["normal", "auto-yes"];
 const ANSWER_ROWS: usize = 8;
 /// Rows one wheel notch scrolls.
 const WHEEL_ROWS: usize = 3;
+/// Enough for a whole frame of a large window, so each frame reaches the
+/// terminal in one write: GNOME Terminal (VTE) may show a frame cut over
+/// several writes half drawn, synchronized output or not.
+const FRAME_BUFFER: usize = 1 << 20;
+
+type Backend = CrosstermBackend<BufWriter<Stdout>>;
 
 const ANSWERS: [&str; 2] = [
     "The tunnel guard runs before every /health poll. When the forward is dead it \
@@ -117,7 +123,8 @@ fn restore() -> io::Result<()> {
 
 /// Runs the chat and returns how many transcript lines it ended with.
 fn run() -> io::Result<usize> {
-    let mut app = App::new(Terminal::new(CrosstermBackend::new(io::stdout()))?);
+    let backend = CrosstermBackend::new(BufWriter::with_capacity(FRAME_BUFFER, io::stdout()));
+    let mut app = App::new(Terminal::new(backend)?);
     app.commit(vec![
         Line::from(
             "viy ui spike · Enter sends · Ctrl-J newline · Shift+Tab mode · Ctrl-C stops/exits · Ctrl-L repaints"
@@ -126,7 +133,11 @@ fn run() -> io::Result<usize> {
         Line::from(
             "PageUp/PageDown or the wheel scroll, End follows · Shift+drag selects".dim(),
         ),
-        Line::from("commands: /rewind  /flood N  /redraw  /panic  /quit".dim()),
+        Line::from(
+            "Esc Esc or /rewind: pick one of your messages, ↑/↓ move, Enter edits from there, Esc keeps the chat"
+                .dim(),
+        ),
+        Line::from("commands: /flood N  /redraw  /panic  /quit".dim()),
     ]);
     while !app.quit {
         let timeout = FRAME.saturating_sub(app.last_frame.elapsed());
@@ -134,7 +145,7 @@ fn run() -> io::Result<usize> {
             match event::read()? {
                 Event::Key(key) if key.kind != KeyEventKind::Release => app.key(key)?,
                 Event::Paste(text) => app.input.insert_str(&text),
-                Event::Resize(width, height) => app.term.resize(Size::new(width, height))?,
+                Event::Resize(width, height) => app.term.resize(Size::new(width, height)),
                 Event::Mouse(mouse) => match mouse.kind {
                     MouseEventKind::ScrollUp => app.scroll_up(WHEEL_ROWS),
                     MouseEventKind::ScrollDown => app.scroll_down(WHEEL_ROWS),
@@ -163,8 +174,15 @@ struct Stream {
     next_word: Instant,
 }
 
+struct Turn {
+    start: usize,
+    /// Lines from `start`: a blank one, then the message.
+    rows: usize,
+    text: String,
+}
+
 struct App {
-    term: Terminal<CrosstermBackend<Stdout>>,
+    term: Terminal<Backend>,
     /// Everything committed; viy draws it, the terminal keeps no copy.
     transcript: Vec<Line<'static>>,
     /// Rows scrolled back from the end of the transcript; 0 follows it.
@@ -174,8 +192,13 @@ struct App {
     last_rows: usize,
     /// Transcript rows the last frame showed: a page.
     page: usize,
-    /// Where each user turn starts in `transcript`, and its text.
-    turns: Vec<(usize, String)>,
+    /// Each user turn: where it starts in `transcript`, its lines there,
+    /// and its text.
+    turns: Vec<Turn>,
+    /// The message being picked to edit from (an index into `turns`).
+    pick: Option<usize>,
+    /// One Esc pressed at an empty, idle prompt: the next one picks.
+    esc_primed: bool,
     input: TextArea,
     queued: Vec<String>,
     mode: usize,
@@ -188,7 +211,7 @@ struct App {
 }
 
 impl App {
-    fn new(term: Terminal<CrosstermBackend<Stdout>>) -> Self {
+    fn new(term: Terminal<Backend>) -> Self {
         let now = Instant::now();
         Self {
             term,
@@ -197,6 +220,8 @@ impl App {
             last_rows: 0,
             page: 1,
             turns: Vec::new(),
+            pick: None,
+            esc_primed: false,
             input: TextArea::default(),
             queued: Vec::new(),
             mode: 0,
@@ -216,7 +241,19 @@ impl App {
 
     fn key(&mut self, key: KeyEvent) -> io::Result<()> {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        if self.pick.is_some() {
+            self.pick_key(key);
+            return Ok(());
+        }
+        let primed = std::mem::take(&mut self.esc_primed);
         match key.code {
+            KeyCode::Esc if self.stream.is_none() && self.input.is_empty() => {
+                if primed {
+                    self.start_pick();
+                } else {
+                    self.esc_primed = !self.turns.is_empty();
+                }
+            }
             KeyCode::Char('c') if ctrl => {
                 if self.stream.is_some() {
                     self.finish_stream(true);
@@ -265,11 +302,7 @@ impl App {
             }
             ["/rewind"] if self.stream.is_none() => {
                 self.input.take();
-                if let Some((start, text)) = self.turns.pop() {
-                    self.transcript.truncate(start);
-                    self.input.set_text(&text);
-                    self.repaint()?;
-                }
+                self.start_pick();
             }
             ["/flood", n] => {
                 self.input.take();
@@ -289,8 +322,63 @@ impl App {
         Ok(())
     }
 
+    /// Highlights the last message to pick from; rp's `/rewind` list with
+    /// Enter on the last, in the transcript itself.
+    fn start_pick(&mut self) {
+        if self.turns.is_empty() {
+            self.commit(vec![Line::from("nothing to rewind".dim())]);
+        } else {
+            self.pick = Some(self.turns.len() - 1);
+        }
+    }
+
+    fn pick_key(&mut self, key: KeyEvent) {
+        let Some(k) = self.pick else {
+            return;
+        };
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Up | KeyCode::Left | KeyCode::Char('k') => {
+                self.pick = Some(k.saturating_sub(1))
+            }
+            KeyCode::Down | KeyCode::Right | KeyCode::Char('j') if !ctrl => {
+                self.pick = Some((k + 1).min(self.turns.len() - 1));
+            }
+            KeyCode::Home => self.pick = Some(0),
+            KeyCode::End => self.pick = Some(self.turns.len() - 1),
+            KeyCode::Enter => {
+                self.pick = None;
+                self.rewind_to(k);
+            }
+            KeyCode::Esc => self.pick = None,
+            KeyCode::Char('c') if ctrl => self.pick = None,
+            KeyCode::PageUp => self.scroll_up(self.page.saturating_sub(1).max(1)),
+            KeyCode::PageDown => self.scroll_down(self.page.saturating_sub(1).max(1)),
+            _ => {}
+        }
+    }
+
+    /// rp's `_rewind_to`: the chat goes back to before message `k`, the
+    /// message is back in the box to edit, and what is sent next continues
+    /// the chat from there. viy keeps the dropped turns in the session log
+    /// as rp does; the spike just drops them.
+    fn rewind_to(&mut self, k: usize) {
+        let dropped = self.turns.len() - k;
+        let turn = self.turns.remove(k);
+        self.turns.truncate(k);
+        self.transcript.truncate(turn.start);
+        self.input.set_text(&turn.text);
+        self.scroll_back = 0;
+        self.commit(vec![Line::from(
+            format!(
+                "rewound to before message {}: {dropped} of your messages and their answers left the chat",
+                k + 1
+            )
+            .dim(),
+        )]);
+    }
+
     fn start_turn(&mut self, text: String) {
-        self.turns.push((self.transcript.len(), text.clone()));
         let mut lines = vec![Line::from("")];
         for (i, row) in text.split('\n').enumerate() {
             let prefix = if i == 0 { "you › " } else { "      " };
@@ -299,6 +387,11 @@ impl App {
                 row.to_string().into(),
             ]));
         }
+        self.turns.push(Turn {
+            start: self.transcript.len(),
+            rows: lines.len(),
+            text,
+        });
         self.commit(lines);
         let now = Instant::now();
         self.stream = Some(Stream {
@@ -369,7 +462,8 @@ impl App {
     fn repaint(&mut self) -> io::Result<()> {
         self.scroll_back = 0;
         self.dirty = true;
-        self.term.clear()
+        self.term.invalidate();
+        Ok(())
     }
 
     fn scroll_up(&mut self, rows: usize) {
@@ -422,8 +516,21 @@ impl App {
         if !self.queued.is_empty() {
             spans.push(format!(" │ {} queued", self.queued.len()).cyan());
         }
-        if self.scroll_back > 0 {
+        if self.scroll_back > 0 && self.pick.is_none() {
             spans.push(format!(" │ ↓ {} rows (End)", self.scroll_back).cyan());
+        }
+        if let Some(k) = self.pick {
+            return Line::from(
+                format!(
+                    "edit from message {} of {} · ↑/↓ choose · Enter edit and resend from here · Esc keep the chat",
+                    k + 1,
+                    self.turns.len()
+                )
+                .cyan(),
+            );
+        }
+        if self.esc_primed {
+            spans.push(" │ Esc again: pick a message to edit from".cyan());
         }
         Line::from(spans)
     }
@@ -457,11 +564,22 @@ impl App {
 
         // The transcript, wrapped at the current width every frame: a resize
         // reflows it with no trace in the terminal.
-        let rows: Vec<Line<'static>> = self
-            .transcript
-            .iter()
-            .flat_map(|line| wrap_line(line, usize::from(width)))
-            .collect();
+        let picked = self
+            .pick
+            .map(|k| self.turns[k].start + 1..self.turns[k].start + self.turns[k].rows);
+        let mut rows: Vec<Line<'static>> = Vec::new();
+        let mut picked_rows: Option<std::ops::Range<usize>> = None;
+        for (i, line) in self.transcript.iter().enumerate() {
+            let first = rows.len();
+            let highlight = picked.as_ref().is_some_and(|r| r.contains(&i));
+            for row in wrap_line(line, usize::from(width)) {
+                rows.push(if highlight { row.reversed() } else { row });
+            }
+            if highlight {
+                let start = picked_rows.as_ref().map_or(first, |r| r.start);
+                picked_rows = Some(start..rows.len());
+            }
+        }
         if self.scroll_back > 0 {
             self.scroll_back += rows.len().saturating_sub(self.last_rows);
         }
@@ -469,6 +587,15 @@ impl App {
         self.scroll_back = self.scroll_back.min(rows.len().saturating_sub(1));
         let top_height = size.height - bottom_height;
         self.page = usize::from(top_height).max(1);
+        // The picked message stays in view.
+        if let Some(r) = picked_rows {
+            let end = rows.len() - self.scroll_back;
+            if r.start < end.saturating_sub(self.page) {
+                self.scroll_back = rows.len() - (r.start + self.page).min(rows.len());
+            } else if r.end > end {
+                self.scroll_back = rows.len() - r.end;
+            }
+        }
         let end = rows.len() - self.scroll_back;
         let shown: Vec<Line<'static>> = rows[end.saturating_sub(self.page)..end].to_vec();
         // Short transcripts sit right above the live region, as in a shell.
@@ -480,14 +607,11 @@ impl App {
             2 + input_cursor.x,
             top_height + u16::try_from(input_top).unwrap_or(0) + input_cursor.y,
         );
-        queue!(self.term.backend_mut(), BeginSynchronizedUpdate)?;
         self.term.draw(|frame| {
             frame.render_widget(Paragraph::new(shown), top);
             frame.render_widget(Paragraph::new(bottom), live_area);
             frame.set_cursor_position(cursor);
         })?;
-        queue!(self.term.backend_mut(), EndSynchronizedUpdate)?;
-        self.term.backend_mut().flush()?;
         self.last_frame = Instant::now();
         self.dirty = false;
         Ok(())

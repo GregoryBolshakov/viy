@@ -17,10 +17,11 @@ pub struct VT100Backend {
     inner: CrosstermBackend<Screen>,
 }
 
-/// The emulator, and every byte it was sent.
+/// The emulator, every byte it was sent, and how often it was flushed.
 pub struct Screen {
     pub parser: vt100::Parser,
     pub written: Vec<u8>,
+    pub flushes: usize,
 }
 
 impl Write for Screen {
@@ -30,6 +31,7 @@ impl Write for Screen {
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        self.flushes += 1;
         self.parser.flush()
     }
 }
@@ -41,6 +43,7 @@ impl VT100Backend {
             inner: CrosstermBackend::new(Screen {
                 parser: vt100::Parser::new(height, width, 0),
                 written: Vec::new(),
+                flushes: 0,
             }),
         }
     }
@@ -52,6 +55,12 @@ impl VT100Backend {
     /// How many bytes were written so far.
     pub fn bytes_written(&self) -> usize {
         self.inner.writer().written.len()
+    }
+
+    /// How many times the output was flushed: a real terminal gets a write
+    /// for each.
+    pub fn flushes(&self) -> usize {
+        self.inner.writer().flushes
     }
 
     /// Every byte written so far.

@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: 7fe286b2e6a0dc1b8b8d5eae7f0613339004f3ec
+commit: a51d1ca552713d6c81c160a44cf79b862ddb6bd1
 branch: leak-protection
-pinned: 2026-07-14
-subject: Make rp drop empty and relative PATH entries before it runs anything
+pinned: 2026-07-15
+subject: Make rp init refuse to write its .gitignore through a symlink

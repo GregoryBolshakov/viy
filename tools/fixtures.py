@@ -20,6 +20,8 @@ synthetic. Implementation plan 3.3.
 """
 import json
 import pathlib
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -683,6 +685,245 @@ def gen_cli_parse(snap):
     }
 
 
+# -------------------------------------------------------------------- pod/api
+
+# One case: a call on rpctl's api.RunPod (method name and arguments), and the
+# reply its single HTTP request gets: a status with a body, sent in `chunks`
+# (default: the whole body at once) and then ended by EOF or `then`
+# ("read_timeout": urllib3's read timeout, as a stalled stream raises), or
+# `fail` ("connect": a refused connection) instead of any reply. The call
+# never reaches the network: a requests transport adapter records what
+# would be sent and plays the reply. Keys, ids and bodies are synthetic.
+API_KEY = "rpa_SYNTHETICKEY0000"
+
+def _json(value):
+    return json.dumps(value)
+
+POD = {"id": "pod111", "name": "qwen-pod", "desiredStatus": "RUNNING",
+       "machine": {"gpuDisplayName": "A100 SXM"}, "costPerHr": 1.89}
+VOLUME = {"id": "vol222", "name": "qwen-weights", "size": 120, "dataCenterId": "US-MO-1"}
+ERROR_JSON = {"error": "pod not found", "status": 404}
+LOG_LINES = [
+    b'data: {"ts": "2026-07-15T10:00:02Z", "source": "container", "line": "second"}\n',
+    b": keepalive\n",
+    b'data: {"ts": "2026-07-15T10:00:01Z", "source": "system", "line": "first"}\n',
+    b"data: not json\n",
+    b"data: [1, 2]\n",
+    b'data: {"ts": "2026-07-15T10:00:03Z", "source": "system"}\n',
+    b'data:{"source": "container", "line": "no ts, sorts first"}\r\n',
+    b'event: log\n',
+    b'data: {"ts": "2026-07-15T10:00:04Z", "line": "caf\xc3\xa9 \\u00e9"}\n',
+]
+
+API_CASES = [
+    # REST: what each call sends, and what it makes of the answer.
+    dict(name="list_pods_list", call=["list_pods"], reply=dict(body=_json([POD]))),
+    dict(name="list_pods_data_wrapper", call=["list_pods"],
+         reply=dict(body=_json({"data": [POD, {"id": "pod333"}]}))),
+    dict(name="list_pods_empty_body", call=["list_pods"], reply=dict(body="")),
+    dict(name="list_pods_not_json", call=["list_pods"],
+         reply=dict(body="<html>ok</html>", content_type="text/html")),
+    dict(name="list_pods_null", call=["list_pods"], reply=dict(body="null")),
+    dict(name="get_pod", call=["get_pod", "pod111"], reply=dict(body=_json(POD))),
+    dict(name="get_pod_404_is_gone", call=["get_pod", "pod111"],
+         reply=dict(status=404, body=_json(ERROR_JSON))),
+    dict(name="get_pod_empty_body", call=["get_pod", "pod111"], reply=dict(body="")),
+    dict(name="create_pod", call=["create_pod", {
+        "name": "qwen-pod", "imageName": "vllm/vllm-openai:v0.11.0",
+        "gpuTypeIds": ["NVIDIA A100-SXM4-80GB", "NVIDIA H100 80GB HBM3"],
+        "gpuCount": 1, "cloudType": "SECURE", "networkVolumeId": "vol222",
+        "ports": ["8000/http", "22/tcp"], "env": {"RPCTL_A": "1", "B": ""},
+        "dockerStartCmd": ["bash", "-c", "echo 'boot'"], "minCudaVersion": "12.8",
+        "supportPublicIp": True, "interruptible": False}],
+         reply=dict(body=_json(POD))),
+    dict(name="stop_pod", call=["stop_pod", "pod111"], reply=dict(body="")),
+    dict(name="start_pod", call=["start_pod", "pod111"],
+         reply=dict(body=_json({"id": "pod111", "desiredStatus": "RUNNING"}))),
+    dict(name="delete_pod", call=["delete_pod", "pod111"], reply=dict(body="")),
+    dict(name="list_volumes", call=["list_volumes"], reply=dict(body=_json([VOLUME]))),
+    dict(name="get_volume", call=["get_volume", "vol222"], reply=dict(body=_json(VOLUME))),
+    dict(name="create_volume", call=["create_volume", "qwen-weights-backup", 120, "EU-RO-1"],
+         reply=dict(body=_json(VOLUME))),
+    dict(name="delete_volume", call=["delete_volume", "vol222"], reply=dict(body="")),
+    # REST errors: the status decides transient, the body becomes the detail.
+    *[dict(name=f"get_volume_http_{code}", call=["get_volume", "vol222"],
+           reply=dict(status=code, body=_json({"error": f"synthetic {code}"})))
+      for code in (400, 401, 403, 404, 409, 429, 500, 502, 503, 504)],
+    dict(name="http_error_nested_json_detail", call=["create_pod", {"name": "x"}],
+         reply=dict(status=500, body=_json(
+             {"error": "create pod: There are no longer any instances available "
+                       "with the requested specifications.",
+              "details": {"gpuTypeIds": ["A", "B"], "retry": None, "n": [], "m": {}}}))),
+    dict(name="http_error_text_detail", call=["list_pods"],
+         reply=dict(status=502, body="<html>502 Bad Gateway</html>",
+                    content_type="text/html")),
+    dict(name="http_error_long_text_is_cut_at_2000", call=["list_pods"],
+         reply=dict(status=503, body="x" * 1990 + "0123456789abcdef",
+                    content_type="text/plain; charset=utf-8")),
+    dict(name="http_error_json_scalar", call=["list_pods"],
+         reply=dict(status=403, body=_json("forbidden"))),
+    dict(name="http_error_empty_body", call=["stop_pod", "pod111"],
+         reply=dict(status=500, body="")),
+    dict(name="transport_failure_is_transient", call=["get_pod", "pod111"],
+         reply=dict(fail="connect")),
+    dict(name="read_timeout_is_transient", call=["list_volumes"],
+         reply=dict(body="", then="read_timeout")),
+    # GraphQL.
+    dict(name="data_centers", call=["data_centers"], reply=dict(body=_json({"data": {
+        "dataCenters": [{"id": "US-MO-1", "location": "United States", "listed": True,
+                         "storageSupport": True, "gpuAvailability": [
+                             {"gpuTypeId": "NVIDIA A100-SXM4-80GB", "stockStatus": "High",
+                              "available": True}]}]}}))),
+    dict(name="data_centers_null_data", call=["data_centers"],
+         reply=dict(body=_json({"data": None}))),
+    dict(name="data_centers_null_list", call=["data_centers"],
+         reply=dict(body=_json({"data": {"dataCenters": None}}))),
+    dict(name="graphql_errors_at_200", call=["data_centers"],
+         reply=dict(body=_json({"errors": [{"message": "Something went wrong",
+                                           "path": ["dataCenters"]}], "data": None}))),
+    dict(name="graphql_empty_errors_are_no_error", call=["data_centers"],
+         reply=dict(body=_json({"errors": [], "data": {"dataCenters": []}}))),
+    dict(name="graphql_no_data_key", call=["data_centers"], reply=dict(body=_json({}))),
+    dict(name="graphql_http_500_text", call=["data_centers"],
+         reply=dict(status=500, body="upstream failed", content_type="text/plain")),
+    dict(name="graphql_http_429_json", call=["data_centers"],
+         reply=dict(status=429, body=_json({"data": {"dataCenters": []}}))),
+    dict(name="graphql_not_json", call=["data_centers"],
+         reply=dict(status=200, body="<html></html>", content_type="text/html")),
+    dict(name="graphql_transport_failure", call=["data_centers"], reply=dict(fail="connect")),
+    dict(name="cuda_stock_with_older", call=[
+        "cuda_stock", ["US-MO-1", "EU-RO-1"],
+        ["NVIDIA A100-SXM4-80GB", "NVIDIA H100 80GB HBM3"], "13.0", ["12.8", "12.9"], True],
+         reply=dict(body=_json({"data": {
+             "s0_0f": [{"lowestPrice": {"stockStatus": "High"}}],
+             "s0_0o": [{"lowestPrice": {"stockStatus": "Low"}}],
+             "s0_1f": [{"lowestPrice": None}],
+             "s0_1o": [],
+             "s1_0f": [None],
+             "s1_0o": None,
+             "s1_1f": [{"lowestPrice": {"stockStatus": "Medium"}}]}}))),
+    dict(name="cuda_stock_community_no_older", call=[
+        "cuda_stock", ["CA-MTL-3"], ["NVIDIA A100 80GB PCIe"], "12.8", [], False],
+         reply=dict(body=_json({"data": {"s0_0f": [{"lowestPrice": {"stockStatus": "Low"}}]}}))),
+    # The v2 platform log stream.
+    dict(name="pod_logs_entries_sorted_by_ts", call=["pod_logs", "pod111", 100, 8],
+         reply=dict(chunks=[line.decode() for line in LOG_LINES])),
+    dict(name="pod_logs_split_across_chunks", call=["pod_logs", "pod111", 30, 8],
+         reply=dict(chunks=['data: {"ts": "1", "li', 'ne": "a"}\ndata: {"ts": "0", "line"',
+                            ': "b"}\n', 'data: {"line": "no newline at the end"}'])),
+    dict(name="pod_logs_stall_after_entries_returns_them", call=["pod_logs", "pod111", 5000, 8],
+         reply=dict(chunks=['data: {"ts": "1", "line": "a"}\n'], then="read_timeout")),
+    dict(name="pod_logs_stall_before_entries_is_an_error", call=["pod_logs", "pod111", 100, 8],
+         reply=dict(chunks=[": keepalive\n"], then="read_timeout")),
+    dict(name="pod_logs_unreachable", call=["pod_logs", "pod111", 100, 8],
+         reply=dict(fail="connect")),
+    dict(name="pod_logs_http_401", call=["pod_logs", "pod111", 100, 8],
+         reply=dict(status=401, chunks=['{"error": "unauthorized"}'])),
+    dict(name="pod_logs_http_404", call=["pod_logs", "pod111", 100, 8],
+         reply=dict(status=404, chunks=[""])),
+]
+
+API_RUNNER = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import requests, urllib3
+from requests.adapters import BaseAdapter
+from requests.structures import CaseInsensitiveDict
+from rpctl import api
+
+class Raw:
+    def __init__(self, chunks, then):
+        self.chunks, self.then = chunks, then
+    def stream(self, chunk_size, decode_content=True):
+        for chunk in self.chunks:
+            yield chunk
+        if self.then == "read_timeout":
+            raise urllib3.exceptions.ReadTimeoutError(None, None, "Read timed out.")
+    def close(self):
+        pass
+    def release_conn(self):
+        pass
+
+class Player(BaseAdapter):
+    def __init__(self, reply):
+        super().__init__()
+        self.reply, self.sent = reply, []
+    def send(self, request, stream=False, timeout=None, **kw):
+        body = request.body
+        if isinstance(body, bytes):
+            body = body.decode()
+        self.sent.append({"method": request.method, "url": request.url,
+                          "headers": dict(request.headers), "body": body,
+                          "timeout": list(timeout) if isinstance(timeout, tuple) else timeout,
+                          "stream": stream})
+        if self.reply.get("fail") == "connect":
+            raise requests.exceptions.ConnectionError("synthetic: connection refused")
+        r = requests.Response()
+        r.status_code = self.reply.get("status", 200)
+        r.headers = CaseInsensitiveDict(
+            {"Content-Type": self.reply.get("content_type", "application/json")})
+        chunks = self.reply.get("chunks")
+        if chunks is None:
+            chunks = [self.reply.get("body", "")]
+        r.raw = Raw([c.encode() for c in chunks], self.reply.get("then"))
+        r.url, r.request, r.reason = request.url, request, "synthetic"
+        r.encoding = requests.utils.get_encoding_from_headers(r.headers)
+        return r
+
+def outcome(name, value):
+    if name == "cuda_stock":
+        return [[dc, gpu, fit, old] for (dc, gpu), (fit, old) in value.items()]
+    return value
+
+cases = []
+for case in json.loads(sys.argv[2]):
+    rp = api.RunPod(sys.argv[3])
+    player = Player(case["reply"])
+    rp.s.mount("https://", player)
+    name, *args = case["call"]
+    try:
+        result = {"ok": outcome(name, getattr(rp, name)(*args))}
+    except api.RunPodError as e:
+        result = {"error": str(e), "status_code": e.status_code, "transient": e.transient}
+    cases.append({**case, "sent": player.sent, **result})
+cases.append({"name": "proxy_url", "call": ["proxy_url", "pod111", "8000"],
+              "ok": api.proxy_url("pod111", "8000")})
+print(json.dumps(cases))
+"""
+
+
+def rp_python():
+    """The command line of the interpreter the installed `rp` runs with
+    (pipx's venv): its requests, not the system's, decides the headers rp
+    sends."""
+    rp = shutil.which("rp")
+    if not rp:
+        raise SystemExit("pod/api needs the installed rp (its venv's requests)")
+    first = pathlib.Path(rp).read_text().splitlines()[0]
+    if not first.startswith("#!"):
+        raise SystemExit(f"{rp} has no #! line")
+    return shlex.split(first[2:])
+
+
+def gen_pod_api(snap):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": tmp,
+               "XDG_CONFIG_HOME": tmp, "XDG_STATE_HOME": tmp, "XDG_DATA_HOME": tmp}
+        out = subprocess.run([*rp_python(), "-I", "-c", API_RUNNER, str(snap),
+                              json.dumps(API_CASES), API_KEY],
+                             cwd=tmp, env=env, check=True, capture_output=True, text=True)
+    return {
+        "about": "rpctl api.RunPod and api.proxy_url: each call with the reply its one "
+                 "HTTP request gets (status, body chunks, then EOF or a read timeout; or "
+                 "a refused connection), what requests would send (method, URL, headers, "
+                 "body, timeout) and the outcome: the value returned (cuda_stock as "
+                 "[dc, gpu, fit, old] rows) or RunPodError's text, status_code and "
+                 f"transient. Played through a transport adapter, run by the installed "
+                 f"rp's interpreter; the key is {API_KEY!r}",
+        "cases": json.loads(out.stdout),
+    }
+
+
 GENERATORS = {
     "cli/flags": gen_cli_flags,
     "cli/parse": gen_cli_parse,
@@ -691,6 +932,7 @@ GENERATORS = {
     "config/model": gen_config_model,
     "config/persist": gen_config_persist,
     "config/project": gen_config_project,
+    "pod/api": gen_pod_api,
 }
 
 # ------------------------------------------------------------------ driver

@@ -1,0 +1,1805 @@
+{
+ "rpctl_commit": "a51d1ca552713d6c81c160a44cf79b862ddb6bd1",
+ "generator": "tools/fixtures.py pod/api",
+ "about": "rpctl api.RunPod and api.proxy_url: each call with the reply its one HTTP request gets (status, body chunks, then EOF or a read timeout; or a refused connection), what requests would send (method, URL, headers, body, timeout) and the outcome: the value returned (cuda_stock as [dc, gpu, fit, old] rows) or RunPodError's text, status_code and transient. Played through a transport adapter, run by the installed rp's interpreter; the key is 'rpa_SYNTHETICKEY0000'",
+ "cases": [
+  {
+   "name": "list_pods_list",
+   "call": [
+    "list_pods"
+   ],
+   "reply": {
+    "body": "[{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"machine\": {\"gpuDisplayName\": \"A100 SXM\"}, \"costPerHr\": 1.89}]"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": [
+    {
+     "id": "pod111",
+     "name": "qwen-pod",
+     "desiredStatus": "RUNNING",
+     "machine": {
+      "gpuDisplayName": "A100 SXM"
+     },
+     "costPerHr": 1.89
+    }
+   ]
+  },
+  {
+   "name": "list_pods_data_wrapper",
+   "call": [
+    "list_pods"
+   ],
+   "reply": {
+    "body": "{\"data\": [{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"machine\": {\"gpuDisplayName\": \"A100 SXM\"}, \"costPerHr\": 1.89}, {\"id\": \"pod333\"}]}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": [
+    {
+     "id": "pod111",
+     "name": "qwen-pod",
+     "desiredStatus": "RUNNING",
+     "machine": {
+      "gpuDisplayName": "A100 SXM"
+     },
+     "costPerHr": 1.89
+    },
+    {
+     "id": "pod333"
+    }
+   ]
+  },
+  {
+   "name": "list_pods_empty_body",
+   "call": [
+    "list_pods"
+   ],
+   "reply": {
+    "body": ""
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": []
+  },
+  {
+   "name": "list_pods_not_json",
+   "call": [
+    "list_pods"
+   ],
+   "reply": {
+    "body": "<html>ok</html>",
+    "content_type": "text/html"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": []
+  },
+  {
+   "name": "list_pods_null",
+   "call": [
+    "list_pods"
+   ],
+   "reply": {
+    "body": "null"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": []
+  },
+  {
+   "name": "get_pod",
+   "call": [
+    "get_pod",
+    "pod111"
+   ],
+   "reply": {
+    "body": "{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"machine\": {\"gpuDisplayName\": \"A100 SXM\"}, \"costPerHr\": 1.89}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods/pod111",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": {
+    "id": "pod111",
+    "name": "qwen-pod",
+    "desiredStatus": "RUNNING",
+    "machine": {
+     "gpuDisplayName": "A100 SXM"
+    },
+    "costPerHr": 1.89
+   }
+  },
+  {
+   "name": "get_pod_404_is_gone",
+   "call": [
+    "get_pod",
+    "pod111"
+   ],
+   "reply": {
+    "status": 404,
+    "body": "{\"error\": \"pod not found\", \"status\": 404}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods/pod111",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": null
+  },
+  {
+   "name": "get_pod_empty_body",
+   "call": [
+    "get_pod",
+    "pod111"
+   ],
+   "reply": {
+    "body": ""
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods/pod111",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": null
+  },
+  {
+   "name": "create_pod",
+   "call": [
+    "create_pod",
+    {
+     "name": "qwen-pod",
+     "imageName": "vllm/vllm-openai:v0.11.0",
+     "gpuTypeIds": [
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA H100 80GB HBM3"
+     ],
+     "gpuCount": 1,
+     "cloudType": "SECURE",
+     "networkVolumeId": "vol222",
+     "ports": [
+      "8000/http",
+      "22/tcp"
+     ],
+     "env": {
+      "RPCTL_A": "1",
+      "B": ""
+     },
+     "dockerStartCmd": [
+      "bash",
+      "-c",
+      "echo 'boot'"
+     ],
+     "minCudaVersion": "12.8",
+     "supportPublicIp": true,
+     "interruptible": false
+    }
+   ],
+   "reply": {
+    "body": "{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"machine\": {\"gpuDisplayName\": \"A100 SXM\"}, \"costPerHr\": 1.89}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "386"
+     },
+     "body": "{\"name\": \"qwen-pod\", \"imageName\": \"vllm/vllm-openai:v0.11.0\", \"gpuTypeIds\": [\"NVIDIA A100-SXM4-80GB\", \"NVIDIA H100 80GB HBM3\"], \"gpuCount\": 1, \"cloudType\": \"SECURE\", \"networkVolumeId\": \"vol222\", \"ports\": [\"8000/http\", \"22/tcp\"], \"env\": {\"RPCTL_A\": \"1\", \"B\": \"\"}, \"dockerStartCmd\": [\"bash\", \"-c\", \"echo 'boot'\"], \"minCudaVersion\": \"12.8\", \"supportPublicIp\": true, \"interruptible\": false}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": {
+    "id": "pod111",
+    "name": "qwen-pod",
+    "desiredStatus": "RUNNING",
+    "machine": {
+     "gpuDisplayName": "A100 SXM"
+    },
+    "costPerHr": 1.89
+   }
+  },
+  {
+   "name": "stop_pod",
+   "call": [
+    "stop_pod",
+    "pod111"
+   ],
+   "reply": {
+    "body": ""
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods/pod111/stop",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "0"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": null
+  },
+  {
+   "name": "start_pod",
+   "call": [
+    "start_pod",
+    "pod111"
+   ],
+   "reply": {
+    "body": "{\"id\": \"pod111\", \"desiredStatus\": \"RUNNING\"}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods/pod111/start",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "0"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": {
+    "id": "pod111",
+    "desiredStatus": "RUNNING"
+   }
+  },
+  {
+   "name": "delete_pod",
+   "call": [
+    "delete_pod",
+    "pod111"
+   ],
+   "reply": {
+    "body": ""
+   },
+   "sent": [
+    {
+     "method": "DELETE",
+     "url": "https://rest.runpod.io/v1/pods/pod111",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "0"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": null
+  },
+  {
+   "name": "list_volumes",
+   "call": [
+    "list_volumes"
+   ],
+   "reply": {
+    "body": "[{\"id\": \"vol222\", \"name\": \"qwen-weights\", \"size\": 120, \"dataCenterId\": \"US-MO-1\"}]"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": [
+    {
+     "id": "vol222",
+     "name": "qwen-weights",
+     "size": 120,
+     "dataCenterId": "US-MO-1"
+    }
+   ]
+  },
+  {
+   "name": "get_volume",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "body": "{\"id\": \"vol222\", \"name\": \"qwen-weights\", \"size\": 120, \"dataCenterId\": \"US-MO-1\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": {
+    "id": "vol222",
+    "name": "qwen-weights",
+    "size": 120,
+    "dataCenterId": "US-MO-1"
+   }
+  },
+  {
+   "name": "create_volume",
+   "call": [
+    "create_volume",
+    "qwen-weights-backup",
+    120,
+    "EU-RO-1"
+   ],
+   "reply": {
+    "body": "{\"id\": \"vol222\", \"name\": \"qwen-weights\", \"size\": 120, \"dataCenterId\": \"US-MO-1\"}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "71"
+     },
+     "body": "{\"name\": \"qwen-weights-backup\", \"size\": 120, \"dataCenterId\": \"EU-RO-1\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": {
+    "id": "vol222",
+    "name": "qwen-weights",
+    "size": 120,
+    "dataCenterId": "US-MO-1"
+   }
+  },
+  {
+   "name": "delete_volume",
+   "call": [
+    "delete_volume",
+    "vol222"
+   ],
+   "reply": {
+    "body": ""
+   },
+   "sent": [
+    {
+     "method": "DELETE",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "0"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": null
+  },
+  {
+   "name": "get_volume_http_400",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "status": 400,
+    "body": "{\"error\": \"synthetic 400\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes/vol222 -> HTTP 400\n{\n  \"error\": \"synthetic 400\"\n}",
+   "status_code": 400,
+   "transient": false
+  },
+  {
+   "name": "get_volume_http_401",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "status": 401,
+    "body": "{\"error\": \"synthetic 401\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes/vol222 -> HTTP 401\n{\n  \"error\": \"synthetic 401\"\n}",
+   "status_code": 401,
+   "transient": false
+  },
+  {
+   "name": "get_volume_http_403",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "status": 403,
+    "body": "{\"error\": \"synthetic 403\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes/vol222 -> HTTP 403\n{\n  \"error\": \"synthetic 403\"\n}",
+   "status_code": 403,
+   "transient": false
+  },
+  {
+   "name": "get_volume_http_404",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "status": 404,
+    "body": "{\"error\": \"synthetic 404\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes/vol222 -> HTTP 404\n{\n  \"error\": \"synthetic 404\"\n}",
+   "status_code": 404,
+   "transient": false
+  },
+  {
+   "name": "get_volume_http_409",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "status": 409,
+    "body": "{\"error\": \"synthetic 409\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes/vol222 -> HTTP 409\n{\n  \"error\": \"synthetic 409\"\n}",
+   "status_code": 409,
+   "transient": false
+  },
+  {
+   "name": "get_volume_http_429",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "status": 429,
+    "body": "{\"error\": \"synthetic 429\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes/vol222 -> HTTP 429\n{\n  \"error\": \"synthetic 429\"\n}",
+   "status_code": 429,
+   "transient": true
+  },
+  {
+   "name": "get_volume_http_500",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "status": 500,
+    "body": "{\"error\": \"synthetic 500\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes/vol222 -> HTTP 500\n{\n  \"error\": \"synthetic 500\"\n}",
+   "status_code": 500,
+   "transient": true
+  },
+  {
+   "name": "get_volume_http_502",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "status": 502,
+    "body": "{\"error\": \"synthetic 502\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes/vol222 -> HTTP 502\n{\n  \"error\": \"synthetic 502\"\n}",
+   "status_code": 502,
+   "transient": true
+  },
+  {
+   "name": "get_volume_http_503",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "status": 503,
+    "body": "{\"error\": \"synthetic 503\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes/vol222 -> HTTP 503\n{\n  \"error\": \"synthetic 503\"\n}",
+   "status_code": 503,
+   "transient": true
+  },
+  {
+   "name": "get_volume_http_504",
+   "call": [
+    "get_volume",
+    "vol222"
+   ],
+   "reply": {
+    "status": 504,
+    "body": "{\"error\": \"synthetic 504\"}"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes/vol222",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes/vol222 -> HTTP 504\n{\n  \"error\": \"synthetic 504\"\n}",
+   "status_code": 504,
+   "transient": true
+  },
+  {
+   "name": "http_error_nested_json_detail",
+   "call": [
+    "create_pod",
+    {
+     "name": "x"
+    }
+   ],
+   "reply": {
+    "status": 500,
+    "body": "{\"error\": \"create pod: There are no longer any instances available with the requested specifications.\", \"details\": {\"gpuTypeIds\": [\"A\", \"B\"], \"retry\": null, \"n\": [], \"m\": {}}}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "13"
+     },
+     "body": "{\"name\": \"x\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no longer any instances available with the requested specifications.\",\n  \"details\": {\n    \"gpuTypeIds\": [\n      \"A\",\n      \"B\"\n    ],\n    \"retry\": null,\n    \"n\": [],\n    \"m\": {}\n  }\n}",
+   "status_code": 500,
+   "transient": true
+  },
+  {
+   "name": "http_error_text_detail",
+   "call": [
+    "list_pods"
+   ],
+   "reply": {
+    "status": 502,
+    "body": "<html>502 Bad Gateway</html>",
+    "content_type": "text/html"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /pods -> HTTP 502\n<html>502 Bad Gateway</html>",
+   "status_code": 502,
+   "transient": true
+  },
+  {
+   "name": "http_error_long_text_is_cut_at_2000",
+   "call": [
+    "list_pods"
+   ],
+   "reply": {
+    "status": 503,
+    "body": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx0123456789abcdef",
+    "content_type": "text/plain; charset=utf-8"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /pods -> HTTP 503\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx0123456789",
+   "status_code": 503,
+   "transient": true
+  },
+  {
+   "name": "http_error_json_scalar",
+   "call": [
+    "list_pods"
+   ],
+   "reply": {
+    "status": 403,
+    "body": "\"forbidden\""
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /pods -> HTTP 403\n\"forbidden\"",
+   "status_code": 403,
+   "transient": false
+  },
+  {
+   "name": "http_error_empty_body",
+   "call": [
+    "stop_pod",
+    "pod111"
+   ],
+   "reply": {
+    "status": 500,
+    "body": ""
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods/pod111/stop",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "0"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "POST /pods/pod111/stop -> HTTP 500\n",
+   "status_code": 500,
+   "transient": true
+  },
+  {
+   "name": "transport_failure_is_transient",
+   "call": [
+    "get_pod",
+    "pod111"
+   ],
+   "reply": {
+    "fail": "connect"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/pods/pod111",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /pods/pod111 -> ConnectionError: synthetic: connection refused",
+   "status_code": null,
+   "transient": true
+  },
+  {
+   "name": "read_timeout_is_transient",
+   "call": [
+    "list_volumes"
+   ],
+   "reply": {
+    "body": "",
+    "then": "read_timeout"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GET /networkvolumes -> ConnectionError: None: Read timed out.",
+   "status_code": null,
+   "transient": true
+  },
+  {
+   "name": "data_centers",
+   "call": [
+    "data_centers"
+   ],
+   "reply": {
+    "body": "{\"data\": {\"dataCenters\": [{\"id\": \"US-MO-1\", \"location\": \"United States\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"High\", \"available\": true}]}]}}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "124"
+     },
+     "body": "{\"query\": \"query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": [
+    {
+     "id": "US-MO-1",
+     "location": "United States",
+     "listed": true,
+     "storageSupport": true,
+     "gpuAvailability": [
+      {
+       "gpuTypeId": "NVIDIA A100-SXM4-80GB",
+       "stockStatus": "High",
+       "available": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "data_centers_null_data",
+   "call": [
+    "data_centers"
+   ],
+   "reply": {
+    "body": "{\"data\": null}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "124"
+     },
+     "body": "{\"query\": \"query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": []
+  },
+  {
+   "name": "data_centers_null_list",
+   "call": [
+    "data_centers"
+   ],
+   "reply": {
+    "body": "{\"data\": {\"dataCenters\": null}}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "124"
+     },
+     "body": "{\"query\": \"query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": []
+  },
+  {
+   "name": "graphql_errors_at_200",
+   "call": [
+    "data_centers"
+   ],
+   "reply": {
+    "body": "{\"errors\": [{\"message\": \"Something went wrong\", \"path\": [\"dataCenters\"]}], \"data\": null}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "124"
+     },
+     "body": "{\"query\": \"query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GraphQL -> HTTP 200\n[{\"message\": \"Something went wrong\", \"path\": [\"dataCenters\"]}]",
+   "status_code": 200,
+   "transient": false
+  },
+  {
+   "name": "graphql_empty_errors_are_no_error",
+   "call": [
+    "data_centers"
+   ],
+   "reply": {
+    "body": "{\"errors\": [], \"data\": {\"dataCenters\": []}}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "124"
+     },
+     "body": "{\"query\": \"query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": []
+  },
+  {
+   "name": "graphql_no_data_key",
+   "call": [
+    "data_centers"
+   ],
+   "reply": {
+    "body": "{}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "124"
+     },
+     "body": "{\"query\": \"query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GraphQL -> HTTP 200\n{}",
+   "status_code": 200,
+   "transient": false
+  },
+  {
+   "name": "graphql_http_500_text",
+   "call": [
+    "data_centers"
+   ],
+   "reply": {
+    "status": 500,
+    "body": "upstream failed",
+    "content_type": "text/plain"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "124"
+     },
+     "body": "{\"query\": \"query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GraphQL -> HTTP 500\nupstream failed",
+   "status_code": 500,
+   "transient": true
+  },
+  {
+   "name": "graphql_http_429_json",
+   "call": [
+    "data_centers"
+   ],
+   "reply": {
+    "status": 429,
+    "body": "{\"data\": {\"dataCenters\": []}}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "124"
+     },
+     "body": "{\"query\": \"query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GraphQL -> HTTP 429\n{\"data\": {\"dataCenters\": []}}",
+   "status_code": 429,
+   "transient": true
+  },
+  {
+   "name": "graphql_not_json",
+   "call": [
+    "data_centers"
+   ],
+   "reply": {
+    "status": 200,
+    "body": "<html></html>",
+    "content_type": "text/html"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "124"
+     },
+     "body": "{\"query\": \"query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GraphQL -> HTTP 200\n<html></html>",
+   "status_code": 200,
+   "transient": false
+  },
+  {
+   "name": "graphql_transport_failure",
+   "call": [
+    "data_centers"
+   ],
+   "reply": {
+    "fail": "connect"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "124"
+     },
+     "body": "{\"query\": \"query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "error": "GraphQL -> ConnectionError: synthetic: connection refused",
+   "status_code": null,
+   "transient": true
+  },
+  {
+   "name": "cuda_stock_with_older",
+   "call": [
+    "cuda_stock",
+    [
+     "US-MO-1",
+     "EU-RO-1"
+    ],
+    [
+     "NVIDIA A100-SXM4-80GB",
+     "NVIDIA H100 80GB HBM3"
+    ],
+    "13.0",
+    [
+     "12.8",
+     "12.9"
+    ],
+    true
+   ],
+   "reply": {
+    "body": "{\"data\": {\"s0_0f\": [{\"lowestPrice\": {\"stockStatus\": \"High\"}}], \"s0_0o\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s0_1f\": [{\"lowestPrice\": null}], \"s0_1o\": [], \"s1_0f\": [null], \"s1_0o\": null, \"s1_1f\": [{\"lowestPrice\": {\"stockStatus\": \"Medium\"}}]}}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "1546"
+     },
+     "body": "{\"query\": \"query { s0_0f: gpuTypes(input: {id: \\\"NVIDIA A100-SXM4-80GB\\\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \\\"US-MO-1\\\", minCudaVersion: \\\"13.0\\\"}) { stockStatus } } s0_0o: gpuTypes(input: {id: \\\"NVIDIA A100-SXM4-80GB\\\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \\\"US-MO-1\\\", allowedCudaVersions: [\\\"12.8\\\", \\\"12.9\\\"]}) { stockStatus } } s0_1f: gpuTypes(input: {id: \\\"NVIDIA H100 80GB HBM3\\\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \\\"US-MO-1\\\", minCudaVersion: \\\"13.0\\\"}) { stockStatus } } s0_1o: gpuTypes(input: {id: \\\"NVIDIA H100 80GB HBM3\\\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \\\"US-MO-1\\\", allowedCudaVersions: [\\\"12.8\\\", \\\"12.9\\\"]}) { stockStatus } } s1_0f: gpuTypes(input: {id: \\\"NVIDIA A100-SXM4-80GB\\\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \\\"EU-RO-1\\\", minCudaVersion: \\\"13.0\\\"}) { stockStatus } } s1_0o: gpuTypes(input: {id: \\\"NVIDIA A100-SXM4-80GB\\\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \\\"EU-RO-1\\\", allowedCudaVersions: [\\\"12.8\\\", \\\"12.9\\\"]}) { stockStatus } } s1_1f: gpuTypes(input: {id: \\\"NVIDIA H100 80GB HBM3\\\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \\\"EU-RO-1\\\", minCudaVersion: \\\"13.0\\\"}) { stockStatus } } s1_1o: gpuTypes(input: {id: \\\"NVIDIA H100 80GB HBM3\\\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \\\"EU-RO-1\\\", allowedCudaVersions: [\\\"12.8\\\", \\\"12.9\\\"]}) { stockStatus } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": [
+    [
+     "US-MO-1",
+     "NVIDIA A100-SXM4-80GB",
+     "High",
+     "Low"
+    ],
+    [
+     "US-MO-1",
+     "NVIDIA H100 80GB HBM3",
+     null,
+     null
+    ],
+    [
+     "EU-RO-1",
+     "NVIDIA A100-SXM4-80GB",
+     null,
+     null
+    ],
+    [
+     "EU-RO-1",
+     "NVIDIA H100 80GB HBM3",
+     "Medium",
+     null
+    ]
+   ]
+  },
+  {
+   "name": "cuda_stock_community_no_older",
+   "call": [
+    "cuda_stock",
+    [
+     "CA-MTL-3"
+    ],
+    [
+     "NVIDIA A100 80GB PCIe"
+    ],
+    "12.8",
+    [],
+    false
+   ],
+   "reply": {
+    "body": "{\"data\": {\"s0_0f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}]}}"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json",
+      "Content-Length": "206"
+     },
+     "body": "{\"query\": \"query { s0_0f: gpuTypes(input: {id: \\\"NVIDIA A100 80GB PCIe\\\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: false, dataCenterId: \\\"CA-MTL-3\\\", minCudaVersion: \\\"12.8\\\"}) { stockStatus } } }\"}",
+     "timeout": 60,
+     "stream": false
+    }
+   ],
+   "ok": [
+    [
+     "CA-MTL-3",
+     "NVIDIA A100 80GB PCIe",
+     "Low",
+     null
+    ]
+   ]
+  },
+  {
+   "name": "pod_logs_entries_sorted_by_ts",
+   "call": [
+    "pod_logs",
+    "pod111",
+    100,
+    8
+   ],
+   "reply": {
+    "chunks": [
+     "data: {\"ts\": \"2026-07-15T10:00:02Z\", \"source\": \"container\", \"line\": \"second\"}\n",
+     ": keepalive\n",
+     "data: {\"ts\": \"2026-07-15T10:00:01Z\", \"source\": \"system\", \"line\": \"first\"}\n",
+     "data: not json\n",
+     "data: [1, 2]\n",
+     "data: {\"ts\": \"2026-07-15T10:00:03Z\", \"source\": \"system\"}\n",
+     "data:{\"source\": \"container\", \"line\": \"no ts, sorts first\"}\r\n",
+     "event: log\n",
+     "data: {\"ts\": \"2026-07-15T10:00:04Z\", \"line\": \"café \\u00e9\"}\n"
+    ]
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://api.runpod.io/v2/pods/pod111/logs?tail=100",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": [
+      5,
+      2
+     ],
+     "stream": true
+    }
+   ],
+   "ok": [
+    {
+     "source": "container",
+     "line": "no ts, sorts first"
+    },
+    {
+     "ts": "2026-07-15T10:00:01Z",
+     "source": "system",
+     "line": "first"
+    },
+    {
+     "ts": "2026-07-15T10:00:02Z",
+     "source": "container",
+     "line": "second"
+    },
+    {
+     "ts": "2026-07-15T10:00:04Z",
+     "line": "café é"
+    }
+   ]
+  },
+  {
+   "name": "pod_logs_split_across_chunks",
+   "call": [
+    "pod_logs",
+    "pod111",
+    30,
+    8
+   ],
+   "reply": {
+    "chunks": [
+     "data: {\"ts\": \"1\", \"li",
+     "ne\": \"a\"}\ndata: {\"ts\": \"0\", \"line\"",
+     ": \"b\"}\n",
+     "data: {\"line\": \"no newline at the end\"}"
+    ]
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://api.runpod.io/v2/pods/pod111/logs?tail=30",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": [
+      5,
+      2
+     ],
+     "stream": true
+    }
+   ],
+   "ok": [
+    {
+     "line": "no newline at the end"
+    },
+    {
+     "ts": "0",
+     "line": "b"
+    },
+    {
+     "ts": "1",
+     "line": "a"
+    }
+   ]
+  },
+  {
+   "name": "pod_logs_stall_after_entries_returns_them",
+   "call": [
+    "pod_logs",
+    "pod111",
+    5000,
+    8
+   ],
+   "reply": {
+    "chunks": [
+     "data: {\"ts\": \"1\", \"line\": \"a\"}\n"
+    ],
+    "then": "read_timeout"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://api.runpod.io/v2/pods/pod111/logs?tail=5000",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": [
+      5,
+      2
+     ],
+     "stream": true
+    }
+   ],
+   "ok": [
+    {
+     "ts": "1",
+     "line": "a"
+    }
+   ]
+  },
+  {
+   "name": "pod_logs_stall_before_entries_is_an_error",
+   "call": [
+    "pod_logs",
+    "pod111",
+    100,
+    8
+   ],
+   "reply": {
+    "chunks": [
+     ": keepalive\n"
+    ],
+    "then": "read_timeout"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://api.runpod.io/v2/pods/pod111/logs?tail=100",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": [
+      5,
+      2
+     ],
+     "stream": true
+    }
+   ],
+   "error": "Platform logs unavailable (ConnectionError)",
+   "status_code": null,
+   "transient": true
+  },
+  {
+   "name": "pod_logs_unreachable",
+   "call": [
+    "pod_logs",
+    "pod111",
+    100,
+    8
+   ],
+   "reply": {
+    "fail": "connect"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://api.runpod.io/v2/pods/pod111/logs?tail=100",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": [
+      5,
+      2
+     ],
+     "stream": true
+    }
+   ],
+   "error": "Platform logs unavailable (ConnectionError)",
+   "status_code": null,
+   "transient": true
+  },
+  {
+   "name": "pod_logs_http_401",
+   "call": [
+    "pod_logs",
+    "pod111",
+    100,
+    8
+   ],
+   "reply": {
+    "status": 401,
+    "chunks": [
+     "{\"error\": \"unauthorized\"}"
+    ]
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://api.runpod.io/v2/pods/pod111/logs?tail=100",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": [
+      5,
+      2
+     ],
+     "stream": true
+    }
+   ],
+   "error": "Platform logs -> HTTP 401",
+   "status_code": 401,
+   "transient": false
+  },
+  {
+   "name": "pod_logs_http_404",
+   "call": [
+    "pod_logs",
+    "pod111",
+    100,
+    8
+   ],
+   "reply": {
+    "status": 404,
+    "chunks": [
+     ""
+    ]
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://api.runpod.io/v2/pods/pod111/logs?tail=100",
+     "headers": {
+      "User-Agent": "python-requests/2.34.2",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept": "*/*",
+      "Connection": "keep-alive",
+      "Authorization": "Bearer rpa_SYNTHETICKEY0000",
+      "Content-Type": "application/json"
+     },
+     "body": null,
+     "timeout": [
+      5,
+      2
+     ],
+     "stream": true
+    }
+   ],
+   "error": "Platform logs -> HTTP 404",
+   "status_code": 404,
+   "transient": false
+  },
+  {
+   "name": "proxy_url",
+   "call": [
+    "proxy_url",
+    "pod111",
+    "8000"
+   ],
+   "ok": "https://pod111-8000.proxy.runpod.net"
+  }
+ ]
+}

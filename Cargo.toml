@@ -3,6 +3,7 @@ members = [
     "crates/viy",
     "crates/viy-agent",
     "crates/viy-config",
+    "crates/viy-http",
     "crates/viy-pod",
     "crates/viy-protocol",
     "crates/viy-term",
@@ -23,6 +24,7 @@ publish = false
 # Internal
 viy-agent = { path = "crates/viy-agent" }
 viy-config = { path = "crates/viy-config" }
+viy-http = { path = "crates/viy-http" }
 viy-pod = { path = "crates/viy-pod" }
 viy-protocol = { path = "crates/viy-protocol" }
 viy-term = { path = "crates/viy-term" }
@@ -44,8 +46,16 @@ ratatui = { version = "0.30.2", default-features = false, features = [
     "underline-color",
 ] }
 regex = "1.13.1"
+# Codex's HTTP stack (codex-rs/Cargo.toml, http-client/Cargo.toml): rustls
+# with the system's root certificates (flags.md F23). No http2: rp's requests
+# speaks HTTP/1.1 (kb d046). No decompression: RunPod's answers are small.
+reqwest = { version = "0.12.28", default-features = false, features = [
+    "rustls-tls-native-roots",
+] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["float_roundtrip", "preserve_order"] }
+thiserror = "2.0.21"
+tokio = "1.53.1"
 unicode-width = "0.2"
 vt100 = "0.16.2"
 

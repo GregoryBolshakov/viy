@@ -14,3 +14,13 @@ doctest = false
 workspace = true
 
 [dependencies]
+indexmap = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+viy-http = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+viy-testkit = { workspace = true }

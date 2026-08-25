@@ -4,3 +4,5 @@
 //! boot report, regions and backup, the network volume, idle stamp, reap and
 //! shutdown, and the `runpod`, `openai` and `local` backends (ROADMAP
 //! phase 2). The pod side itself is not ported (kb d003).
+
+pub mod api;

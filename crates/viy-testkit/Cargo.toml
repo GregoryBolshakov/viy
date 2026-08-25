@@ -19,6 +19,8 @@ oracle = []
 
 [dependencies]
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+viy-http = { workspace = true }
 viy-protocol = { workspace = true }
 
 [dev-dependencies]

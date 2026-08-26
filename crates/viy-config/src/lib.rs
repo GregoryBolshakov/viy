@@ -5,6 +5,7 @@
 //! redaction. Ported from rpctl's `config.py`, `vault.py` and `redact.py`
 //! (ROADMAP phase 1).
 
+pub mod atomic;
 pub mod config;
 mod defaults;
 pub mod migrate;

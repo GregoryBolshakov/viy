@@ -7,3 +7,12 @@
 
 pub mod api;
 pub mod boot;
+pub mod lock;
+pub mod process;
+pub mod state;
+
+/// rp, from the pinned snapshot, and viy on one state directory.
+#[cfg(test)]
+#[cfg(feature = "oracle")]
+#[path = "interop_tests.rs"]
+mod interop_tests;

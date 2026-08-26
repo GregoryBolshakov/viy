@@ -148,6 +148,31 @@ impl Drop for Oracle {
     }
 }
 
+/// The pinned rpctl snapshot's directory, extracted by `tools/refsnap.sh`
+/// if it is not there yet: for tests that run rpctl's own code beside
+/// viy's, such as the pod-state interop tests. Run once per test process,
+/// since refsnap.sh extracting twice at once would trip over itself.
+pub fn snapshot_dir() -> io::Result<std::path::PathBuf> {
+    static DIR: std::sync::OnceLock<Result<std::path::PathBuf, String>> =
+        std::sync::OnceLock::new();
+    DIR.get_or_init(|| extract_snapshot().map_err(|e| e.to_string()))
+        .clone()
+        .map_err(io::Error::other)
+}
+
+fn extract_snapshot() -> io::Result<std::path::PathBuf> {
+    let root = repo_root();
+    let out = Command::new(root.join("tools").join("refsnap.sh"))
+        .current_dir(&root)
+        .stderr(Stdio::inherit())
+        .output()?;
+    if !out.status.success() {
+        return Err(io::Error::other(format!("refsnap.sh: {}", out.status)));
+    }
+    let rel = String::from_utf8(out.stdout).map_err(io::Error::other)?;
+    std::fs::canonicalize(root.join(rel.trim_end()))
+}
+
 /// A Python tuple, as the oracle tags it.
 pub fn tuple(items: Vec<Value>) -> Value {
     json!({ "$tuple": items })

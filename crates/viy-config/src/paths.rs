@@ -98,6 +98,16 @@ impl Paths {
         self.pod_state_dir().join("pod.json")
     }
 
+    /// Held only around each read-modify-write of `pod.json`.
+    pub fn pod_state_lock_file(&self) -> PathBuf {
+        self.pod_state_dir().join("pod.json.lock")
+    }
+
+    /// Held for the whole of up, stop and down, by rp and viy alike.
+    pub fn pod_lock_file(&self) -> PathBuf {
+        self.pod_state_dir().join("pod.lock")
+    }
+
     /// `~/.config/rpctl`: rp's global config, which `viy migrate` copies.
     pub fn rpctl_config_dir(&self) -> PathBuf {
         self.config_home.join(RPCTL)

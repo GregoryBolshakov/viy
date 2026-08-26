@@ -8,11 +8,8 @@
 //! target, as Codex's `write_atomically` does, and leaves it readable by its
 //! owner only (kb d040).
 
-use std::collections::HashSet;
 use std::fs;
 use std::io;
-use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -24,6 +21,7 @@ use rand::rngs::OsRng;
 
 use crate::Config;
 use crate::Paths;
+use crate::atomic::write_atomically;
 use crate::config::assignment;
 use crate::config::parse_env_file;
 
@@ -157,53 +155,6 @@ fn write_kv(path: &Path, key: &str, value: &str) -> io::Result<()> {
         out.push('\n');
     }
     write_atomically(path, &out)
-}
-
-/// Replaces `path` with `contents` in one step: written to a new file beside
-/// the target, mode 0600, then renamed over it. A symlink is followed to the
-/// file it points to, which is replaced, so the link stays.
-fn write_atomically(path: &Path, contents: &str) -> io::Result<()> {
-    let target = symlink_target(path);
-    let with_path = |e: io::Error| io::Error::new(e.kind(), format!("{}: {e}", target.display()));
-    let parent = target.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("{} has no parent directory", target.display()),
-        )
-    })?;
-    fs::create_dir_all(parent).map_err(with_path)?;
-    let name = target.file_name().unwrap_or_default().to_string_lossy();
-    let tmp = parent.join(format!(".{name}.tmp.{}", std::process::id()));
-    // Left behind by an earlier run with the same process ID.
-    let _ = fs::remove_file(&tmp);
-    let written = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&tmp)
-        .and_then(|mut file| file.write_all(contents.as_bytes()))
-        .and_then(|()| fs::rename(&tmp, &target));
-    if written.is_err() {
-        let _ = fs::remove_file(&tmp);
-    }
-    written.map_err(with_path)
-}
-
-/// Where a chain of symlinks starting at `path` ends; `path` itself when it
-/// is no symlink or the chain loops.
-fn symlink_target(path: &Path) -> PathBuf {
-    let mut current = path.to_path_buf();
-    let mut seen = HashSet::new();
-    while let Ok(link) = fs::read_link(&current) {
-        if !seen.insert(current.clone()) {
-            return path.to_path_buf();
-        }
-        current = match current.parent() {
-            Some(dir) => dir.join(link),
-            None => link,
-        };
-    }
-    current
 }
 
 #[cfg(test)]

@@ -13,8 +13,13 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+# The interop tests need python3 and the rpctl checkout; off in the pre-commit hook.
+oracle = ["viy-testkit/oracle"]
+
 [dependencies]
 indexmap = { workspace = true }
+libc = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["time"] }

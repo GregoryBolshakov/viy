@@ -105,10 +105,11 @@ pub fn persist(cfg: &mut Config, paths: &Paths, key: &str, value: &str) -> io::R
     Ok(())
 }
 
-/// The endpoint's bearer token, VLLM_API_KEY: made once and kept in the
-/// global config file. `sk-` and 32 random bytes in unpadded URL-safe
-/// base64, the shape of rpctl's `secrets.token_urlsafe(32)`, from the
-/// system's random source as Codex mints its secrets.
+/// The endpoint's bearer token, VLLM_API_KEY: viy's own, never rp's (kb
+/// d048), made once and kept in viy's global config file. `sk-` and 32
+/// random bytes in unpadded URL-safe base64, the shape of rpctl's
+/// `secrets.token_urlsafe(32)`, from the system's random source as Codex
+/// mints its secrets.
 pub fn ensure_vllm_api_key(cfg: &mut Config, paths: &Paths) -> io::Result<String> {
     if let Some(key) = cfg.get("VLLM_API_KEY").filter(|k| !k.is_empty()) {
         return Ok(key.to_string());

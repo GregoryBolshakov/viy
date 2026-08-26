@@ -2445,8 +2445,10 @@ version = "0.1.0"
 name = "viy-config"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "indexmap",
  "pretty_assertions",
+ "rand 0.9.5",
  "regex",
  "serde_json",
  "viy-testkit",
@@ -2471,6 +2473,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "viy-config",
  "viy-http",
  "viy-testkit",
 ]

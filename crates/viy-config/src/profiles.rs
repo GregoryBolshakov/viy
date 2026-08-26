@@ -1,5 +1,5 @@
 //! Model profiles and writing config keys back (rpctl's `config.py` from
-//! `_write_kv` to `persist`). A profile bundles the model and serving keys
+//! `_write_kv` to `persist`, and `ensure_vllm_api_key`). A profile bundles the model and serving keys
 //! for one model at `~/.config/viy/profiles/<name>.env`; MODEL_PROFILE in
 //! the environment or else the global file selects it, and
 //! [`crate::Layers`] layers it between the global and the project files.
@@ -16,7 +16,11 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use indexmap::IndexMap;
+use rand::TryRngCore;
+use rand::rngs::OsRng;
 
 use crate::Config;
 use crate::Paths;
@@ -99,6 +103,22 @@ pub fn persist(cfg: &mut Config, paths: &Paths, key: &str, value: &str) -> io::R
     write_kv(&path, key, value)?;
     cfg.set(key, value);
     Ok(())
+}
+
+/// The endpoint's bearer token, VLLM_API_KEY: made once and kept in the
+/// global config file. `sk-` and 32 random bytes in unpadded URL-safe
+/// base64, the shape of rpctl's `secrets.token_urlsafe(32)`, from the
+/// system's random source as Codex mints its secrets.
+pub fn ensure_vllm_api_key(cfg: &mut Config, paths: &Paths) -> io::Result<String> {
+    if let Some(key) = cfg.get("VLLM_API_KEY").filter(|k| !k.is_empty()) {
+        return Ok(key.to_string());
+    }
+    let mut bytes = [0_u8; 32];
+    OsRng.try_fill_bytes(&mut bytes).map_err(io::Error::other)?;
+    let key = format!("sk-{}", URL_SAFE_NO_PAD.encode(bytes));
+    set_key(paths, "VLLM_API_KEY", &key)?;
+    cfg.set("VLLM_API_KEY", &key);
+    Ok(key)
 }
 
 /// Sets `key=value` in a `KEY=value` file, keeping its comments and order.

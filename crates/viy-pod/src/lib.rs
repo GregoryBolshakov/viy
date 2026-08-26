@@ -6,3 +6,4 @@
 //! phase 2). The pod side itself is not ported (kb d003).
 
 pub mod api;
+pub mod boot;

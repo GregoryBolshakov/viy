@@ -18,7 +18,9 @@ workspace = true
 oracle = ["viy-testkit/oracle"]
 
 [dependencies]
+base64 = { workspace = true }
 indexmap = { workspace = true }
+rand = { workspace = true }
 regex = { workspace = true }
 serde_json = { workspace = true }
 

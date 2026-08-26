@@ -203,3 +203,43 @@ fn persist_writes_to_the_profile_load_layered() {
         "POD_NAME=pod-a\nNETWORK_VOLUME_ID=vol-a\n"
     );
 }
+
+#[test]
+fn the_endpoint_key_is_made_once_and_kept_in_the_global_file() {
+    let scratch = ScratchDir::new("profiles").unwrap();
+    let paths = Paths::under(scratch.path());
+    let mut cfg = Config::defaults();
+    let key = ensure_vllm_api_key(&mut cfg, &paths).unwrap();
+    let token = key.strip_prefix("sk-").unwrap();
+    assert_eq!(token.len(), 43);
+    assert!(
+        token
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    );
+    assert_eq!(cfg.get("VLLM_API_KEY"), Some(key.as_str()));
+    let file = fs::read_to_string(paths.config_file()).unwrap();
+    assert_eq!(file, format!("VLLM_API_KEY={key}\n"));
+    assert_eq!(ensure_vllm_api_key(&mut cfg, &paths).unwrap(), key);
+    assert_eq!(fs::read_to_string(paths.config_file()).unwrap(), file);
+
+    let other = ScratchDir::new("profiles").unwrap();
+    let mut fresh = Config::defaults();
+    assert_ne!(
+        ensure_vllm_api_key(&mut fresh, &Paths::under(other.path())).unwrap(),
+        key
+    );
+}
+
+#[test]
+fn a_configured_endpoint_key_is_used_and_nothing_written() {
+    let scratch = ScratchDir::new("profiles").unwrap();
+    let paths = Paths::under(scratch.path());
+    let mut cfg = Config::defaults();
+    cfg.set("VLLM_API_KEY", "sk-configured");
+    assert_eq!(
+        ensure_vllm_api_key(&mut cfg, &paths).unwrap(),
+        "sk-configured"
+    );
+    assert!(!paths.config_file().exists());
+}

@@ -924,6 +924,140 @@ def gen_pod_api(snap):
     }
 
 
+# ------------------------------------------------------------------- pod/boot
+
+# One case: config keys over rpctl's DEFAULTS, the endpoint key, the network
+# volume id and the SSH public key, and what rpctl's boot.py builds from them:
+# the vLLM argument list, the boot script and the create-pod body (or the
+# exception building the body raised; `bad_key` is the key it is about, which
+# Python's message does not name). With `host`, only the argument list,
+# as the local backend asks for it. The scripts embed startup.py verbatim;
+# to keep the file small, the one copy in each script is written as
+# STARTUP_MARKER and the text itself is the case called "startup.py", and the
+# body's dockerStartCmd, the script once more, as BOOT_SCRIPT_MARKER. The
+# generator checks that both stand for exactly that text. Values are
+# synthetic; the "live" case has the keys rpctl kb f019-f022 found in
+# Gregory's config, with those public numbers.
+STARTUP_MARKER = "<startup.py>"
+BOOT_SCRIPT_MARKER = "<boot_script>"
+BOOT_KEY = "sk-SYNTHETICENDPOINT"
+BOOT_VOLUME = "vol222"
+BOOT_PUBKEY = "ssh-ed25519 AAAAC3NzaSYNTHETIC test@viy-fixture"
+
+BOOT_CASES = [
+    dict(name="defaults"),
+    dict(name="live_profile", cfg=dict(MAX_MODEL_LEN="262144", MAX_NUM_SEQS="4",
+                                       GPU_MEMORY_UTILIZATION="0.94")),
+    dict(name="fp8_kv", cfg=dict(KV_CACHE_DTYPE="fp8")),
+    dict(name="mtp", cfg=dict(MTP_SPECULATIVE_TOKENS="3")),
+    dict(name="tunnel_off", cfg=dict(TUNNEL="0")),
+    dict(name="tunnel_no_padded", cfg=dict(TUNNEL=" no ")),
+    dict(name="tunnel_yes", cfg=dict(TUNNEL="yes")),
+    dict(name="prewarm_off", cfg=dict(WEIGHTS_PREWARM="0")),
+    dict(name="caches_off_mm_warmup_on", cfg=dict(STARTUP_CACHE="0", MM_WARMUP="1",
+                                                  MODEL_CACHE_MODE="online")),
+    dict(name="everything_on", cfg=dict(
+        KV_CACHE_DTYPE="fp8", MTP_SPECULATIVE_TOKENS="3", TRUST_REMOTE_CODE="1",
+        SAFETENSORS_LOAD_STRATEGY="eager", HF_TOKEN="hf_synthetic",
+        RUNPOD_WATCHDOG_API_KEY="rpa_watchdogsynthetic", GPU_COUNT="2",
+        CUDA_VERSIONS=" 12.8, 12.9 ,,", GPU_TYPE_IDS=" NVIDIA A100 80GB PCIe , ,NVIDIA H100 NVL",
+        DATA_CENTER_ID="US-KS-2", CLOUD_TYPE="COMMUNITY", GPU_TYPE_PRIORITY="availability")),
+    dict(name="tools_and_search_off", cfg=dict(SEARCH_ENABLED="0", TOOLS_ENABLED="0")),
+    dict(name="search_only", cfg=dict(TOOLS_ENABLED="0")),
+    dict(name="tools_only", cfg=dict(SEARCH_ENABLED="0")),
+    dict(name="no_tool_parser", cfg=dict(TOOL_CALL_PARSER="")),
+    dict(name="enabled_is_only_1", cfg=dict(SEARCH_ENABLED="true", TOOLS_ENABLED="yes")),
+    dict(name="prefix_caching_off", cfg=dict(PREFIX_CACHING="0")),
+    dict(name="prefix_caching_empty", cfg=dict(PREFIX_CACHING="")),
+    dict(name="optional_strings_empty", cfg=dict(
+        SAFETENSORS_LOAD_STRATEGY="", TRUST_REMOTE_CODE="", MODEL_CACHE_MODE="",
+        STARTUP_CACHE="", WEIGHTS_PREWARM="", MM_WARMUP="", CUDA_VERSIONS="")),
+    dict(name="values_that_need_quoting", cfg=dict(
+        MODEL_REPO="o/m it's \"x\" $HOME `id` \\ ;|&", SERVED_MODEL_NAME="",
+        VLLM_PORT="80 00", MAX_IMAGES_PER_PROMPT="4,\"audio\":1",
+        MAX_MODEL_LEN="65536\nexport X=1", GPU_MEMORY_UTILIZATION="0.9'",
+        TOOL_CALL_PARSER="qwen3_xml --x", MODEL_CACHE_MODE="a b"),
+        key="k'e\"y $x"),
+    dict(name="safe_characters_unquoted", cfg=dict(
+        MODEL_REPO="Org_1/Model-2.5+fp8@main%x=y:z,w", SERVED_MODEL_NAME="a.b-c_d")),
+    dict(name="non_ascii_is_quoted", cfg=dict(SERVED_MODEL_NAME="модель", MODEL_REPO="o/é")),
+    dict(name="no_public_key", pubkey=None),
+    dict(name="empty_public_key", pubkey=""),
+    dict(name="numbers_in_python_forms", cfg=dict(
+        IDLE_TTL_MIN=" 30 ", MAX_POD_HOURS="1.5", GPU_COUNT=" 2 ", CONTAINER_DISK_GB="+80")),
+    dict(name="idle_off", cfg=dict(IDLE_TTL_MIN="0", MAX_POD_HOURS="")),
+    dict(name="idle_fractions", cfg=dict(IDLE_TTL_MIN="0.01", MAX_POD_HOURS="0.0001")),
+    dict(name="idle_negative_zero", cfg=dict(IDLE_TTL_MIN="-0", MAX_POD_HOURS="-0.0001")),
+    dict(name="idle_negative", cfg=dict(IDLE_TTL_MIN="-2.5")),
+    dict(name="idle_exponent", cfg=dict(IDLE_TTL_MIN="1e1", MAX_POD_HOURS="1E30")),
+    dict(name="gpu_count_not_a_number", cfg=dict(GPU_COUNT="two"), bad_key="GPU_COUNT"),
+    dict(name="disk_not_whole", cfg=dict(CONTAINER_DISK_GB="60.5"), bad_key="CONTAINER_DISK_GB"),
+    dict(name="idle_not_a_number", cfg=dict(IDLE_TTL_MIN="soon"), bad_key="IDLE_TTL_MIN"),
+    dict(name="idle_blank", cfg=dict(IDLE_TTL_MIN="  "), bad_key="IDLE_TTL_MIN"),
+    dict(name="idle_infinite", cfg=dict(IDLE_TTL_MIN="inf"), bad_key="IDLE_TTL_MIN"),
+    dict(name="max_hours_nan", cfg=dict(MAX_POD_HOURS="nan"), bad_key="MAX_POD_HOURS"),
+    dict(name="local_backend_host", cfg=dict(TUNNEL="0"), host="127.0.0.1"),
+    dict(name="local_backend_host_tunnel_on", host="127.0.0.1"),
+]
+
+BOOT_RUNNER = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import boot, config
+STARTUP, SCRIPT = sys.argv[3], sys.argv[4]
+runtime = (boot.Path(boot.__file__).with_name("startup.py")).read_text()
+
+def elide(script):
+    assert script.count(runtime) == 1 and STARTUP not in script and SCRIPT not in script
+    return script.replace(runtime, STARTUP)
+
+cases = [{"name": "startup.py", "text": runtime}]
+for case in json.loads(sys.argv[2]):
+    cfg = dict(config.DEFAULTS, **case["cfg"])
+    out = dict(case)
+    if case["host"] is not None:
+        out["vllm_args"] = boot.build_vllm_args(cfg, case["key"], host=case["host"])
+        cases.append(out)
+        continue
+    out["vllm_args"] = boot.build_vllm_args(cfg, case["key"])
+    script = boot.build_boot_script(cfg, case["key"])
+    out["boot_script"] = elide(script)
+    try:
+        body = boot.build_pod_body(cfg, case["key"], case["volume_id"], case["pubkey"])
+    except Exception as e:
+        out["pod_body_error"] = f"{type(e).__name__}: {e}"
+    else:
+        assert body["dockerStartCmd"] == [script]
+        body["dockerStartCmd"] = [SCRIPT]
+        out["pod_body"] = body
+    cases.append(out)
+print(json.dumps(cases))
+"""
+
+
+def gen_pod_boot(snap):
+    cases = [{"name": c["name"], "cfg": c.get("cfg", {}), "key": c.get("key", BOOT_KEY),
+              "volume_id": BOOT_VOLUME, "pubkey": c.get("pubkey", BOOT_PUBKEY),
+              "host": c.get("host"), **({"bad_key": c["bad_key"]} if "bad_key" in c else {})}
+             for c in BOOT_CASES]
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": tmp,
+               "XDG_CONFIG_HOME": tmp, "XDG_STATE_HOME": tmp, "XDG_DATA_HOME": tmp}
+        out = subprocess.run([sys.executable, "-I", "-c", BOOT_RUNNER, str(snap),
+                              json.dumps(cases), STARTUP_MARKER, BOOT_SCRIPT_MARKER],
+                             cwd=tmp, env=env, check=True, capture_output=True, text=True)
+    return {
+        "about": "rpctl boot.build_vllm_args, build_boot_script and build_pod_body for "
+                 "config keys over DEFAULTS (cfg), the endpoint key, the volume id and "
+                 "the SSH public key: the argument list, the script and the body, or the "
+                 "exception the body raised. In each script the embedded startup.py is "
+                 f"written {STARTUP_MARKER!r} (its text is the case 'startup.py'), and the "
+                 f"body's dockerStartCmd [script] as [{BOOT_SCRIPT_MARKER!r}]. Cases with a "
+                 "host have the argument list only, as the local backend builds it",
+        "cases": json.loads(out.stdout),
+    }
+
+
 GENERATORS = {
     "cli/flags": gen_cli_flags,
     "cli/parse": gen_cli_parse,
@@ -933,6 +1067,7 @@ GENERATORS = {
     "config/persist": gen_config_persist,
     "config/project": gen_config_project,
     "pod/api": gen_pod_api,
+    "pod/boot": gen_pod_boot,
 }
 
 # ------------------------------------------------------------------ driver

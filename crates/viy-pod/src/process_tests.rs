@@ -41,7 +41,9 @@ fn pids_that_name_a_group_are_not_alive() {
 }
 
 #[test]
-fn rp_by_rpctls_own_test_and_viy_by_its_program() {
+/// rpctl test_startup.py::test_down_may_signal_rp_and_viy_only, and which
+/// of the two.
+fn down_may_signal_rp_and_viy_only() {
     for (args, tool) in [
         (&["/home/u/.local/bin/rp", "up"][..], Some(Tool::Rp)),
         (&["rp", "chat"], Some(Tool::Rp)),
@@ -53,7 +55,9 @@ fn rp_by_rpctls_own_test_and_viy_by_its_program() {
         (&["/home/u/.cargo/bin/viy", "up"], Some(Tool::Viy)),
         (&["viy"], Some(Tool::Viy)),
         (&["target/debug/viy", "stop"], Some(Tool::Viy)),
-        (&["vim", "notes/viy"], None),
+        (&["sudo", "viy", "up"], Some(Tool::Viy)),
+        (&["/usr/bin/python3", "/opt/rp", "/tmp/viy"], Some(Tool::Rp)),
+        (&["vim", "notes.viy"], None),
         (&["/usr/bin/sharp", "x"], None),
         (&["/usr/bin/grp"], None),
         (&["viyx"], None),

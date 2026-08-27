@@ -24,7 +24,6 @@ use crate::lock::PreemptNotice;
 use crate::lock::tests::holder;
 use crate::lock::tests::python_as;
 use crate::lock::tests::soon;
-use crate::process;
 use crate::process::Tool;
 use crate::state;
 
@@ -165,21 +164,17 @@ fn viy_down_kills_rp_up_and_takes_the_lock() {
     );
 }
 
-/// F44: rp's `_is_rp_process` does not know viy, so `rp down` leaves a
-/// running `viy up` alone and tears down without the lock. Expected to
-/// change if rpctl learns viy's name.
+/// F44, fixed in rpctl 8665dfa: `rp down` kills a running `viy up` as it
+/// kills an `rp up`, and takes the lock.
 #[test]
-fn rp_down_does_not_kill_viy_up() {
+fn rp_down_kills_viy_up_and_takes_the_lock() {
     let home = Home::new();
     let viy = python_as(home.dir.path(), "viy");
-    let child = holder(&viy, &home.paths.pod_lock_file(), "up", &[]);
+    let mut child = holder(&viy, &home.paths.pod_lock_file(), "up", &[]);
     let out: Value = serde_json::from_str(&home.rp_says("preempt", &[])).unwrap();
-    assert_eq!(
-        out,
-        json!({"killed": [], "lock_file": format!("up {}", child.id())})
-    );
-    assert!(process::pid_alive(child.id()));
-    release(child);
+    assert!(!child.wait().unwrap().success());
+    assert_eq!(out["killed"], json!(["up"]));
+    assert_eq!(out["lock_file"], format!("down {}", out["pid"]));
 }
 
 #[test]

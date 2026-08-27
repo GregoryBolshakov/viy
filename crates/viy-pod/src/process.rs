@@ -33,19 +33,21 @@ pub fn cmdline(pid: u32) -> Vec<Vec<u8>> {
     raw.split(|&b| b == 0).map(<[u8]>::to_vec).collect()
 }
 
-/// Which tool a command line is: viy when its program is a binary named
-/// `viy`, rp by rpctl's own test (any argument that ends in `/rp`, is `rp`,
-/// or names `rpctl`), else neither. rp's `_is_rp_process` knows only the
-/// second; viy knows both, so `viy down` preempts either tool's `up`.
+/// Which tool a command line is, by rpctl's own test (`_is_rp_process`):
+/// rp or viy when an argument ends in `/rp` or `/viy`, is `rp` or `viy`, or
+/// names `rpctl`; neither otherwise. Of the two, viy when the program itself
+/// is named viy or nothing names rp.
 pub fn tool_of(argv: &[Vec<u8>]) -> Option<Tool> {
     let named = |a: &[u8], name: &[u8]| {
         a == name || (a.ends_with(name) && a[..a.len() - name.len()].ends_with(b"/"))
     };
-    if argv.first().is_some_and(|program| named(program, b"viy")) {
-        return Some(Tool::Viy);
-    }
     let rp = |a: &Vec<u8>| named(a, b"rp") || a.windows(5).any(|w| w == b"rpctl");
-    argv.iter().any(rp).then_some(Tool::Rp)
+    let viy = |a: &Vec<u8>| named(a, b"viy");
+    if argv.first().is_some_and(viy) || (argv.iter().any(viy) && !argv.iter().any(rp)) {
+        Some(Tool::Viy)
+    } else {
+        argv.iter().any(rp).then_some(Tool::Rp)
+    }
 }
 
 /// True if `pid` is a live process this user may signal. `kill(pid, 0)`

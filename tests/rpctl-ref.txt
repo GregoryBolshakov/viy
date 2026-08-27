@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: a51d1ca552713d6c81c160a44cf79b862ddb6bd1
+commit: 8665dfa0423d00827b0d61a0f2f28b48e0faf222
 branch: leak-protection
 pinned: 2026-07-15
-subject: Make rp init refuse to write its .gitignore through a symlink
+subject: Make rp down stop a running viy up too

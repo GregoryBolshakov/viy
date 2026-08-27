@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "a51d1ca552713d6c81c160a44cf79b862ddb6bd1",
+ "rpctl_commit": "8665dfa0423d00827b0d61a0f2f28b48e0faf222",
  "generator": "tools/fixtures.py cli/parse",
  "about": "rpctl __main__.build_parser().parse_args(argv): the exit status and, on success, the namespace without fn, values as strings",
  "cases": [

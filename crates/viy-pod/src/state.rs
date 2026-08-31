@@ -1,9 +1,9 @@
 //! `pod.json`, the one pod's state, shared with rp until cutover (kb d006):
 //! rpctl's `pod.load_state`, `save_state` and `clear_state`. It is a cache,
-//! RunPod is the truth (`resolve_pod`, WP 2.4). Every read-modify-write holds
-//! `pod.json.lock`, the same flock rp takes, so neither tool's update is
-//! lost to the other's; the file is replaced whole, so a reader never sees
-//! half of one.
+//! RunPod is the truth ([`crate::tracked::resolve`]). Every
+//! read-modify-write holds `pod.json.lock`, the same flock rp takes, so
+//! neither tool's update is lost to the other's; the file is replaced
+//! whole, so a reader never sees half of one.
 //!
 //! rp's fallback to its old in-repo `.pod_state.json` is not ported: a file
 //! from before `rp migrate` (kb d029).
@@ -21,7 +21,7 @@ use crate::lock::with_path;
 
 /// The keys rp and viy write, in rpctl's spelling.
 pub mod key {
-    /// The tracked pod's id; `resolve_pod` caches it.
+    /// The tracked pod's id; [`crate::tracked::resolve`] caches it.
     pub const POD_ID: &str = "pod_id";
     /// The pod's name on RunPod.
     pub const NAME: &str = "name";

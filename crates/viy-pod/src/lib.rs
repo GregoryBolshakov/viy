@@ -10,6 +10,7 @@ pub mod boot;
 pub mod lock;
 pub mod process;
 pub mod state;
+pub mod tracked;
 
 /// rp, from the pinned snapshot, and viy on one state directory.
 #[cfg(test)]

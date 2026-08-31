@@ -924,6 +924,214 @@ def gen_pod_api(snap):
     }
 
 
+# ---------------------------------------------------------------- pod/resolve
+
+# One case: pod.json before (text, or none), config keys over DEFAULTS, the
+# call (`resolve_pod`, or `base_url` with `discover`) and the HTTP answers its
+# requests get, in order. Out: the requests sent ("METHOD URL"), what rpctl
+# printed (`_say`), the pod or URL returned or RunPodError's text, pod.json
+# after, and tunnel_only and transport_label read after the call. Played
+# through rpctl's own api.RunPod with a transport adapter, the state
+# directory in a temporary HOME. Ids and bodies are synthetic; transient
+# errors are HTTP statuses, whose text viy shares (pod/api has the rest).
+OUR_NAME = "qwen-pod"
+RUNNING = {"id": "pod111", "name": OUR_NAME, "desiredStatus": "RUNNING", "costPerHr": 1.89,
+           "networkVolumeId": "vol222", "lastStartedAt": "2026-07-15T09:00:00Z"}
+
+
+def _pod(**kw):
+    return {**RUNNING, **kw}
+
+
+def _ok(body):
+    return dict(body=_json(body))
+
+
+def _state(**kw):
+    return json.dumps(kw, indent=2) + "\n"
+
+
+GONE = dict(status=404, body=_json({"error": "pod not found", "status": 404}))
+DOWN = dict(status=503, body="upstream unavailable", content_type="text/plain")
+CACHED = _state(pod_id="pod111", name=OUR_NAME, cost_per_hr=1.89, volume_id="vol222",
+                created_at=1761640000.5, tunnel_only=True, last_startup_seconds=88.4)
+OTHER = {"id": "pod999", "name": "someone-else", "desiredStatus": "RUNNING"}
+
+RESOLVE_CASES = [
+    # No cached id: RunPod is searched by POD_NAME.
+    dict(name="no_cache_no_pods", call="resolve_pod", replies=[_ok([])]),
+    dict(name="no_cache_adopts_by_name", call="resolve_pod",
+         replies=[_ok([OTHER, _pod(id="pod333")])]),
+    dict(name="no_cache_name_matches_exactly", call="resolve_pod",
+         replies=[_ok([_pod(name="Qwen-Pod"), _pod(name="qwen-pod "), _pod(name=None),
+                       {"id": "pod444", "desiredStatus": "RUNNING"}])]),
+    dict(name="no_cache_terminated_is_not_adopted", call="resolve_pod",
+         replies=[_ok([_pod(desiredStatus="TERMINATED")])]),
+    dict(name="no_cache_stopped_pod_is_adopted", call="resolve_pod",
+         replies=[_ok([_pod(desiredStatus="EXITED")])]),
+    dict(name="no_cache_list_unreachable", call="resolve_pod", replies=[DOWN]),
+    dict(name="empty_pod_id_is_no_cache", call="resolve_pod", state=_state(pod_id=""),
+         replies=[_ok([_pod()])]),
+    dict(name="unreadable_state_is_no_cache", call="resolve_pod", state='{"pod_id": ',
+         replies=[_ok([_pod()])]),
+    # Several pods with our name: RUNNING first, then the latest start
+    # (lastStartedAt, else createdAt), ties in RunPod's order.
+    dict(name="several_prefers_running_then_latest", call="resolve_pod", replies=[_ok([
+        _pod(id="podA", desiredStatus="EXITED", lastStartedAt="2026-07-15T12:00:00Z"),
+        _pod(id="podB", lastStartedAt="2026-07-14T08:00:00Z"),
+        _pod(id="podC", lastStartedAt="2026-07-15T08:00:00Z"),
+        _pod(id="podD", desiredStatus="TERMINATED", lastStartedAt="2026-07-16T00:00:00Z")])]),
+    dict(name="several_stopped_falls_back_to_created_at", call="resolve_pod", replies=[_ok([
+        _pod(id="podA", desiredStatus="EXITED", lastStartedAt=None,
+             createdAt="2026-07-07T00:00:00Z"),
+        _pod(id="podB", desiredStatus="EXITED", lastStartedAt="",
+             createdAt="2026-07-08T00:00:00Z"),
+        _pod(id="podC", desiredStatus="EXITED", lastStartedAt="2026-07-06T00:00:00Z")])]),
+    dict(name="several_ties_keep_runpods_order", call="resolve_pod", replies=[_ok([
+        {"id": "podA", "name": OUR_NAME, "desiredStatus": "CREATED"},
+        {"id": "podB", "name": OUR_NAME, "desiredStatus": "RUNNING"},
+        {"id": "podC", "name": OUR_NAME, "desiredStatus": "CREATED"},
+        {"id": "podD", "name": OUR_NAME, "desiredStatus": "RUNNING"}])]),
+    # What is cached: the volume from networkVolumeId, else networkVolume.id.
+    dict(name="volume_from_network_volume_object", call="resolve_pod", replies=[_ok([
+        _pod(networkVolumeId=None, networkVolume={"id": "vol555", "name": "w"})])]),
+    dict(name="volume_empty_id_falls_back", call="resolve_pod", replies=[_ok([
+        _pod(networkVolumeId="", networkVolume={"id": "vol555"})])]),
+    dict(name="volume_and_cost_absent_are_null", call="resolve_pod", replies=[_ok([
+        {"id": "pod111", "name": OUR_NAME, "desiredStatus": "RUNNING"}])]),
+    # A cached id: one GET while that pod lives; the other keys stay.
+    dict(name="cached_live_pod_one_get", call="resolve_pod", state=CACHED,
+         replies=[_ok(_pod(costPerHr=2.49))]),
+    dict(name="cached_pod_renamed_is_still_ours", call="resolve_pod", state=CACHED,
+         replies=[_ok(_pod(name="renamed-in-the-console"))]),
+    dict(name="cached_stopped_pod_is_still_ours", call="resolve_pod", state=CACHED,
+         replies=[_ok(_pod(desiredStatus="EXITED"))]),
+    dict(name="cached_pod_without_name_or_volume", call="resolve_pod", state=CACHED,
+         replies=[_ok({"id": "pod111", "desiredStatus": "RUNNING"})]),
+    dict(name="cached_get_unreachable_keeps_the_hint", call="resolve_pod", state=CACHED,
+         replies=[DOWN]),
+    dict(name="cached_get_refused_keeps_the_hint", call="resolve_pod", state=CACHED,
+         replies=[dict(status=401, body=_json({"error": "unauthorized"}))]),
+    # A cached id RunPod no longer has: search by name, adopt or clear.
+    dict(name="cached_gone_adopts_by_name", call="resolve_pod", state=CACHED,
+         replies=[GONE, _ok([_pod(id="pod333", costPerHr=0.79, networkVolumeId="vol666")])]),
+    dict(name="cached_terminated_adopts_by_name", call="resolve_pod", state=CACHED,
+         replies=[_ok(_pod(desiredStatus="TERMINATED")), _ok([_pod(id="pod333")])]),
+    dict(name="cached_gone_nothing_by_name_clears", call="resolve_pod", state=CACHED,
+         replies=[GONE, _ok([OTHER])]),
+    dict(name="cached_terminated_nothing_by_name_clears", call="resolve_pod", state=CACHED,
+         replies=[_ok(_pod(desiredStatus="TERMINATED")),
+                  _ok([_pod(desiredStatus="TERMINATED")])]),
+    dict(name="cached_gone_list_unreachable_keeps_the_hint", call="resolve_pod", state=CACHED,
+         replies=[GONE, DOWN]),
+    dict(name="cached_terminated_list_unreachable_keeps_the_hint", call="resolve_pod",
+         state=CACHED, replies=[_ok(_pod(desiredStatus="TERMINATED")), DOWN]),
+    dict(name="cached_gone_list_refused_keeps_the_hint", call="resolve_pod", state=CACHED,
+         replies=[GONE, dict(status=403, body=_json({"error": "forbidden"}))]),
+    dict(name="cached_gone_several_by_name", call="resolve_pod", state=CACHED,
+         replies=[GONE, _ok([_pod(id="podB", desiredStatus="EXITED"), _pod(id="podC")])]),
+    # base_url: the cached id with no request; otherwise discovery when allowed.
+    dict(name="base_url_cached_tunnel_only", call="base_url", discover=True, state=CACHED),
+    dict(name="base_url_cached_proxy", call="base_url", discover=True,
+         state=_state(pod_id="pod111", tunnel_only=False)),
+    dict(name="base_url_cached_predates_tunnel_mode_tunnel_on", call="base_url",
+         discover=True, state=_state(pod_id="pod111"), config={"TUNNEL_LOCAL_PORT": "18001"}),
+    dict(name="base_url_cached_predates_tunnel_mode_tunnel_off", call="base_url",
+         discover=True, state=_state(pod_id="pod111"), config={"TUNNEL": "0"}),
+    dict(name="base_url_cached_tunnel_false_word", call="base_url", discover=True,
+         state=_state(pod_id="pod111"), config={"TUNNEL": " no "}),
+    dict(name="base_url_cached_tunnel_only_not_a_bool", call="base_url", discover=True,
+         state=_state(pod_id="pod111", tunnel_only=0), config={"VLLM_PORT": "8100"}),
+    dict(name="base_url_no_cache_no_key", call="base_url", discover=True),
+    dict(name="base_url_no_cache_no_discovery", call="base_url", discover=False,
+         config={"RUNPOD_API_KEY": API_KEY}),
+    dict(name="base_url_discovers_by_name", call="base_url", discover=True,
+         config={"RUNPOD_API_KEY": API_KEY, "TUNNEL": "0"}, replies=[_ok([_pod()])]),
+    dict(name="base_url_discovers_nothing", call="base_url", discover=True,
+         config={"RUNPOD_API_KEY": API_KEY}, replies=[_ok([])]),
+    dict(name="base_url_discovery_unreachable_is_none", call="base_url", discover=True,
+         config={"RUNPOD_API_KEY": API_KEY}, replies=[DOWN]),
+]
+
+RESOLVE_RUNNER = r"""
+import json, os, pathlib, shutil, sys
+sys.path.insert(0, sys.argv[1])
+import requests
+from requests.adapters import BaseAdapter
+from requests.structures import CaseInsensitiveDict
+from rpctl import api, config, pod
+
+# The in-repo fallback is a file from before `rp migrate` (viy does not read it).
+config.LEGACY_STATE = pathlib.Path(os.environ["HOME"]) / "no-legacy-pod-state.json"
+said = []
+pod._say = lambda msg, color="": said.append(msg)
+
+class Player(BaseAdapter):
+    def __init__(self, replies, sent):
+        super().__init__()
+        self.replies, self.sent = replies, sent
+    def send(self, request, stream=False, timeout=None, **kw):
+        self.sent.append(f"{request.method} {request.url}")
+        reply = self.replies.pop(0)
+        r = requests.Response()
+        r.status_code = reply.get("status", 200)
+        r.headers = CaseInsensitiveDict(
+            {"Content-Type": reply.get("content_type", "application/json")})
+        r._content = reply.get("body", "").encode()
+        r.url, r.request, r.reason, r.encoding = request.url, request, "synthetic", "utf-8"
+        return r
+
+cases = []
+for case in json.loads(sys.argv[2]):
+    shutil.rmtree(config.USER_STATE_DIR, ignore_errors=True)
+    if case.get("state") is not None:
+        config.USER_STATE_DIR.mkdir(parents=True)
+        config.STATE_PATH.write_text(case["state"])
+    sent, replies = [], list(case.get("replies", []))
+    said.clear()
+    class Client(api.RunPod):
+        def __init__(self, key):
+            super().__init__(key)
+            self.s.mount("https://", Player(replies, sent))
+    pod.RunPod = Client
+    cfg = dict(config.DEFAULTS, POD_NAME="qwen-pod", **case.get("config", {}))
+    try:
+        if case["call"] == "resolve_pod":
+            result = {"ok": pod.resolve_pod(Client(sys.argv[3]), cfg)}
+        else:
+            result = {"ok": pod.base_url(cfg, discover=case["discover"])}
+    except api.RunPodError as e:
+        result = {"error": str(e), "status_code": e.status_code, "transient": e.transient}
+    if replies:
+        raise SystemExit(f"{case['name']}: {len(replies)} replies unused")
+    after = config.STATE_PATH.read_text() if config.STATE_PATH.exists() else None
+    cases.append({**case, "sent": sent, "said": list(said), **result, "state_after": after,
+                  "tunnel_only": pod.tunnel_only(cfg),
+                  "transport_label": pod.transport_label(cfg)})
+print(json.dumps(cases))
+"""
+
+
+def gen_pod_resolve(snap):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": tmp,
+               "XDG_CONFIG_HOME": tmp, "XDG_STATE_HOME": tmp, "XDG_DATA_HOME": tmp}
+        out = subprocess.run([*rp_python(), "-I", "-c", RESOLVE_RUNNER, str(snap),
+                              json.dumps(RESOLVE_CASES), API_KEY],
+                             cwd=tmp, env=env, check=True, capture_output=True, text=True)
+    return {
+        "about": "rpctl pod.resolve_pod and pod.base_url: pod.json before (text or null), "
+                 f"config keys over DEFAULTS with POD_NAME={OUR_NAME!r}, the HTTP answers "
+                 "the call's requests get in order; out: the requests sent, what _say "
+                 "printed, the pod or URL returned or RunPodError's text, status_code and "
+                 "transient, pod.json after (text or null), and tunnel_only and "
+                 "transport_label read after the call. Played through rpctl's api.RunPod "
+                 "with a transport adapter, run by the installed rp's interpreter in a "
+                 f"temporary HOME; the key is {API_KEY!r}",
+        "cases": json.loads(out.stdout),
+    }
+
+
 # ------------------------------------------------------------------- pod/boot
 
 # One case: config keys over rpctl's DEFAULTS, the endpoint key, the network
@@ -1068,6 +1276,7 @@ GENERATORS = {
     "config/project": gen_config_project,
     "pod/api": gen_pod_api,
     "pod/boot": gen_pod_boot,
+    "pod/resolve": gen_pod_resolve,
 }
 
 # ------------------------------------------------------------------ driver

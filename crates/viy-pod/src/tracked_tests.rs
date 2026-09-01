@@ -184,3 +184,75 @@ fn the_tunnel_url_uses_the_local_port() {
     cfg.set("TUNNEL_LOCAL_PORT", " 18001 ");
     assert_eq!(local_url(&cfg), "http://127.0.0.1:18001");
 }
+
+/// rpctl test_regions.py AdoptTests: what `up` recorded when it created a
+/// pod belongs to that pod only (rpctl b642713).
+async fn adopt(get: Reply, list: Option<Value>) -> (Option<Value>, PodState, Paths, ScratchDir) {
+    let dir = ScratchDir::new("pod-tracked").unwrap();
+    let paths = Paths::under(dir.path());
+    state::save(
+        &paths,
+        [
+            (key::POD_ID, json!("old")),
+            (key::NAME, json!("p")),
+            (key::CREATED_AT, json!(1.5)),
+            (key::TUNNEL_ONLY, json!(true)),
+            (key::LAST_STARTUP_SECONDS, json!(88.4)),
+            (key::TUNNEL_PID, json!(4242)),
+            (key::TUNNEL_LOCAL_PORT, json!("8000")),
+        ],
+    )
+    .unwrap();
+    let mut replies = vec![get];
+    replies.extend(list.map(|l| Reply::answer(200, l.to_string())));
+    let rp = RunPod::new(API_KEY, Arc::new(FakeHttp::new(replies)));
+    let mut cfg = Config::defaults();
+    cfg.set("POD_NAME", "p");
+    let found = resolve(&rp, &paths, &cfg, |_| {}).await.unwrap();
+    let state = state::load(&paths).unwrap();
+    (found, state, paths, dir)
+}
+
+#[tokio::test]
+async fn the_same_pod_keeps_what_up_recorded() {
+    let pod = json!({"id": "old", "name": "p", "desiredStatus": "RUNNING"});
+    let (_, state, paths, _dir) = adopt(Reply::answer(200, pod.to_string()), None).await;
+    for (k, v) in [
+        (key::CREATED_AT, json!(1.5)),
+        (key::TUNNEL_ONLY, json!(true)),
+        (key::LAST_STARTUP_SECONDS, json!(88.4)),
+    ] {
+        assert_eq!(state.get(k), Some(&v), "{k}");
+    }
+    let cfg = Config::defaults();
+    assert_eq!(transport_label(&paths, &cfg).unwrap(), "SSH tunnel only");
+}
+
+#[tokio::test]
+async fn another_pod_adopted_by_name_drops_it() {
+    let pods = json!([{"id": "new", "name": "p", "desiredStatus": "RUNNING", "costPerHr": 0.79}]);
+    let (found, state, paths, _dir) = adopt(Reply::answer(404, "{}"), Some(pods)).await;
+    assert_eq!(found.as_ref().and_then(pod_id), Some("new"));
+    assert_eq!(state.pod_id(), Some("new"));
+    for k in CREATED_KEYS {
+        assert_eq!(state.get(k), None, "{k}");
+    }
+    // The local ssh is still the one recorded, whichever pod it reached.
+    assert_eq!(state.get(key::TUNNEL_PID), Some(&json!(4242)));
+    assert_eq!(state.get(key::TUNNEL_LOCAL_PORT), Some(&json!("8000")));
+    // Unknown origin: not claimed tunnel-only.
+    let cfg = Config::defaults();
+    assert!(
+        transport_label(&paths, &cfg)
+            .unwrap()
+            .contains("proxy route is still open")
+    );
+}
+
+#[tokio::test]
+async fn a_terminated_cached_pod_counts_as_another() {
+    let gone = json!({"id": "old", "name": "p", "desiredStatus": "TERMINATED"});
+    let pods = json!([{"id": "new", "name": "p", "desiredStatus": "EXITED"}]);
+    let (_, state, _, _dir) = adopt(Reply::answer(200, gone.to_string()), Some(pods)).await;
+    assert_eq!(state.get(key::TUNNEL_ONLY), None);
+}

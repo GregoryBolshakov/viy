@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "3cf261075ac8672f00a39675e36a0a0ede9a0f1d",
+ "rpctl_commit": "b6427138ae8811180aa51aaf395dd270c7bb810a",
  "generator": "tools/fixtures.py pod/resolve",
  "about": "rpctl pod.resolve_pod and pod.base_url: pod.json before (text or null), config keys over DEFAULTS with POD_NAME='qwen-pod', the HTTP answers the call's requests get in order; out: the requests sent, what _say printed, the pod or URL returned or RunPodError's text, status_code and transient, pod.json after (text or null), and tunnel_only and transport_label read after the call. Played through rpctl's api.RunPod with a transport adapter, run by the installed rp's interpreter in a temporary HOME; the key is 'rpa_SYNTHETICKEY0000'",
  "cases": [
@@ -490,9 +490,64 @@
     "networkVolumeId": "vol666",
     "lastStartedAt": "2026-07-15T09:00:00Z"
    },
-   "state_after": "{\n  \"pod_id\": \"pod333\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": 0.79,\n  \"volume_id\": \"vol666\",\n  \"created_at\": 1761640000.5,\n  \"tunnel_only\": true,\n  \"last_startup_seconds\": 88.4\n}\n",
+   "state_after": "{\n  \"pod_id\": \"pod333\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": 0.79,\n  \"volume_id\": \"vol666\"\n}\n",
    "tunnel_only": true,
-   "transport_label": "SSH tunnel only"
+   "transport_label": "SSH tunnel -- but this pod predates tunnel mode, so its proxy route is still open"
+  },
+  {
+   "name": "cached_gone_adopts_keeping_the_tunnel_keys",
+   "call": "resolve_pod",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"created_at\": 1761640000.5,\n  \"tunnel_pid\": 4242,\n  \"tunnel_only\": false,\n  \"tunnel_local_port\": \"18001\",\n  \"last_startup_seconds\": 9.0,\n  \"note\": \"kept\"\n}\n",
+   "replies": [
+    {
+     "status": 404,
+     "body": "{\"error\": \"pod not found\", \"status\": 404}"
+    },
+    {
+     "body": "[{\"id\": \"pod333\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"costPerHr\": 1.89, \"networkVolumeId\": \"vol222\", \"lastStartedAt\": \"2026-07-15T09:00:00Z\"}]"
+    }
+   ],
+   "sent": [
+    "GET https://rest.runpod.io/v1/pods/pod111",
+    "GET https://rest.runpod.io/v1/pods"
+   ],
+   "said": [],
+   "ok": {
+    "id": "pod333",
+    "name": "qwen-pod",
+    "desiredStatus": "RUNNING",
+    "costPerHr": 1.89,
+    "networkVolumeId": "vol222",
+    "lastStartedAt": "2026-07-15T09:00:00Z"
+   },
+   "state_after": "{\n  \"pod_id\": \"pod333\",\n  \"tunnel_pid\": 4242,\n  \"tunnel_local_port\": \"18001\",\n  \"note\": \"kept\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": 1.89,\n  \"volume_id\": \"vol222\"\n}\n",
+   "tunnel_only": true,
+   "transport_label": "SSH tunnel -- but this pod predates tunnel mode, so its proxy route is still open"
+  },
+  {
+   "name": "no_cache_adopting_drops_creation_keys",
+   "call": "resolve_pod",
+   "state": "{\n  \"tunnel_only\": true,\n  \"created_at\": 1761640000.5,\n  \"tunnel_pid\": null\n}\n",
+   "replies": [
+    {
+     "body": "[{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"costPerHr\": 1.89, \"networkVolumeId\": \"vol222\", \"lastStartedAt\": \"2026-07-15T09:00:00Z\"}]"
+    }
+   ],
+   "sent": [
+    "GET https://rest.runpod.io/v1/pods"
+   ],
+   "said": [],
+   "ok": {
+    "id": "pod111",
+    "name": "qwen-pod",
+    "desiredStatus": "RUNNING",
+    "costPerHr": 1.89,
+    "networkVolumeId": "vol222",
+    "lastStartedAt": "2026-07-15T09:00:00Z"
+   },
+   "state_after": "{\n  \"tunnel_pid\": null,\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": 1.89,\n  \"volume_id\": \"vol222\"\n}\n",
+   "tunnel_only": true,
+   "transport_label": "SSH tunnel -- but this pod predates tunnel mode, so its proxy route is still open"
   },
   {
    "name": "cached_terminated_adopts_by_name",
@@ -519,9 +574,9 @@
     "networkVolumeId": "vol222",
     "lastStartedAt": "2026-07-15T09:00:00Z"
    },
-   "state_after": "{\n  \"pod_id\": \"pod333\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": 1.89,\n  \"volume_id\": \"vol222\",\n  \"created_at\": 1761640000.5,\n  \"tunnel_only\": true,\n  \"last_startup_seconds\": 88.4\n}\n",
+   "state_after": "{\n  \"pod_id\": \"pod333\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": 1.89,\n  \"volume_id\": \"vol222\"\n}\n",
    "tunnel_only": true,
-   "transport_label": "SSH tunnel only"
+   "transport_label": "SSH tunnel -- but this pod predates tunnel mode, so its proxy route is still open"
   },
   {
    "name": "cached_gone_nothing_by_name_clears",
@@ -675,9 +730,9 @@
     "networkVolumeId": "vol222",
     "lastStartedAt": "2026-07-15T09:00:00Z"
    },
-   "state_after": "{\n  \"pod_id\": \"podC\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": 1.89,\n  \"volume_id\": \"vol222\",\n  \"created_at\": 1761640000.5,\n  \"tunnel_only\": true,\n  \"last_startup_seconds\": 88.4\n}\n",
+   "state_after": "{\n  \"pod_id\": \"podC\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": 1.89,\n  \"volume_id\": \"vol222\"\n}\n",
    "tunnel_only": true,
-   "transport_label": "SSH tunnel only"
+   "transport_label": "SSH tunnel -- but this pod predates tunnel mode, so its proxy route is still open"
   },
   {
    "name": "base_url_cached_tunnel_only",

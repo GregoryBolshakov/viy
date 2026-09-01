@@ -109,11 +109,21 @@ pub fn save<'a>(
     paths: &Paths,
     updates: impl IntoIterator<Item = (&'a str, Value)>,
 ) -> io::Result<PodState> {
+    update(paths, |map| {
+        for (k, v) in updates {
+            map.insert(k.to_string(), v);
+        }
+    })
+}
+
+/// Changes `pod.json` as `change` says, under the same lock as [`save`],
+/// and returns the whole state after it. Keys removed with
+/// `Map::shift_remove` leave the others in their order, as Python's
+/// `dict.pop` does.
+pub fn update(paths: &Paths, change: impl FnOnce(&mut Map<String, Value>)) -> io::Result<PodState> {
     let _lock = state_lock(paths)?;
     let mut state = load(paths)?;
-    for (k, v) in updates {
-        state.0.insert(k.to_string(), v);
-    }
+    change(&mut state.0);
     let mut text = serde_json::to_string_pretty(&state.0).map_err(io::Error::other)?;
     text.push('\n');
     write_atomically(&paths.pod_state_file(), &text)?;

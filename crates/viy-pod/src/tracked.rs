@@ -197,18 +197,29 @@ fn reached_by_tunnel(state: &PodState, cfg: &Config) -> bool {
     state.tunnel_only().unwrap_or_else(|| tunnel_enabled(cfg))
 }
 
-/// Remembers the pod in `pod.json`, keeping the keys it does not set.
+/// What `up` recorded about the one pod it created. A different pod
+/// adopted by name was not made by that `up`, so none of it holds for that
+/// pod; the tunnel keys describe the local ssh, not the pod, and stay.
+const CREATED_KEYS: [&str; 3] = [key::CREATED_AT, key::TUNNEL_ONLY, key::LAST_STARTUP_SECONDS];
+
+/// Remembers the pod in `pod.json`, keeping the keys it does not set,
+/// except [`CREATED_KEYS`] when it is another pod than the cached one: the
+/// old pod's `tunnel_only` would make the new one's URL and label claim a
+/// tunnel-only route it may not have (rpctl b642713).
 fn cache(paths: &Paths, pod: &Value) -> io::Result<()> {
+    let id = pod_id(pod);
     let field = |k: &str| pod.get(k).cloned().unwrap_or(Value::Null);
-    state::save(
-        paths,
-        [
-            (key::POD_ID, pod_id(pod).into()),
-            (key::NAME, field("name")),
-            (key::COST_PER_HR, field("costPerHr")),
-            (key::VOLUME_ID, pod_volume_id(pod).into()),
-        ],
-    )?;
+    state::update(paths, |map| {
+        if map.get(key::POD_ID).and_then(Value::as_str) != id {
+            for k in CREATED_KEYS {
+                map.shift_remove(k);
+            }
+        }
+        map.insert(key::POD_ID.into(), id.into());
+        map.insert(key::NAME.into(), field("name"));
+        map.insert(key::COST_PER_HR.into(), field("costPerHr"));
+        map.insert(key::VOLUME_ID.into(), pod_volume_id(pod).into());
+    })?;
     Ok(())
 }
 

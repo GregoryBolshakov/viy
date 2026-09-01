@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: 3cf261075ac8672f00a39675e36a0a0ede9a0f1d
+commit: b6427138ae8811180aa51aaf395dd270c7bb810a
 branch: leak-protection
 pinned: 2026-07-16
-subject: Make /resume print the whole chat, compacted turns included
+subject: Make an adopted pod drop what rp up recorded about the old one

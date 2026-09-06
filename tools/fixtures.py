@@ -1666,6 +1666,258 @@ def gen_pod_ssh(snap):
     }
 
 
+# ------------------------------------------------------------ pod/bootreport
+
+# One case: one of rpctl's boot-report or wait functions on synthetic log
+# lines. `measure`: bootreport.measure(latest_boot(entries)) between two
+# parse_ts times; `facts`: bootreport.facts; `render`: bootreport.render;
+# `redact`: pod._redact_log with config keys over DEFAULTS; `progress`:
+# pod._startup_progress, one fetch of the log per list in `fetches`, the
+# summary, pod_ready and the StartupError after each; `watchdog`:
+# pod._report_watchdog, what it said with its colour.
+def _entries(*rows):
+    return [dict(zip(("ts", "line", "source"), row)) if isinstance(row, tuple)
+            else {"line": row} for row in rows]
+
+
+BOOT_LOG = _entries(
+    ("2026-06-25T23:25:00Z", "old boot", "system"),
+    ("2026-06-25T23:35:49.5Z", "=== boot Thu ===", "container"),
+    ("2026-06-25T23:35:50.7Z", "RPCTL_PHASE starting vLLM", "container"),
+    ("2026-06-25T23:35:51Z", "RPCTL_PHASE weights prewarmed: 51.75 GiB in 80.0s", "container"),
+    ("2026-06-25T23:36:10Z", "API non-default args: {...}", "container"),
+    ("2026-06-25T23:36:40Z", "ENG world_size=1 rank=0", "container"),
+    ("2026-06-25T23:36:47Z", "Starting to load model x", "container"),
+    ("2026-06-25T23:38:19Z", "Loading weights took 90.87 seconds", "container"),
+    ("2026-06-25T23:38:20Z", "Model loading took 51.1 GiB", "container"),
+    ("2026-06-25T23:39:35Z", "torch.compile took 71.80 s in total", "container"),
+    ("2026-06-25T23:39:43Z", "init engine (profile, ...) took 82.42 s", "container"),
+    ("2026-06-25T23:40:02Z", "API server: HTTP server started", "container"),
+)
+CREATED, READY = "2026-06-25T23:23:03Z", "2026-06-25T23:40:05Z"
+STAGE_ROWS = [["pull", "GPU allocation + image pull", 150.0],
+              ["weights", "weights to GPU", 60.0]]
+CANNOT = "RPCTL_PHASE WATCHDOG CANNOT STOP THIS POD: RunPod refused its key (HTTP 403)"
+LONG_PHASE = "RPCTL_PHASE " + "restoring caches " * 15
+
+BOOTREPORT_CASES = [
+    {"name": "measure_rpctl_test", "call": "measure", "entries": BOOT_LOG,
+     "created": CREATED, "ready": READY},
+    {"name": "measure_no_boot_marker", "call": "measure", "entries": BOOT_LOG[2:],
+     "created": CREATED, "ready": READY},
+    {"name": "measure_marker_before_creation", "call": "measure", "entries": BOOT_LOG,
+     "created": "2026-06-25T23:36:00Z", "ready": READY},
+    {"name": "measure_two_boots", "call": "measure",
+     "entries": BOOT_LOG + _entries(("2026-06-25T23:50:00Z", "=== boot Fri ===", "container"),
+                                    ("2026-06-25T23:51:00.25Z", "RPCTL_PHASE starting vLLM",
+                                     "container")),
+     "created": CREATED, "ready": "2026-06-25T23:52:00Z"},
+    {"name": "measure_untimed_and_odd_timestamps", "call": "measure",
+     "entries": _entries("=== boot Sat ===",
+                         ("yesterday", "RPCTL_PHASE starting vLLM", "container"),
+                         ("2026-06-25T23:36:10.123456Z", "API non-default args", "container"),
+                         ("2026-06-25T23:36:40.5", "ENG world_size=1", "container"),
+                         ("", "Starting to load model", "container")),
+     "created": CREATED, "ready": READY},
+    {"name": "measure_last_detail_wins_and_gpu", "call": "measure",
+     "entries": _entries(("2026-06-25T23:30:00Z", "Loading weights took 12.5 seconds", "container"),
+                         ("2026-06-25T23:31:00Z", "Loading weights took 30.25 seconds", "container"),
+                         ("2026-06-25T23:31:01Z", "RPCTL_PHASE gpu  NVIDIA A100-SXM4-80GB  ",
+                          "container")),
+     "created": CREATED, "ready": READY},
+    {"name": "measure_ready_before_the_last_marker", "call": "measure", "entries": BOOT_LOG,
+     "created": CREATED, "ready": "2026-06-25T23:39:00Z"},
+    {"name": "measure_empty_log", "call": "measure", "entries": [],
+     "created": CREATED, "ready": READY},
+
+    {"name": "facts_rpctl_test", "call": "facts", "entries": _entries(
+        "9a54fb40f516 Already exists", "0f06d63f7039 Pull complete",
+        "0f06d63f7039 Retrying in 1 second", "Status: Downloaded newer image for x",
+        "RPCTL_PHASE verified model cache; using offline metadata",
+        "RPCTL_PHASE cache restore unavailable; compiling normally (FilterError)",
+        "Compiling a graph for compile range (1, 2048) takes 52.85 s")},
+    {"name": "facts_download_then_up_to_date", "call": "facts", "entries": _entries(
+        "Status: Downloaded newer image for x", "Status: Image is up to date for x")},
+    {"name": "facts_up_to_date_only", "call": "facts", "entries": _entries(
+        "Status: Image is up to date for x")},
+    {"name": "facts_layers_already_on_host", "call": "facts", "entries": _entries(
+        "a Already exists", "b Already exists")},
+    {"name": "facts_retries_only", "call": "facts", "entries": _entries(
+        "a Retrying in 1 second", "a Retrying in 1 second")},
+    {"name": "facts_caches_restored_and_hit", "call": "facts", "entries": _entries(
+        "RPCTL_PHASE checking model cache with Hugging Face",
+        "RPCTL_PHASE compilation caches restored (3 files)",
+        "Directly load AOT compilation from x", "RPCTL_PHASE watchdog armed")},
+    {"name": "facts_first_compilation", "call": "facts", "entries": _entries(
+        "RPCTL_PHASE first compilation on this GPU", "RPCTL_PHASE watchdog off")},
+    {"name": "facts_restore_failed_without_reason", "call": "facts", "entries": _entries(
+        "RPCTL_PHASE cache restore unavailable")},
+    {"name": "facts_watchdog_cannot_stop", "call": "facts", "entries": _entries(
+        "RPCTL_PHASE watchdog armed", CANNOT + " " + "x" * 200)},
+    {"name": "facts_watchdog_key_refused", "call": "facts", "entries": _entries(CANNOT)},
+    {"name": "facts_error_line", "call": "facts", "entries": _entries(
+        "RPCTL_ERROR   sshd setup or daemon failed (exit 23) " + "y" * 250)},
+    {"name": "facts_nothing", "call": "facts", "entries": _entries("hello")},
+
+    {"name": "render_over_budget", "call": "render", "stages": STAGE_ROWS, "details": {},
+     "total": 210.0, "outcome": "ready"},
+    {"name": "render_within_budget", "call": "render", "stages": STAGE_ROWS[1:],
+     "details": {}, "total": 150.0, "outcome": "ready"},
+    {"name": "render_exactly_the_budget", "call": "render", "stages": STAGE_ROWS[1:],
+     "details": {}, "total": 180.0, "outcome": "ready"},
+    {"name": "render_details", "call": "render",
+     "stages": [["weights", "weights to GPU", 93.2], ["compile", "encoder profiling + compile", 75.0],
+                ["endpoint", "SSH tunnel / local endpoint", 3.0]],
+     "details": {"weights_read_s": 90.87, "prewarm_s": 80.0, "compile_s": 71.8},
+     "total": 171.2, "outcome": "ready"},
+    {"name": "render_read_without_prewarm", "call": "render",
+     "stages": [["weights", "weights to GPU", 20.0]], "details": {"weights_read_s": 15.0},
+     "total": 20.0, "outcome": "ready"},
+    {"name": "render_failed", "call": "render", "stages": STAGE_ROWS, "details": {},
+     "total": 400.0, "outcome": "failed"},
+    {"name": "render_interrupted", "call": "render", "stages": STAGE_ROWS[1:], "details": {},
+     "total": 61.0, "outcome": "interrupted"},
+    {"name": "render_tie_names_the_first", "call": "render",
+     "stages": [["imports", "vLLM CLI imports", 100.0], ["api", "API server warmup", 100.0],
+                ["endpoint", "SSH tunnel / local endpoint", 0.4]],
+     "details": {}, "total": 200.4, "outcome": "ready"},
+    {"name": "render_halves", "call": "render",
+     "stages": [["pull", "GPU allocation + image pull", 0.5],
+                ["endpoint", "SSH tunnel / local endpoint", 2.5]],
+     "details": {}, "total": 3.0, "outcome": "ready"},
+
+    {"name": "redact_rpctl_test", "call": "redact",
+     "line": "key=sk-secret123 token=hf_abc123 plain=opaque-secret",
+     "config": {"RUNPOD_API_KEY": "opaque-secret"}},
+    {"name": "redact_endpoint_key_in_arguments", "call": "redact",
+     "line": "non-default args: {'api_key': ['sk-abcdefghijklmnop123456']}",
+     "config": {"VLLM_API_KEY": "sk-abcdefghijklmnop123456"}},
+    {"name": "redact_watchdog_key", "call": "redact",
+     "line": "env RPCTL_WATCHDOG_KEY=rpa_SECRETVALUE1234567890",
+     "config": {"RUNPOD_WATCHDOG_API_KEY": "rpa_SECRETVALUE1234567890"}},
+    {"name": "redact_short_values_stay", "call": "redact",
+     "line": "user=bob pass=hunter2 tok=1234567", "config": {"HF_TOKEN": "1234567"}},
+    {"name": "redact_token_and_password_keys", "call": "redact",
+     "line": "a=TOKENVALUE99 b=pa55word-long c=/workspace/models",
+     "config": {"HF_TOKEN": "TOKENVALUE99", "PROXY_PASSWORD": "pa55word-long",
+                "HF_HOME": "/workspace/models"}},
+    {"name": "redact_key_shapes_need_a_word_boundary", "call": "redact",
+     "line": "xsk-notakey (sk-yes) hf_ rpa_x-y_z mask-ok", "config": {}},
+
+    {"name": "progress_model_ready", "call": "progress", "require_ssh": True,
+     "fetches": [_entries("RPCTL_PHASE model ready; saving startup caches")]},
+    {"name": "progress_a_later_boot_clears_ready", "call": "progress", "require_ssh": True,
+     "fetches": [_entries("RPCTL_PHASE model ready; saving startup caches",
+                          "=== boot Sat Jun 20 ===")]},
+    {"name": "progress_ssh_error_ends_the_wait", "call": "progress", "require_ssh": True,
+     "fetches": [_entries("RPCTL_PHASE starting sshd", "RPCTL_ERROR sshd setup failed",
+                          "RPCTL_PHASE starting vLLM"), _entries("RPCTL_PHASE later")]},
+    {"name": "progress_ssh_error_without_tunnel", "call": "progress", "require_ssh": False,
+     "fetches": [_entries("RPCTL_PHASE starting sshd", "RPCTL_ERROR sshd setup failed")]},
+    {"name": "progress_pull_then_retry", "call": "progress", "require_ssh": True,
+     "fetches": [[{"line": "abc Downloading [=>   ]", "source": "system"}],
+                 [{"line": "abc Retrying in 3 seconds", "source": "system"}],
+                 [{"line": "abc Extracting", "source": "system"},
+                  {"line": "abc Downloading", "source": "container"}]]},
+    {"name": "progress_stages_of_vllm", "call": "progress", "require_ssh": True,
+     "fetches": [[{"line": "Loading safetensors checkpoint shards", "source": "container"}],
+                 [{"line": "Compiling a graph", "source": "container"},
+                  {"line": "Compiling a graph", "source": "system"}],
+                 [{"line": "Capturing CUDA graphs (mixed prefill-decode)"}],
+                 [{"line": "Doing WarmUp for the sampler"}],
+                 [{"line": "Application startup complete."}],
+                 [{"line": "(APIServer) HTTP server started on 0.0.0.0:8000"}]]},
+    {"name": "progress_long_phase_is_cut", "call": "progress", "require_ssh": True,
+     "fetches": [_entries(LONG_PHASE)]},
+    {"name": "progress_empty_log_keeps_the_summary", "call": "progress", "require_ssh": True,
+     "fetches": [_entries("RPCTL_PHASE restoring caches"), []]},
+
+    {"name": "watchdog_armed", "call": "watchdog", "state": "armed", "config": {}},
+    {"name": "watchdog_armed_other_limits", "call": "watchdog", "state": "armed",
+     "config": {"IDLE_TTL_MIN": "30", "MAX_POD_HOURS": "2.5"}},
+    {"name": "watchdog_cannot_stop", "call": "watchdog",
+     "state": "CANNOT STOP THIS POD: RunPod refused its key (HTTP 403)", "config": {}},
+    {"name": "watchdog_off", "call": "watchdog", "state": "off", "config": {}},
+    {"name": "watchdog_no_report", "call": "watchdog", "state": None, "config": {}},
+    {"name": "watchdog_unknown_state", "call": "watchdog", "state": "dozing", "config": {}},
+]
+
+BOOTREPORT_RUNNER = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import bootreport, config, pod
+
+COLORS = {pod.C_DIM: "dim", pod.C_OK: "ok", pod.C_WARN: "warn", pod.C_ERR: "error", "": "plain"}
+said = []
+pod._say = lambda msg, color="": said.append([COLORS[color], msg])
+clock = [1000.0]
+def monotonic():
+    clock[0] += 100
+    return clock[0]
+pod.time.monotonic = monotonic
+
+class Logs:
+    def __init__(self, fetches):
+        self.fetches = list(fetches)
+    def pod_logs(self, pod_id, tail=100, budget_s=8):
+        assert (pod_id, tail) == ("pod111", 30), (pod_id, tail)
+        return self.fetches.pop(0)
+
+for case in json.loads(sys.argv[2]):
+    call, out = case["call"], {}
+    if call == "measure":
+        stages, details = bootreport.measure(
+            bootreport.latest_boot(case["entries"]), bootreport.parse_ts(case["created"]),
+            bootreport.parse_ts(case["ready"]))
+        out = {"stages": [list(s) for s in stages], "details": details}
+    elif call == "facts":
+        out = {"facts": bootreport.facts(case["entries"])}
+    elif call == "render":
+        text, over = bootreport.render([tuple(s) for s in case["stages"]], case["details"],
+                                       case["total"], outcome=case["outcome"])
+        out = {"text": text, "over": over}
+    elif call == "redact":
+        out = {"redacted": pod._redact_log(case["line"], dict(config.DEFAULTS, **case["config"]))}
+    elif call == "progress":
+        api = Logs(case["fetches"])
+        progress = pod._startup_progress(api, "pod111", require_ssh=case["require_ssh"],
+                                         background=False)
+        after = []
+        for _ in case["fetches"]:
+            try:
+                after.append({"summary": progress(), "ready": progress.pod_ready()})
+            except pod.StartupError as error:
+                after.append({"error": str(error), "ready": progress.pod_ready()})
+        out = {"after": after}
+    elif call == "watchdog":
+        said.clear()
+        pod._report_watchdog(dict(config.DEFAULTS, **case["config"]), case["state"])
+        out = {"said": list(said)}
+    print(json.dumps({**case, **out}))
+"""
+
+
+def gen_pod_bootreport(snap):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": tmp,
+               "XDG_CONFIG_HOME": tmp, "XDG_STATE_HOME": tmp, "XDG_DATA_HOME": tmp}
+        out = subprocess.run([sys.executable, "-I", "-c", BOOTREPORT_RUNNER, str(snap),
+                              json.dumps(BOOTREPORT_CASES)],
+                             cwd=tmp, env=env, check=True, capture_output=True, text=True)
+    return {
+        "about": "rpctl's boot report and wait summaries on synthetic platform-log lines, by "
+                 "`call`: measure (bootreport.measure of latest_boot(entries) between "
+                 "parse_ts(created) and parse_ts(ready): stages as [key, label, seconds] and "
+                 "details), facts (bootreport.facts), render (bootreport.render with the "
+                 "default budget: text and over), redact (pod._redact_log, config keys over "
+                 "DEFAULTS), progress (pod._startup_progress for require_ssh, the log fetched "
+                 "once per list in fetches: after each the summary or the StartupError, and "
+                 "pod_ready), watchdog (pod._report_watchdog with config keys over DEFAULTS: "
+                 "what it said with its colour)",
+        "cases": [json.loads(line) for line in out.stdout.splitlines()],
+    }
+
+
 GENERATORS = {
     "cli/flags": gen_cli_flags,
     "cli/parse": gen_cli_parse,
@@ -1676,6 +1928,7 @@ GENERATORS = {
     "config/project": gen_config_project,
     "pod/api": gen_pod_api,
     "pod/boot": gen_pod_boot,
+    "pod/bootreport": gen_pod_bootreport,
     "pod/resolve": gen_pod_resolve,
     "pod/ssh": gen_pod_ssh,
 }

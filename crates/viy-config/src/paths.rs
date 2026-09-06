@@ -120,6 +120,16 @@ impl Paths {
         self.pod_state_dir().join("tunnel.log")
     }
 
+    /// One line per recorded boot, `boots.jsonl` (`viy boots`).
+    pub fn boots_history_file(&self) -> PathBuf {
+        self.pod_state_dir().join("boots.jsonl")
+    }
+
+    /// Each boot's record and logs, the newest 50 kept.
+    pub fn boots_dir(&self) -> PathBuf {
+        self.pod_state_dir().join("boots")
+    }
+
     /// `~/.config/rpctl`: rp's global config, which `viy migrate` copies.
     pub fn rpctl_config_dir(&self) -> PathBuf {
         self.config_home.join(RPCTL)

@@ -9,6 +9,7 @@ members = [
     "crates/viy-protocol",
     "crates/viy-term",
     "crates/viy-testkit",
+    "crates/viy-time",
     "crates/viy-tools",
 ]
 resolver = "3"
@@ -31,6 +32,7 @@ viy-pod = { path = "crates/viy-pod" }
 viy-protocol = { path = "crates/viy-protocol" }
 viy-term = { path = "crates/viy-term" }
 viy-testkit = { path = "crates/viy-testkit" }
+viy-time = { path = "crates/viy-time" }
 viy-tools = { path = "crates/viy-tools" }
 
 # External crates are added when a work package first needs one, each version

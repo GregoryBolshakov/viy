@@ -311,6 +311,30 @@ class WatchdogLoopTests(unittest.TestCase):
         self.assertGreaterEqual(calls[0], HOUR)
         self.assertLess(calls[0], HOUR + 2 * startup.WATCHDOG_POLL_S)
 
+    def test_reports_a_key_runpod_refuses(self):
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(startup, "can_manage", return_value=(False, "HTTP 403")), \
+                patch.object(startup, "phase") as phase, \
+                patch.object(startup.urllib.request, "urlopen", side_effect=OSError), \
+                patch.object(startup, "terminate_self", return_value="terminated"), \
+                patch.dict("os.environ", {"RUNPOD_POD_ID": "p1", "RUNPOD_API_KEY": "k",
+                                          "RPCTL_IDLE_TTL_S": "60", "RPCTL_CACHE_DIR": d,
+                                          "RPCTL_PORT": "8000"}):
+            clock = [0.0]
+            def sleep(s):
+                clock[0] += s
+                if clock[0] > 600:
+                    raise StopIteration
+            with self.assertRaises(StopIteration):
+                startup.watchdog(now=lambda: clock[0], sleep=sleep)
+        lines = [c[0][0] for c in phase.call_args_list]
+        self.assertTrue(any("cannot stop itself" in l for l in lines))
+        self.assertTrue(any(l.startswith("WATCHDOG CANNOT STOP THIS POD") for l in lines))
+        # rpctl reads this line back with bootreport.facts; viy's half of
+        # that is bootreport_tests.rs::reports_a_key_runpod_refuses, on
+        # this same line.
+        self.assertEqual(lines[0], "WATCHDOG CANNOT STOP THIS POD: RunPod refused its key (HTTP 403)")
+
 
 if __name__ == "__main__":
     unittest.main()

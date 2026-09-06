@@ -31,6 +31,7 @@ use viy_exec::Command;
 use viy_exec::ExecBackend;
 
 use crate::api::RunPod;
+use crate::compile_regex;
 use crate::notice::Notice;
 use crate::notice::Say;
 use crate::notice::Tone;
@@ -98,13 +99,6 @@ static LOGGED_HOST_KEY: LazyLock<Regex> =
     LazyLock::new(|| compile_regex(r"sshd host key: \d+ (SHA256:[A-Za-z0-9+/=]+) .*\(ED25519\)"));
 
 static FINGERPRINT: LazyLock<Regex> = LazyLock::new(|| compile_regex(r"(SHA256:[A-Za-z0-9+/=]+)"));
-
-fn compile_regex(pattern: &str) -> Regex {
-    match Regex::new(pattern) {
-        Ok(regex) => regex,
-        Err(err) => panic!("invalid regex pattern `{pattern}`: {err}"),
-    }
-}
 
 /// The fingerprints the pod printed for its sshd key, from RunPod's log
 /// API: a channel apart from the SSH connection.

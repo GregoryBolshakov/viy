@@ -18,12 +18,14 @@ workspace = true
 oracle = []
 
 [dependencies]
+chrono = { workspace = true }
 libc = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["time"] }
 viy-exec = { workspace = true }
 viy-http = { workspace = true }
 viy-protocol = { workspace = true }
+viy-time = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

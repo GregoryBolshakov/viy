@@ -472,7 +472,7 @@ fn startup_py_passes_its_tests() {
         .unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(), "{stderr}");
-    assert!(stderr.contains("Ran 23 tests"), "{stderr}");
+    assert!(stderr.contains("Ran 24 tests"), "{stderr}");
 }
 
 // ------------------------------------------------------- rpctl tests/test_idle.py

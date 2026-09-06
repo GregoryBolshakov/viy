@@ -7,6 +7,8 @@
 
 pub mod api;
 pub mod boot;
+pub mod bootreport;
+pub mod idle;
 pub mod lock;
 pub mod notice;
 pub mod process;
@@ -14,6 +16,15 @@ pub mod ssh;
 pub mod state;
 pub mod tracked;
 pub mod tunnel;
+pub mod wait;
+
+/// A regex written into the code; one that does not compile is a bug.
+fn compile_regex(pattern: &str) -> regex::Regex {
+    match regex::Regex::new(pattern) {
+        Ok(regex) => regex,
+        Err(err) => panic!("invalid regex pattern `{pattern}`: {err}"),
+    }
+}
 
 /// rp, from the pinned snapshot, and viy on one state directory.
 #[cfg(test)]

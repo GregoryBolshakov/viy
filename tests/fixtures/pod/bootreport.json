@@ -1,0 +1,1428 @@
+{
+ "rpctl_commit": "b6427138ae8811180aa51aaf395dd270c7bb810a",
+ "generator": "tools/fixtures.py pod/bootreport",
+ "about": "rpctl's boot report and wait summaries on synthetic platform-log lines, by `call`: measure (bootreport.measure of latest_boot(entries) between parse_ts(created) and parse_ts(ready): stages as [key, label, seconds] and details), facts (bootreport.facts), render (bootreport.render with the default budget: text and over), redact (pod._redact_log, config keys over DEFAULTS), progress (pod._startup_progress for require_ssh, the log fetched once per list in fetches: after each the summary or the StartupError, and pod_ready), watchdog (pod._report_watchdog with config keys over DEFAULTS: what it said with its colour)",
+ "cases": [
+  {
+   "name": "measure_rpctl_test",
+   "call": "measure",
+   "entries": [
+    {
+     "ts": "2026-06-25T23:25:00Z",
+     "line": "old boot",
+     "source": "system"
+    },
+    {
+     "ts": "2026-06-25T23:35:49.5Z",
+     "line": "=== boot Thu ===",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:35:50.7Z",
+     "line": "RPCTL_PHASE starting vLLM",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:35:51Z",
+     "line": "RPCTL_PHASE weights prewarmed: 51.75 GiB in 80.0s",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:10Z",
+     "line": "API non-default args: {...}",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:40Z",
+     "line": "ENG world_size=1 rank=0",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:47Z",
+     "line": "Starting to load model x",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:38:19Z",
+     "line": "Loading weights took 90.87 seconds",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:38:20Z",
+     "line": "Model loading took 51.1 GiB",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:39:35Z",
+     "line": "torch.compile took 71.80 s in total",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:39:43Z",
+     "line": "init engine (profile, ...) took 82.42 s",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:40:02Z",
+     "line": "API server: HTTP server started",
+     "source": "container"
+    }
+   ],
+   "created": "2026-06-25T23:23:03Z",
+   "ready": "2026-06-25T23:40:05Z",
+   "stages": [
+    [
+     "pull",
+     "GPU allocation + image pull",
+     766.5
+    ],
+    [
+     "prepare",
+     "boot script (caches, sshd)",
+     1.2000000476837158
+    ],
+    [
+     "imports",
+     "vLLM CLI imports",
+     19.299999952316284
+    ],
+    [
+     "api_init",
+     "config, processor, engine spawn",
+     30.0
+    ],
+    [
+     "engine_init",
+     "engine: CUDA + processor init",
+     7.0
+    ],
+    [
+     "weights",
+     "weights to GPU",
+     93.0
+    ],
+    [
+     "compile",
+     "encoder profiling + compile",
+     75.0
+    ],
+    [
+     "engine",
+     "KV cache + CUDA graphs",
+     8.0
+    ],
+    [
+     "api",
+     "API server warmup",
+     19.0
+    ],
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     3.0
+    ]
+   ],
+   "details": {
+    "prewarm_s": 80.0,
+    "weights_read_s": 90.87,
+    "compile_s": 71.8
+   }
+  },
+  {
+   "name": "measure_no_boot_marker",
+   "call": "measure",
+   "entries": [
+    {
+     "ts": "2026-06-25T23:35:50.7Z",
+     "line": "RPCTL_PHASE starting vLLM",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:35:51Z",
+     "line": "RPCTL_PHASE weights prewarmed: 51.75 GiB in 80.0s",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:10Z",
+     "line": "API non-default args: {...}",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:40Z",
+     "line": "ENG world_size=1 rank=0",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:47Z",
+     "line": "Starting to load model x",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:38:19Z",
+     "line": "Loading weights took 90.87 seconds",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:38:20Z",
+     "line": "Model loading took 51.1 GiB",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:39:35Z",
+     "line": "torch.compile took 71.80 s in total",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:39:43Z",
+     "line": "init engine (profile, ...) took 82.42 s",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:40:02Z",
+     "line": "API server: HTTP server started",
+     "source": "container"
+    }
+   ],
+   "created": "2026-06-25T23:23:03Z",
+   "ready": "2026-06-25T23:40:05Z",
+   "stages": [
+    [
+     "prepare",
+     "boot script (caches, sshd)",
+     767.7000000476837
+    ],
+    [
+     "imports",
+     "vLLM CLI imports",
+     19.299999952316284
+    ],
+    [
+     "api_init",
+     "config, processor, engine spawn",
+     30.0
+    ],
+    [
+     "engine_init",
+     "engine: CUDA + processor init",
+     7.0
+    ],
+    [
+     "weights",
+     "weights to GPU",
+     93.0
+    ],
+    [
+     "compile",
+     "encoder profiling + compile",
+     75.0
+    ],
+    [
+     "engine",
+     "KV cache + CUDA graphs",
+     8.0
+    ],
+    [
+     "api",
+     "API server warmup",
+     19.0
+    ],
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     3.0
+    ]
+   ],
+   "details": {
+    "prewarm_s": 80.0,
+    "weights_read_s": 90.87,
+    "compile_s": 71.8
+   }
+  },
+  {
+   "name": "measure_marker_before_creation",
+   "call": "measure",
+   "entries": [
+    {
+     "ts": "2026-06-25T23:25:00Z",
+     "line": "old boot",
+     "source": "system"
+    },
+    {
+     "ts": "2026-06-25T23:35:49.5Z",
+     "line": "=== boot Thu ===",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:35:50.7Z",
+     "line": "RPCTL_PHASE starting vLLM",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:35:51Z",
+     "line": "RPCTL_PHASE weights prewarmed: 51.75 GiB in 80.0s",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:10Z",
+     "line": "API non-default args: {...}",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:40Z",
+     "line": "ENG world_size=1 rank=0",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:47Z",
+     "line": "Starting to load model x",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:38:19Z",
+     "line": "Loading weights took 90.87 seconds",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:38:20Z",
+     "line": "Model loading took 51.1 GiB",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:39:35Z",
+     "line": "torch.compile took 71.80 s in total",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:39:43Z",
+     "line": "init engine (profile, ...) took 82.42 s",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:40:02Z",
+     "line": "API server: HTTP server started",
+     "source": "container"
+    }
+   ],
+   "created": "2026-06-25T23:36:00Z",
+   "ready": "2026-06-25T23:40:05Z",
+   "stages": [
+    [
+     "imports",
+     "vLLM CLI imports",
+     10.0
+    ],
+    [
+     "api_init",
+     "config, processor, engine spawn",
+     30.0
+    ],
+    [
+     "engine_init",
+     "engine: CUDA + processor init",
+     7.0
+    ],
+    [
+     "weights",
+     "weights to GPU",
+     93.0
+    ],
+    [
+     "compile",
+     "encoder profiling + compile",
+     75.0
+    ],
+    [
+     "engine",
+     "KV cache + CUDA graphs",
+     8.0
+    ],
+    [
+     "api",
+     "API server warmup",
+     19.0
+    ],
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     3.0
+    ]
+   ],
+   "details": {
+    "prewarm_s": 80.0,
+    "weights_read_s": 90.87,
+    "compile_s": 71.8
+   }
+  },
+  {
+   "name": "measure_two_boots",
+   "call": "measure",
+   "entries": [
+    {
+     "ts": "2026-06-25T23:25:00Z",
+     "line": "old boot",
+     "source": "system"
+    },
+    {
+     "ts": "2026-06-25T23:35:49.5Z",
+     "line": "=== boot Thu ===",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:35:50.7Z",
+     "line": "RPCTL_PHASE starting vLLM",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:35:51Z",
+     "line": "RPCTL_PHASE weights prewarmed: 51.75 GiB in 80.0s",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:10Z",
+     "line": "API non-default args: {...}",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:40Z",
+     "line": "ENG world_size=1 rank=0",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:47Z",
+     "line": "Starting to load model x",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:38:19Z",
+     "line": "Loading weights took 90.87 seconds",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:38:20Z",
+     "line": "Model loading took 51.1 GiB",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:39:35Z",
+     "line": "torch.compile took 71.80 s in total",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:39:43Z",
+     "line": "init engine (profile, ...) took 82.42 s",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:40:02Z",
+     "line": "API server: HTTP server started",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:50:00Z",
+     "line": "=== boot Fri ===",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:51:00.25Z",
+     "line": "RPCTL_PHASE starting vLLM",
+     "source": "container"
+    }
+   ],
+   "created": "2026-06-25T23:23:03Z",
+   "ready": "2026-06-25T23:52:00Z",
+   "stages": [
+    [
+     "pull",
+     "GPU allocation + image pull",
+     1617.0
+    ],
+    [
+     "prepare",
+     "boot script (caches, sshd)",
+     60.25
+    ],
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     59.75
+    ]
+   ],
+   "details": {}
+  },
+  {
+   "name": "measure_untimed_and_odd_timestamps",
+   "call": "measure",
+   "entries": [
+    {
+     "line": "=== boot Sat ==="
+    },
+    {
+     "ts": "yesterday",
+     "line": "RPCTL_PHASE starting vLLM",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:10.123456Z",
+     "line": "API non-default args",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:40.5",
+     "line": "ENG world_size=1",
+     "source": "container"
+    },
+    {
+     "ts": "",
+     "line": "Starting to load model",
+     "source": "container"
+    }
+   ],
+   "created": "2026-06-25T23:23:03Z",
+   "ready": "2026-06-25T23:40:05Z",
+   "stages": [
+    [
+     "imports",
+     "vLLM CLI imports",
+     787.1234560012817
+    ],
+    [
+     "api_init",
+     "config, processor, engine spawn",
+     30.37654399871826
+    ],
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     204.5
+    ]
+   ],
+   "details": {}
+  },
+  {
+   "name": "measure_last_detail_wins_and_gpu",
+   "call": "measure",
+   "entries": [
+    {
+     "ts": "2026-06-25T23:30:00Z",
+     "line": "Loading weights took 12.5 seconds",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:31:00Z",
+     "line": "Loading weights took 30.25 seconds",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:31:01Z",
+     "line": "RPCTL_PHASE gpu  NVIDIA A100-SXM4-80GB  ",
+     "source": "container"
+    }
+   ],
+   "created": "2026-06-25T23:23:03Z",
+   "ready": "2026-06-25T23:40:05Z",
+   "stages": [
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     1022.0
+    ]
+   ],
+   "details": {
+    "weights_read_s": 30.25,
+    "gpu": "NVIDIA A100-SXM4-80GB"
+   }
+  },
+  {
+   "name": "measure_ready_before_the_last_marker",
+   "call": "measure",
+   "entries": [
+    {
+     "ts": "2026-06-25T23:25:00Z",
+     "line": "old boot",
+     "source": "system"
+    },
+    {
+     "ts": "2026-06-25T23:35:49.5Z",
+     "line": "=== boot Thu ===",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:35:50.7Z",
+     "line": "RPCTL_PHASE starting vLLM",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:35:51Z",
+     "line": "RPCTL_PHASE weights prewarmed: 51.75 GiB in 80.0s",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:10Z",
+     "line": "API non-default args: {...}",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:40Z",
+     "line": "ENG world_size=1 rank=0",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:36:47Z",
+     "line": "Starting to load model x",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:38:19Z",
+     "line": "Loading weights took 90.87 seconds",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:38:20Z",
+     "line": "Model loading took 51.1 GiB",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:39:35Z",
+     "line": "torch.compile took 71.80 s in total",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:39:43Z",
+     "line": "init engine (profile, ...) took 82.42 s",
+     "source": "container"
+    },
+    {
+     "ts": "2026-06-25T23:40:02Z",
+     "line": "API server: HTTP server started",
+     "source": "container"
+    }
+   ],
+   "created": "2026-06-25T23:23:03Z",
+   "ready": "2026-06-25T23:39:00Z",
+   "stages": [
+    [
+     "pull",
+     "GPU allocation + image pull",
+     766.5
+    ],
+    [
+     "prepare",
+     "boot script (caches, sshd)",
+     1.2000000476837158
+    ],
+    [
+     "imports",
+     "vLLM CLI imports",
+     19.299999952316284
+    ],
+    [
+     "api_init",
+     "config, processor, engine spawn",
+     30.0
+    ],
+    [
+     "engine_init",
+     "engine: CUDA + processor init",
+     7.0
+    ],
+    [
+     "weights",
+     "weights to GPU",
+     93.0
+    ],
+    [
+     "compile",
+     "encoder profiling + compile",
+     75.0
+    ],
+    [
+     "engine",
+     "KV cache + CUDA graphs",
+     8.0
+    ],
+    [
+     "api",
+     "API server warmup",
+     19.0
+    ],
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     0.0
+    ]
+   ],
+   "details": {
+    "prewarm_s": 80.0,
+    "weights_read_s": 90.87,
+    "compile_s": 71.8
+   }
+  },
+  {
+   "name": "measure_empty_log",
+   "call": "measure",
+   "entries": [],
+   "created": "2026-06-25T23:23:03Z",
+   "ready": "2026-06-25T23:40:05Z",
+   "stages": [
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     1022.0
+    ]
+   ],
+   "details": {}
+  },
+  {
+   "name": "facts_rpctl_test",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "9a54fb40f516 Already exists"
+    },
+    {
+     "line": "0f06d63f7039 Pull complete"
+    },
+    {
+     "line": "0f06d63f7039 Retrying in 1 second"
+    },
+    {
+     "line": "Status: Downloaded newer image for x"
+    },
+    {
+     "line": "RPCTL_PHASE verified model cache; using offline metadata"
+    },
+    {
+     "line": "RPCTL_PHASE cache restore unavailable; compiling normally (FilterError)"
+    },
+    {
+     "line": "Compiling a graph for compile range (1, 2048) takes 52.85 s"
+    }
+   ],
+   "facts": {
+    "image": "downloaded",
+    "model_metadata": "offline (verified cache)",
+    "compile_archive": "restore failed: (FilterError)",
+    "compile_cache": "miss (compiled)",
+    "layers_already_on_host": 1,
+    "layers_downloaded": 1,
+    "layer_retries": 1
+   }
+  },
+  {
+   "name": "facts_download_then_up_to_date",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "Status: Downloaded newer image for x"
+    },
+    {
+     "line": "Status: Image is up to date for x"
+    }
+   ],
+   "facts": {
+    "image": "downloaded"
+   }
+  },
+  {
+   "name": "facts_up_to_date_only",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "Status: Image is up to date for x"
+    }
+   ],
+   "facts": {
+    "image": "already on host"
+   }
+  },
+  {
+   "name": "facts_layers_already_on_host",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "a Already exists"
+    },
+    {
+     "line": "b Already exists"
+    }
+   ],
+   "facts": {
+    "layers_already_on_host": 2,
+    "layers_downloaded": 0,
+    "layer_retries": 0,
+    "image": "already on host"
+   }
+  },
+  {
+   "name": "facts_retries_only",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "a Retrying in 1 second"
+    },
+    {
+     "line": "a Retrying in 1 second"
+    }
+   ],
+   "facts": {
+    "layer_retries": 2
+   }
+  },
+  {
+   "name": "facts_caches_restored_and_hit",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "RPCTL_PHASE checking model cache with Hugging Face"
+    },
+    {
+     "line": "RPCTL_PHASE compilation caches restored (3 files)"
+    },
+    {
+     "line": "Directly load AOT compilation from x"
+    },
+    {
+     "line": "RPCTL_PHASE watchdog armed"
+    }
+   ],
+   "facts": {
+    "model_metadata": "online (Hugging Face check)",
+    "compile_archive": "restored",
+    "compile_cache": "hit",
+    "watchdog": "armed"
+   }
+  },
+  {
+   "name": "facts_first_compilation",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "RPCTL_PHASE first compilation on this GPU"
+    },
+    {
+     "line": "RPCTL_PHASE watchdog off"
+    }
+   ],
+   "facts": {
+    "compile_archive": "none for this GPU",
+    "watchdog": "off"
+   }
+  },
+  {
+   "name": "facts_restore_failed_without_reason",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "RPCTL_PHASE cache restore unavailable"
+    }
+   ],
+   "facts": {
+    "compile_archive": "restore failed: RPCTL_PHASE cache restore unavailable"
+   }
+  },
+  {
+   "name": "facts_watchdog_cannot_stop",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "RPCTL_PHASE watchdog armed"
+    },
+    {
+     "line": "RPCTL_PHASE WATCHDOG CANNOT STOP THIS POD: RunPod refused its key (HTTP 403) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+   ],
+   "facts": {
+    "watchdog": "CANNOT STOP THIS POD: RunPod refused its key (HTTP 403) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  },
+  {
+   "name": "facts_watchdog_key_refused",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "RPCTL_PHASE WATCHDOG CANNOT STOP THIS POD: RunPod refused its key (HTTP 403)"
+    }
+   ],
+   "facts": {
+    "watchdog": "CANNOT STOP THIS POD: RunPod refused its key (HTTP 403)"
+   }
+  },
+  {
+   "name": "facts_error_line",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "RPCTL_ERROR   sshd setup or daemon failed (exit 23) yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+    }
+   ],
+   "facts": {
+    "error": "sshd setup or daemon failed (exit 23) yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+   }
+  },
+  {
+   "name": "facts_nothing",
+   "call": "facts",
+   "entries": [
+    {
+     "line": "hello"
+    }
+   ],
+   "facts": {}
+  },
+  {
+   "name": "render_over_budget",
+   "call": "render",
+   "stages": [
+    [
+     "pull",
+     "GPU allocation + image pull",
+     150.0
+    ],
+    [
+     "weights",
+     "weights to GPU",
+     60.0
+    ]
+   ],
+   "details": {},
+   "total": 210.0,
+   "outcome": "ready",
+   "text": "Boot breakdown (budget 180s):\n  GPU allocation + image pull           150s\n  weights to GPU                         60s\n  total                                 210s\nOVER BUDGET by 30s. Largest stage: GPU allocation + image pull (150s) -- the host had to download the image; keep VLLM_IMAGE on the stock Docker Hub vllm/vllm-openai image.",
+   "over": true
+  },
+  {
+   "name": "render_within_budget",
+   "call": "render",
+   "stages": [
+    [
+     "weights",
+     "weights to GPU",
+     60.0
+    ]
+   ],
+   "details": {},
+   "total": 150.0,
+   "outcome": "ready",
+   "text": "Boot breakdown (budget 180s):\n  weights to GPU                         60s\n  total                                 150s",
+   "over": false
+  },
+  {
+   "name": "render_exactly_the_budget",
+   "call": "render",
+   "stages": [
+    [
+     "weights",
+     "weights to GPU",
+     60.0
+    ]
+   ],
+   "details": {},
+   "total": 180.0,
+   "outcome": "ready",
+   "text": "Boot breakdown (budget 180s):\n  weights to GPU                         60s\n  total                                 180s",
+   "over": false
+  },
+  {
+   "name": "render_details",
+   "call": "render",
+   "stages": [
+    [
+     "weights",
+     "weights to GPU",
+     93.2
+    ],
+    [
+     "compile",
+     "encoder profiling + compile",
+     75.0
+    ],
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     3.0
+    ]
+   ],
+   "details": {
+    "weights_read_s": 90.87,
+    "prewarm_s": 80.0,
+    "compile_s": 71.8
+   },
+   "total": 171.2,
+   "outcome": "ready",
+   "text": "Boot breakdown (budget 180s):\n  weights to GPU                         93s  (read 91s, prewarm 80s)\n  encoder profiling + compile            75s  (torch.compile 72s)\n  SSH tunnel / local endpoint             3s\n  total                                 171s",
+   "over": false
+  },
+  {
+   "name": "render_read_without_prewarm",
+   "call": "render",
+   "stages": [
+    [
+     "weights",
+     "weights to GPU",
+     20.0
+    ]
+   ],
+   "details": {
+    "weights_read_s": 15.0
+   },
+   "total": 20.0,
+   "outcome": "ready",
+   "text": "Boot breakdown (budget 180s):\n  weights to GPU                         20s  (read 15s)\n  total                                  20s",
+   "over": false
+  },
+  {
+   "name": "render_failed",
+   "call": "render",
+   "stages": [
+    [
+     "pull",
+     "GPU allocation + image pull",
+     150.0
+    ],
+    [
+     "weights",
+     "weights to GPU",
+     60.0
+    ]
+   ],
+   "details": {},
+   "total": 400.0,
+   "outcome": "failed",
+   "text": "Boot breakdown (FAILED, so far) (budget 180s):\n  GPU allocation + image pull           150s\n  weights to GPU                         60s\n  total                                 400s\nOVER BUDGET by 220s. Largest stage: GPU allocation + image pull (150s) -- the host had to download the image; keep VLLM_IMAGE on the stock Docker Hub vllm/vllm-openai image.",
+   "over": true
+  },
+  {
+   "name": "render_interrupted",
+   "call": "render",
+   "stages": [
+    [
+     "weights",
+     "weights to GPU",
+     60.0
+    ]
+   ],
+   "details": {},
+   "total": 61.0,
+   "outcome": "interrupted",
+   "text": "Boot breakdown (INTERRUPTED, so far) (budget 180s):\n  weights to GPU                         60s\n  total                                  61s",
+   "over": false
+  },
+  {
+   "name": "render_tie_names_the_first",
+   "call": "render",
+   "stages": [
+    [
+     "imports",
+     "vLLM CLI imports",
+     100.0
+    ],
+    [
+     "api",
+     "API server warmup",
+     100.0
+    ],
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     0.4
+    ]
+   ],
+   "details": {},
+   "total": 200.4,
+   "outcome": "ready",
+   "text": "Boot breakdown (budget 180s):\n  vLLM CLI imports                      100s\n  API server warmup                     100s\n  SSH tunnel / local endpoint             0s\n  total                                 200s\nOVER BUDGET by 20s. Largest stage: vLLM CLI imports (100s) -- vLLM's Python imports; check for a new image or new vLLM arguments.",
+   "over": true
+  },
+  {
+   "name": "render_halves",
+   "call": "render",
+   "stages": [
+    [
+     "pull",
+     "GPU allocation + image pull",
+     0.5
+    ],
+    [
+     "endpoint",
+     "SSH tunnel / local endpoint",
+     2.5
+    ]
+   ],
+   "details": {},
+   "total": 3.0,
+   "outcome": "ready",
+   "text": "Boot breakdown (budget 180s):\n  GPU allocation + image pull             0s\n  SSH tunnel / local endpoint             2s\n  total                                   3s",
+   "over": false
+  },
+  {
+   "name": "redact_rpctl_test",
+   "call": "redact",
+   "line": "key=sk-secret123 token=hf_abc123 plain=opaque-secret",
+   "config": {
+    "RUNPOD_API_KEY": "opaque-secret"
+   },
+   "redacted": "key=[redacted] token=[redacted] plain=[redacted]"
+  },
+  {
+   "name": "redact_endpoint_key_in_arguments",
+   "call": "redact",
+   "line": "non-default args: {'api_key': ['sk-abcdefghijklmnop123456']}",
+   "config": {
+    "VLLM_API_KEY": "sk-abcdefghijklmnop123456"
+   },
+   "redacted": "non-default args: {'api_key': ['[redacted]']}"
+  },
+  {
+   "name": "redact_watchdog_key",
+   "call": "redact",
+   "line": "env RPCTL_WATCHDOG_KEY=rpa_SECRETVALUE1234567890",
+   "config": {
+    "RUNPOD_WATCHDOG_API_KEY": "rpa_SECRETVALUE1234567890"
+   },
+   "redacted": "env RPCTL_WATCHDOG_KEY=[redacted]"
+  },
+  {
+   "name": "redact_short_values_stay",
+   "call": "redact",
+   "line": "user=bob pass=hunter2 tok=1234567",
+   "config": {
+    "HF_TOKEN": "1234567"
+   },
+   "redacted": "user=bob pass=hunter2 tok=1234567"
+  },
+  {
+   "name": "redact_token_and_password_keys",
+   "call": "redact",
+   "line": "a=TOKENVALUE99 b=pa55word-long c=/workspace/models",
+   "config": {
+    "HF_TOKEN": "TOKENVALUE99",
+    "PROXY_PASSWORD": "pa55word-long",
+    "HF_HOME": "/workspace/models"
+   },
+   "redacted": "a=[redacted] b=[redacted] c=/workspace/models"
+  },
+  {
+   "name": "redact_key_shapes_need_a_word_boundary",
+   "call": "redact",
+   "line": "xsk-notakey (sk-yes) hf_ rpa_x-y_z mask-ok",
+   "config": {},
+   "redacted": "xsk-notakey ([redacted]) hf_ [redacted] mask-ok"
+  },
+  {
+   "name": "progress_model_ready",
+   "call": "progress",
+   "require_ssh": true,
+   "fetches": [
+    [
+     {
+      "line": "RPCTL_PHASE model ready; saving startup caches"
+     }
+    ]
+   ],
+   "after": [
+    {
+     "summary": "model ready; saving startup caches",
+     "ready": true
+    }
+   ]
+  },
+  {
+   "name": "progress_a_later_boot_clears_ready",
+   "call": "progress",
+   "require_ssh": true,
+   "fetches": [
+    [
+     {
+      "line": "RPCTL_PHASE model ready; saving startup caches"
+     },
+     {
+      "line": "=== boot Sat Jun 20 ==="
+     }
+    ]
+   ],
+   "after": [
+    {
+     "summary": "model ready; saving startup caches",
+     "ready": false
+    }
+   ]
+  },
+  {
+   "name": "progress_ssh_error_ends_the_wait",
+   "call": "progress",
+   "require_ssh": true,
+   "fetches": [
+    [
+     {
+      "line": "RPCTL_PHASE starting sshd"
+     },
+     {
+      "line": "RPCTL_ERROR sshd setup failed"
+     },
+     {
+      "line": "RPCTL_PHASE starting vLLM"
+     }
+    ],
+    [
+     {
+      "line": "RPCTL_PHASE later"
+     }
+    ]
+   ],
+   "after": [
+    {
+     "error": "SSH setup failed; run rp logs for the installation/daemon error.",
+     "ready": false
+    },
+    {
+     "error": "SSH setup failed; run rp logs for the installation/daemon error.",
+     "ready": false
+    }
+   ]
+  },
+  {
+   "name": "progress_ssh_error_without_tunnel",
+   "call": "progress",
+   "require_ssh": false,
+   "fetches": [
+    [
+     {
+      "line": "RPCTL_PHASE starting sshd"
+     },
+     {
+      "line": "RPCTL_ERROR sshd setup failed"
+     }
+    ]
+   ],
+   "after": [
+    {
+     "summary": "starting sshd",
+     "ready": false
+    }
+   ]
+  },
+  {
+   "name": "progress_pull_then_retry",
+   "call": "progress",
+   "require_ssh": true,
+   "fetches": [
+    [
+     {
+      "line": "abc Downloading [=>   ]",
+      "source": "system"
+     }
+    ],
+    [
+     {
+      "line": "abc Retrying in 3 seconds",
+      "source": "system"
+     }
+    ],
+    [
+     {
+      "line": "abc Extracting",
+      "source": "system"
+     },
+     {
+      "line": "abc Downloading",
+      "source": "container"
+     }
+    ]
+   ],
+   "after": [
+    {
+     "summary": "pulling container image",
+     "ready": false
+    },
+    {
+     "summary": "pulling container image (a layer failed and restarted)",
+     "ready": false
+    },
+    {
+     "summary": "pulling container image (a layer failed and restarted)",
+     "ready": false
+    }
+   ]
+  },
+  {
+   "name": "progress_stages_of_vllm",
+   "call": "progress",
+   "require_ssh": true,
+   "fetches": [
+    [
+     {
+      "line": "Loading safetensors checkpoint shards",
+      "source": "container"
+     }
+    ],
+    [
+     {
+      "line": "Compiling a graph",
+      "source": "container"
+     },
+     {
+      "line": "Compiling a graph",
+      "source": "system"
+     }
+    ],
+    [
+     {
+      "line": "Capturing CUDA graphs (mixed prefill-decode)"
+     }
+    ],
+    [
+     {
+      "line": "Doing WarmUp for the sampler"
+     }
+    ],
+    [
+     {
+      "line": "Application startup complete."
+     }
+    ],
+    [
+     {
+      "line": "(APIServer) HTTP server started on 0.0.0.0:8000"
+     }
+    ]
+   ],
+   "after": [
+    {
+     "summary": "loading model weights",
+     "ready": false
+    },
+    {
+     "summary": "loading compilation cache / compiling",
+     "ready": false
+    },
+    {
+     "summary": "warming model / capturing graphs",
+     "ready": false
+    },
+    {
+     "summary": "warming model / capturing graphs",
+     "ready": false
+    },
+    {
+     "summary": "model ready inside pod",
+     "ready": false
+    },
+    {
+     "summary": "model ready inside pod",
+     "ready": true
+    }
+   ]
+  },
+  {
+   "name": "progress_long_phase_is_cut",
+   "call": "progress",
+   "require_ssh": true,
+   "fetches": [
+    [
+     {
+      "line": "RPCTL_PHASE restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches "
+     }
+    ]
+   ],
+   "after": [
+    {
+     "summary": "restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restoring caches restori",
+     "ready": false
+    }
+   ]
+  },
+  {
+   "name": "progress_empty_log_keeps_the_summary",
+   "call": "progress",
+   "require_ssh": true,
+   "fetches": [
+    [
+     {
+      "line": "RPCTL_PHASE restoring caches"
+     }
+    ],
+    []
+   ],
+   "after": [
+    {
+     "summary": "restoring caches",
+     "ready": false
+    },
+    {
+     "summary": "restoring caches",
+     "ready": false
+    }
+   ]
+  },
+  {
+   "name": "watchdog_armed",
+   "call": "watchdog",
+   "state": "armed",
+   "config": {},
+   "said": [
+    [
+     "dim",
+     "Idle watchdog armed: the pod terminates itself after 60 min without tokens, or after 8 h."
+    ]
+   ]
+  },
+  {
+   "name": "watchdog_armed_other_limits",
+   "call": "watchdog",
+   "state": "armed",
+   "config": {
+    "IDLE_TTL_MIN": "30",
+    "MAX_POD_HOURS": "2.5"
+   },
+   "said": [
+    [
+     "dim",
+     "Idle watchdog armed: the pod terminates itself after 30 min without tokens, or after 2 h."
+    ]
+   ]
+  },
+  {
+   "name": "watchdog_cannot_stop",
+   "call": "watchdog",
+   "state": "CANNOT STOP THIS POD: RunPod refused its key (HTTP 403)",
+   "config": {},
+   "said": [
+    [
+     "warn",
+     "Idle watchdog cannot stop this pod: runpod refused its key (http 403). rp reap on this machine is the only guard against a forgotten pod; rp down when you are done."
+    ]
+   ]
+  },
+  {
+   "name": "watchdog_off",
+   "call": "watchdog",
+   "state": "off",
+   "config": {},
+   "said": []
+  },
+  {
+   "name": "watchdog_no_report",
+   "call": "watchdog",
+   "state": null,
+   "config": {},
+   "said": [
+    [
+     "warn",
+     "Idle watchdog: no report from the pod yet (see rp logs)."
+    ]
+   ]
+  },
+  {
+   "name": "watchdog_unknown_state",
+   "call": "watchdog",
+   "state": "dozing",
+   "config": {},
+   "said": [
+    [
+     "warn",
+     "Idle watchdog: no report from the pod yet (see rp logs)."
+    ]
+   ]
+  }
+ ]
+}

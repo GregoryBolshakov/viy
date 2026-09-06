@@ -2534,6 +2534,7 @@ dependencies = [
  "viy-exec",
  "viy-http",
  "viy-testkit",
+ "viy-time",
 ]
 
 [[package]]
@@ -2560,6 +2561,7 @@ dependencies = [
 name = "viy-testkit"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "libc",
  "pretty_assertions",
  "serde_json",
@@ -2567,6 +2569,14 @@ dependencies = [
  "viy-exec",
  "viy-http",
  "viy-protocol",
+ "viy-time",
+]
+
+[[package]]
+name = "viy-time"
+version = "0.1.0"
+dependencies = [
+ "chrono",
 ]
 
 [[package]]

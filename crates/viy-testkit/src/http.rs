@@ -1,7 +1,7 @@
-//! An [`HttpClient`] for tests (kb d037): it records every request and
-//! plays scripted replies in order, nothing on the network. A reply can
-//! fail before any answer, or answer with a body that comes in pieces and
-//! may then fail or hang; with tokio's paused clock, a hang shows how the
+//! [`HttpClient`]s for tests (kb d037): they record every request and
+//! play scripted replies, in order or by request, nothing on the network.
+//! A reply can fail before any answer, or answer with a body that comes in
+//! pieces and may then fail or hang; with tokio's paused clock, a hang shows how the
 //! caller's timeouts and deadlines behave without waiting for them.
 
 use std::collections::VecDeque;
@@ -87,15 +87,59 @@ impl HttpClient for FakeHttp {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(request);
-        Box::pin(async move {
-            match reply {
-                Reply::Answer { status, body } => {
-                    Ok(Response::new(status, Pieces(body.into_iter().collect())))
-                }
-                Reply::Fail(error) => Err(error),
-                Reply::Hang => std::future::pending().await,
-            }
-        })
+        Box::pin(play(reply))
+    }
+}
+
+/// An [`HttpClient`] that answers each request with what `answer` makes
+/// of it, for code whose requests interleave (a background fetch beside a
+/// poll); it records every request too.
+pub struct RouteHttp {
+    answer: Box<dyn Fn(&Request) -> Reply + Send + Sync>,
+    sent: Mutex<Vec<Request>>,
+}
+
+impl RouteHttp {
+    pub fn new(answer: impl Fn(&Request) -> Reply + Send + Sync + 'static) -> Self {
+        Self {
+            answer: Box::new(answer),
+            sent: Mutex::default(),
+        }
+    }
+
+    /// Every request so far, in order.
+    pub fn sent(&self) -> Vec<Request> {
+        self.sent
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
+
+impl std::fmt::Debug for RouteHttp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RouteHttp").finish_non_exhaustive()
+    }
+}
+
+impl HttpClient for RouteHttp {
+    fn request(&self, request: Request) -> BoxFuture<'_, Result<Response, HttpError>> {
+        let reply = (self.answer)(&request);
+        self.sent
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(request);
+        Box::pin(play(reply))
+    }
+}
+
+async fn play(reply: Reply) -> Result<Response, HttpError> {
+    match reply {
+        Reply::Answer { status, body } => {
+            Ok(Response::new(status, Pieces(body.into_iter().collect())))
+        }
+        Reply::Fail(error) => Err(error),
+        Reply::Hang => std::future::pending().await,
     }
 }
 

@@ -1,13 +1,15 @@
 //! Test support shared by the other crates: the oracle client that asks rpctl
 //! at the pinned commit (behind the `oracle` feature), the fixture loader, the
 //! temp-XDG guard that keeps tests away from real state, config fixture
-//! cases laid out on disk, a scripted frontend, a scripted HTTP client, the
-//! scripted model server and the scenarios it serves, and readable snapshots
+//! cases laid out on disk, a scripted frontend, scripted HTTP and process
+//! backends, an sshd of the tests' own, the scripted model server and the
+//! scenarios it serves, and readable snapshots
 //! of the model context (docs/implementation-plan.md 3.2-3.6). Never a
 //! dependency of non-test code.
 
 pub mod config_tree;
 pub mod context_snapshot;
+pub mod exec;
 pub mod fixtures;
 pub mod frontend;
 pub mod fuzz;
@@ -18,5 +20,6 @@ pub mod mock_llm;
 pub mod oracle;
 pub mod scenario;
 pub mod scratch;
+pub mod sshd;
 
 mod repo;

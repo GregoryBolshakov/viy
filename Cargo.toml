@@ -3,6 +3,7 @@ members = [
     "crates/viy",
     "crates/viy-agent",
     "crates/viy-config",
+    "crates/viy-exec",
     "crates/viy-http",
     "crates/viy-pod",
     "crates/viy-protocol",
@@ -24,6 +25,7 @@ publish = false
 # Internal
 viy-agent = { path = "crates/viy-agent" }
 viy-config = { path = "crates/viy-config" }
+viy-exec = { path = "crates/viy-exec" }
 viy-http = { path = "crates/viy-http" }
 viy-pod = { path = "crates/viy-pod" }
 viy-protocol = { path = "crates/viy-protocol" }
@@ -37,6 +39,8 @@ viy-tools = { path = "crates/viy-tools" }
 # The endpoint key: Codex mints secrets with rand's OsRng and base64
 # (secrets/src/local.rs).
 base64 = "0.22.1"
+# Local time, as Codex has it (codex-rs/Cargo.toml).
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.6.6", features = ["derive"] }
 crossterm = "0.29.0"
 indexmap = "2.14.0"

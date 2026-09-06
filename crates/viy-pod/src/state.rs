@@ -68,14 +68,7 @@ impl PodState {
     /// mode, which recorded nothing. rp and viy write a bool; any other
     /// value is read as rp's `bool(...)` reads it, so both tools agree on it.
     pub fn tunnel_only(&self) -> Option<bool> {
-        self.0.get(key::TUNNEL_ONLY).map(|v| match v {
-            Value::Null => false,
-            Value::Bool(b) => *b,
-            Value::Number(n) => n.as_f64() != Some(0.0),
-            Value::String(s) => !s.is_empty(),
-            Value::Array(a) => !a.is_empty(),
-            Value::Object(o) => !o.is_empty(),
-        })
+        self.0.get(key::TUNNEL_ONLY).map(crate::api::truthy)
     }
 
     fn text(&self, key: &str) -> Option<&str> {

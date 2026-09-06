@@ -18,12 +18,15 @@ workspace = true
 oracle = ["viy-testkit/oracle"]
 
 [dependencies]
+chrono = { workspace = true }
 indexmap = { workspace = true }
 libc = { workspace = true }
+regex = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
 viy-config = { workspace = true }
+viy-exec = { workspace = true }
 viy-http = { workspace = true }
 
 [dev-dependencies]

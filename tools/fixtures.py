@@ -1274,6 +1274,398 @@ def gen_pod_boot(snap):
     }
 
 
+# -------------------------------------------------------------------- pod/ssh
+
+# One case: one of rpctl's ssh or tunnel functions (`call`, with `args`),
+# pod.json, known_hosts and tunnel.log before (text, or none), config keys
+# over DEFAULTS, the answers its commands get in order (`runs`: stdout,
+# stderr, returncode, or `raise` "timeout" or "missing"), the HTTP answers
+# its RunPod requests get in order, whether the tunnel's local end accepts
+# (`listening`: one answer, or one per check), and `live`, whether pid 4242
+# is a live ssh. `popen` is what the tunnel's ssh does: exit with `exits`
+# (its stderr first), or keep running. Out: the commands run (argv, stdin,
+# timeout), the requests sent, what rpctl printed with its colour, the
+# result or the SystemExit, and the files after. The state directory is
+# written <STATE>. Played through rpctl's own functions with subprocess,
+# the clock, signals and the local port check replaced; keys, fingerprints
+# and addresses are synthetic, the ports high and made up.
+SSH_FP = "SHA256:Synthetic0000HostKeyFingerprintForTheTests0000"
+SSH_FP_OTHER = "SHA256:Synthetic9999SomeoneElsesKeyFingerprint99999"
+SSH_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures"
+SSH_LOG_LINE = f"sshd host key: 256 {SSH_FP} root@f7fa (ED25519)"
+SSH_POD = {"id": "pod111", "name": OUR_NAME, "desiredStatus": "RUNNING",
+           "publicIp": "203.0.113.7", "portMappings": {"22": 40122}}
+SSH_STATE = _state(pod_id="pod111", name=OUR_NAME, volume_id="vol222", tunnel_only=True)
+SSH_CFG = {"NETWORK_VOLUME_ID": "vol222", "TUNNEL_LOCAL_PORT": "18001", "VLLM_PORT": "8000"}
+KEYGEN_FOUND = dict(stdout=f"# Host rpctl-qwen-pod found: line 1 \n"
+                           f"rpctl-qwen-pod ED25519 {SSH_FP}\n")
+KEYGEN_NOT_FOUND = dict(returncode=1)
+KEYSCAN = dict(stdout=f"# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n"
+                      f"[203.0.113.7]:40122 {SSH_KEY}\n")
+KEYGEN_LF = dict(stdout=f"256 {SSH_FP} x (ED25519)\n")
+SSH_OK = dict()
+KNOWN = f"rpctl-qwen-pod {SSH_KEY}\n"
+
+
+def _logs(*lines):
+    return dict(body="".join(f"data: {json.dumps({'line': l})}\n" for l in lines),
+                content_type="text/event-stream")
+
+
+SSH_CASES = [
+    dict(name="alias_without_state", call="alias"),
+    dict(name="alias_primary_volume", call="alias", state=SSH_STATE),
+    dict(name="alias_backup_volume", call="alias", state=_state(volume_id="vol999")),
+    dict(name="alias_no_primary_configured", call="alias", state=_state(volume_id="vol999"),
+         config={"NETWORK_VOLUME_ID": ""}),
+    dict(name="alias_empty_volume", call="alias", state=_state(volume_id="")),
+    dict(name="ssh_opts_primary", call="ssh_opts", state=SSH_STATE),
+    dict(name="ssh_opts_backup_volume", call="ssh_opts", state=_state(volume_id="vol999")),
+    dict(name="tunnel_cmd_default_ports", call="tunnel_cmd", config={"TUNNEL_LOCAL_PORT": ""},
+         args=["203.0.113.7", 40122]),
+    dict(name="tunnel_cmd_own_ports", call="tunnel_cmd", config={"VLLM_PORT": "8100"},
+         args=["203.0.113.7", 40122]),
+    dict(name="endpoint_mapped", call="ssh_endpoint", args=[SSH_POD]),
+    dict(name="endpoint_no_ip", call="ssh_endpoint", args=[{**SSH_POD, "publicIp": None}]),
+    dict(name="endpoint_empty_ip", call="ssh_endpoint", args=[{**SSH_POD, "publicIp": ""}]),
+    dict(name="endpoint_no_mappings", call="ssh_endpoint",
+         args=[{**SSH_POD, "portMappings": None}]),
+    dict(name="endpoint_other_ports_only", call="ssh_endpoint",
+         args=[{**SSH_POD, "portMappings": {"8000": 40800}}]),
+    dict(name="endpoint_port_zero", call="ssh_endpoint",
+         args=[{**SSH_POD, "portMappings": {"22": 0}}]),
+    dict(name="endpoint_port_as_text", call="ssh_endpoint",
+         args=[{**SSH_POD, "portMappings": {"22": "40122"}}]),
+    dict(name="endpoint_empty_pod", call="ssh_endpoint", args=[{}]),
+    # The pinned key.
+    dict(name="fingerprint_no_known_hosts", call="pinned_fingerprint", state=SSH_STATE),
+    dict(name="fingerprint_pinned", call="pinned_fingerprint", state=SSH_STATE,
+         known_hosts=KNOWN, runs=[KEYGEN_FOUND]),
+    dict(name="fingerprint_not_pinned", call="pinned_fingerprint", state=SSH_STATE,
+         known_hosts="rpctl-other " + SSH_KEY + "\n", runs=[KEYGEN_NOT_FOUND]),
+    dict(name="forget_nothing_pinned", call="forget_host_key", state=SSH_STATE),
+    dict(name="forget_pinned", call="forget_host_key", state=SSH_STATE, known_hosts=KNOWN,
+         runs=[KEYGEN_FOUND, dict(stdout="# Host rpctl-qwen-pod found: line 1\n")]),
+    dict(name="forget_backup_alias", call="forget_host_key", state=_state(volume_id="vol999"),
+         known_hosts=KNOWN, runs=[KEYGEN_NOT_FOUND]),
+    dict(name="scan_finds_the_key", call="scan_host_key", args=["203.0.113.7", 40122],
+         runs=[KEYSCAN, KEYGEN_LF]),
+    dict(name="scan_spaces_in_the_line", call="scan_host_key", args=["203.0.113.7", 40122],
+         runs=[dict(stdout=f"  [203.0.113.7]:40122  {SSH_KEY}\t \n"), KEYGEN_LF]),
+    dict(name="scan_times_out", call="scan_host_key", args=["203.0.113.7", 40122],
+         runs=[dict(raise_="timeout")]),
+    dict(name="scan_without_keyscan", call="scan_host_key", args=["203.0.113.7", 40122],
+         runs=[dict(raise_="missing")]),
+    dict(name="scan_no_ed25519_key", call="scan_host_key", args=["203.0.113.7", 40122],
+         runs=[dict(stdout="# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n", returncode=1)]),
+    dict(name="scan_keygen_prints_no_fingerprint", call="scan_host_key",
+         args=["203.0.113.7", 40122], runs=[KEYSCAN, dict(stderr="(stdin) is not a key file.\n",
+                                                          returncode=255)]),
+    # First contact: pinned only when the boot log agrees.
+    dict(name="first_contact_without_pod_id", call="pin_checked_key",
+         args=["203.0.113.7", 40122], state=_state(volume_id="vol222")),
+    dict(name="first_contact_matching_key_is_pinned", call="pin_checked_key",
+         args=["203.0.113.7", 40122], state=SSH_STATE, known_hosts="rpctl-other x\n",
+         replies=[_logs("boot", SSH_LOG_LINE)], runs=[KEYSCAN, KEYGEN_LF]),
+    dict(name="first_contact_backup_alias", call="pin_checked_key",
+         args=["203.0.113.7", 40122], state=_state(pod_id="pod111", volume_id="vol999"),
+         replies=[_logs(SSH_LOG_LINE)], runs=[KEYSCAN, KEYGEN_LF]),
+    dict(name="first_contact_mismatch_pins_nothing", call="pin_checked_key",
+         args=["203.0.113.7", 40122], state=SSH_STATE,
+         replies=[_logs(SSH_LOG_LINE.replace(SSH_FP, SSH_FP_OTHER),
+                        "sshd host key: 256 SHA256:Zz9 root@x (ED25519)")],
+         runs=[KEYSCAN, KEYGEN_LF]),
+    dict(name="first_contact_log_without_fingerprint", call="pin_checked_key",
+         args=["203.0.113.7", 40122], state=SSH_STATE,
+         replies=[_logs("boot", f"sshd host key: 256 {SSH_FP} root@f7fa (RSA)")]),
+    dict(name="first_contact_logs_unavailable", call="pin_checked_key",
+         args=["203.0.113.7", 40122], state=SSH_STATE, replies=[DOWN]),
+    dict(name="first_contact_scan_finds_nothing", call="pin_checked_key",
+         args=["203.0.113.7", 40122], state=SSH_STATE, replies=[_logs(SSH_LOG_LINE)],
+         runs=[dict(raise_="timeout")]),
+    # The preflight ssh.
+    dict(name="preflight_pinned_and_in", call="preflight_ssh", args=["203.0.113.7", 40122],
+         state=SSH_STATE, known_hosts=KNOWN, runs=[KEYGEN_FOUND, SSH_OK]),
+    dict(name="preflight_host_key_changed", call="preflight_ssh",
+         args=["203.0.113.7", 40122], state=SSH_STATE, known_hosts=KNOWN,
+         runs=[KEYGEN_FOUND, dict(returncode=255, stderr=(
+             "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+             "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n"
+             "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+             "Host key verification failed.\n"))]),
+    dict(name="preflight_host_key_failed_lowercase", call="preflight_ssh",
+         args=["203.0.113.7", 40122], state=SSH_STATE, known_hosts=KNOWN,
+         runs=[KEYGEN_FOUND, dict(returncode=255, stderr="No ED25519 HOST KEY is known\n")]),
+    dict(name="preflight_permission_denied", call="preflight_ssh",
+         args=["203.0.113.7", 40122], state=SSH_STATE, known_hosts=KNOWN,
+         runs=[KEYGEN_FOUND, dict(returncode=255,
+                                  stderr="root@203.0.113.7: Permission denied (publickey).\n")]),
+    dict(name="preflight_refused_quietly", call="preflight_ssh",
+         args=["203.0.113.7", 40122], state=SSH_STATE, known_hosts=KNOWN,
+         runs=[KEYGEN_FOUND, dict(returncode=255, stderr="  \n")]),
+    dict(name="preflight_first_contact_checked", call="preflight_ssh",
+         args=["203.0.113.7", 40122], state=SSH_STATE, known_hosts="rpctl-other x\n",
+         replies=[_logs(SSH_LOG_LINE)],
+         runs=[KEYGEN_NOT_FOUND, KEYSCAN, KEYGEN_LF, SSH_OK, KEYGEN_FOUND]),
+    dict(name="preflight_first_contact_unchecked", call="preflight_ssh",
+         args=["203.0.113.7", 40122], state=SSH_STATE, known_hosts="rpctl-other x\n",
+         replies=[_logs("no fingerprint here")],
+         runs=[KEYGEN_NOT_FOUND, SSH_OK, KEYGEN_FOUND]),
+    dict(name="preflight_first_contact_nothing_pinned_after", call="preflight_ssh",
+         args=["203.0.113.7", 40122], state=SSH_STATE, replies=[_logs()], runs=[SSH_OK]),
+    dict(name="preflight_first_contact_mismatch", call="preflight_ssh",
+         args=["203.0.113.7", 40122], state=SSH_STATE,
+         replies=[_logs(SSH_LOG_LINE.replace(SSH_FP, SSH_FP_OTHER))],
+         runs=[KEYSCAN, KEYGEN_LF]),
+    dict(name="preflight_first_contact_then_refused", call="preflight_ssh",
+         args=["203.0.113.7", 40122], state=SSH_STATE, replies=[_logs(SSH_LOG_LINE)],
+         runs=[KEYSCAN, KEYGEN_LF,
+               dict(returncode=255, stderr="ssh: connect to host 203.0.113.7 port 40122: "
+                                           "Connection refused\n")]),
+    # tunnel.log's tail.
+    dict(name="log_tail_no_file", call="tunnel_log_tail"),
+    dict(name="log_tail_last_tunnel_only", call="tunnel_log_tail", tunnel_log=(
+        "=== 2026-07-15 09:00:00 ssh tunnel to 203.0.113.7:40122 ===\nold one\n"
+        "=== 2026-07-16 09:00:00 ssh tunnel to 203.0.113.7:40122 ===\n"
+        "a\n\n  \nb\r\nc\rd\ne\nf\ng\n")),
+    dict(name="log_tail_without_header", call="tunnel_log_tail",
+         tunnel_log="first line dropped\nsecond\nthird"),
+    dict(name="log_tail_header_only", call="tunnel_log_tail",
+         tunnel_log="=== 2026-07-16 09:00:00 ssh tunnel to 203.0.113.7:40122 ==="),
+    # `rp tunnel --status`.
+    dict(name="status_down_not_pinned", call="tunnel_status", state=SSH_STATE,
+         listening=False),
+    dict(name="status_running_pinned", call="tunnel_status",
+         state=_state(pod_id="pod111", volume_id="vol222", tunnel_pid=4242), live=True,
+         known_hosts=KNOWN, runs=[KEYGEN_FOUND], listening=True),
+    dict(name="status_someone_elses_listener", call="tunnel_status",
+         state=_state(pod_id="pod111", tunnel_pid=99999999), listening=True),
+    # Warnings before a chat.
+    dict(name="warnings_proxy_pod", call="preflight",
+         state=_state(pod_id="pod111", tunnel_only=False)),
+    dict(name="warnings_tunnel_up", call="preflight",
+         state=_state(pod_id="pod111", tunnel_only=True, tunnel_pid=4242), live=True,
+         listening=False),
+    dict(name="warnings_no_tunnel", call="preflight", state=SSH_STATE, listening=False),
+    dict(name="warnings_untracked_listener", call="preflight", state=SSH_STATE,
+         listening=True),
+    dict(name="warnings_predates_tunnel_mode", call="preflight", state=_state(pod_id="pod111"),
+         listening=False),
+    dict(name="warnings_no_pod_tunnel_off", call="preflight", config={"TUNNEL": "0"}),
+    # Starting and stopping the background tunnel.
+    dict(name="start_already_running", call="start_tunnel", args=["203.0.113.7", 40122],
+         state=_state(pod_id="pod111", tunnel_pid=4242), live=True),
+    dict(name="start_port_taken", call="start_tunnel", args=["203.0.113.7", 40122],
+         state=SSH_STATE, listening=True),
+    dict(name="start_preflight_fails", call="start_tunnel", args=["203.0.113.7", 40122],
+         state=SSH_STATE, known_hosts=KNOWN, listening=False,
+         runs=[KEYGEN_FOUND, dict(returncode=255, stderr="Connection timed out during "
+                                                         "banner exchange\n")]),
+    dict(name="start_exits_at_once", call="start_tunnel", args=["203.0.113.7", 40122],
+         state=SSH_STATE, known_hosts=KNOWN, listening=False, runs=[KEYGEN_FOUND, SSH_OK],
+         popen=dict(exits=255, stderr="bind [127.0.0.1]:18001: Address already in use\n"
+                                      "channel_setup_fwd_listener_tcpip: cannot listen to "
+                                      "port: 18001\nCould not request local forwarding.\n")),
+    dict(name="start_listens", call="start_tunnel", args=["203.0.113.7", 40122],
+         state=SSH_STATE, known_hosts=KNOWN, listening=[False, False, True],
+         runs=[KEYGEN_FOUND, SSH_OK], popen=dict()),
+    dict(name="start_never_listens", call="start_tunnel", args=["203.0.113.7", 40122],
+         state=SSH_STATE, known_hosts=KNOWN, listening=False,
+         runs=[KEYGEN_FOUND, SSH_OK], popen=dict()),
+    dict(name="stop_nothing_recorded", call="stop_tunnel", state=SSH_STATE),
+    dict(name="stop_dead_pid", call="stop_tunnel",
+         state=_state(pod_id="pod111", tunnel_pid=99999999, tunnel_local_port="18001")),
+    dict(name="stop_junk_pid", call="stop_tunnel", state=_state(tunnel_pid="not a pid")),
+    dict(name="stop_live", call="stop_tunnel",
+         state=_state(pod_id="pod111", tunnel_pid=4242, tunnel_local_port="18001"), live=True),
+    # The pod to tunnel to.
+    dict(name="target_runpod_unreachable", call="resolve_ssh_target", replies=[DOWN]),
+    dict(name="target_no_pod", call="resolve_ssh_target", replies=[_ok([])]),
+    dict(name="target_no_mapping_yet", call="resolve_ssh_target", state=SSH_STATE,
+         replies=[_ok({**SSH_POD, "portMappings": {}}), _ok({**SSH_POD, "portMappings": {}})]),
+    dict(name="target_from_the_detail", call="resolve_ssh_target",
+         replies=[_ok([{k: v for k, v in SSH_POD.items() if k != "portMappings"}]),
+                  _ok(SSH_POD)]),
+    dict(name="target_detail_gone_keeps_the_list_pod", call="resolve_ssh_target",
+         replies=[_ok([SSH_POD]), GONE]),
+    dict(name="target_several_pods", call="resolve_ssh_target",
+         replies=[_ok([SSH_POD, {**SSH_POD, "id": "pod333", "desiredStatus": "EXITED"}]),
+                  _ok(SSH_POD)]),
+]
+
+SSH_RUNNER = r"""
+import json, os, pathlib, shutil, signal, subprocess, sys
+sys.path.insert(0, sys.argv[1])
+import requests
+from requests.adapters import BaseAdapter
+from requests.structures import CaseInsensitiveDict
+from rpctl import api, config, pod
+
+config.LEGACY_STATE = pathlib.Path(os.environ["HOME"]) / "no-legacy-pod-state.json"
+STATE = str(config.USER_STATE_DIR)
+COLORS = {pod.C_DIM: "dim", pod.C_OK: "ok", pod.C_WARN: "warn", pod.C_ERR: "error", "": "plain"}
+said, ran, sent, signals = [], [], [], []
+pod._say = lambda msg, color="": said.append([COLORS[color], msg])
+pod.print = lambda *a, **kw: said.append(["plain", " ".join(map(str, a))]) if a else None
+pod.time.sleep = lambda s: None
+
+def scrub(value):
+    if isinstance(value, str):
+        return value.replace(STATE, "<STATE>")
+    if isinstance(value, (list, tuple)):
+        return [scrub(v) for v in value]
+    if isinstance(value, dict):
+        return {k: scrub(v) for k, v in value.items()}
+    return value
+
+class Player(BaseAdapter):
+    def __init__(self, replies):
+        super().__init__()
+        self.replies = replies
+    def send(self, request, stream=False, timeout=None, **kw):
+        sent.append(f"{request.method} {request.url}")
+        reply = self.replies.pop(0)
+        r = requests.Response()
+        r.status_code = reply.get("status", 200)
+        r.headers = CaseInsensitiveDict(
+            {"Content-Type": reply.get("content_type", "application/json")})
+        r._content = reply.get("body", "").encode()
+        r._content_consumed = True
+        r.url, r.request, r.reason, r.encoding = request.url, request, "synthetic", "utf-8"
+        return r
+
+for case in json.loads(sys.argv[2]):
+    shutil.rmtree(config.USER_STATE_DIR, ignore_errors=True)
+    config.USER_STATE_DIR.mkdir(parents=True)
+    for key, path in (("state", config.STATE_PATH), ("known_hosts", pod.KNOWN_HOSTS),
+                      ("tunnel_log", pod.TUNNEL_LOG)):
+        if case.get(key) is not None:
+            path.write_text(case[key])
+    said.clear(); ran.clear(); sent.clear(); signals.clear()
+    runs = list(case.get("runs", []))
+    replies = list(case.get("replies", []))
+    listening = case.get("listening", False)
+    answers = list(listening) if isinstance(listening, list) else None
+    live = {4242} if case.get("live") else set()
+
+    def run(argv, input=None, timeout=None, **kw):
+        ran.append({"argv": scrub(list(argv)), "input": input, "timeout": timeout})
+        reply = runs.pop(0)
+        if reply.get("raise_") == "timeout":
+            raise subprocess.TimeoutExpired(argv, timeout)
+        if reply.get("raise_") == "missing":
+            raise FileNotFoundError(2, "No such file or directory", argv[0])
+        return subprocess.CompletedProcess(argv, reply.get("returncode", 0),
+                                           reply.get("stdout", ""), reply.get("stderr", ""))
+    pod.subprocess.run = run
+
+    class Popen:
+        pid = 4242
+        def __init__(self, argv, stdout=None, stderr=None, start_new_session=False):
+            ran.append({"argv": scrub(list(argv)), "input": None, "timeout": None,
+                        "detached": start_new_session})
+            self.returncode = case["popen"].get("exits")
+            stderr.write(case["popen"].get("stderr", ""))
+            if self.returncode is None:
+                live.add(4242)
+        def poll(self):
+            return self.returncode
+        def terminate(self):
+            signals.append(["terminate", self.pid])
+            live.discard(self.pid)
+    pod.subprocess.Popen = Popen
+    pod._tunnel_proc = None
+
+    def tcp_open(host, port, timeout=5):
+        if host != "127.0.0.1":
+            raise SystemExit(f"{case['name']}: a probe of {host}")
+        return answers.pop(0) if answers is not None else listening
+    pod._tcp_open = tcp_open
+    pod._pid_alive = lambda pid: pid in live
+    pod._cmdline = lambda pid: [b"/usr/bin/ssh", b"-N"] if int(pid) in live else []
+    def kill(pid, sig):
+        signals.append(["kill", pid, int(sig)])
+        live.discard(pid)
+    pod.os.kill = kill
+
+    class Client(api.RunPod):
+        def __init__(self, key="rpa_SYNTHETICKEY0000"):
+            super().__init__(key)
+            self.s.mount("https://", Player(replies))
+    pod.RunPod = Client
+    cfg = dict(config.DEFAULTS, POD_NAME="qwen-pod", RUNPOD_API_KEY="rpa_SYNTHETICKEY0000",
+               **{**json.loads(sys.argv[3]), **case.get("config", {})})
+    args = case.get("args", [])
+    call = case["call"]
+    try:
+        if call == "alias":
+            result = pod.host_key_alias(cfg)
+        elif call == "ssh_opts":
+            result = pod.ssh_opts(cfg)
+        elif call == "tunnel_cmd":
+            result = pod._tunnel_cmd(cfg, *args)
+        elif call == "ssh_endpoint":
+            ip, port = pod.ssh_endpoint(*args)
+            result = [ip, str(port)] if ip else None
+        elif call == "pinned_fingerprint":
+            result = pod.pinned_fingerprint(cfg)
+        elif call == "forget_host_key":
+            result = pod.forget_host_key(cfg)
+        elif call == "scan_host_key":
+            fp, key = pod.scan_host_key(*args)
+            result = [fp, key] if fp else None
+        elif call == "pin_checked_key":
+            result = pod._pin_checked_key(cfg, *args)
+        elif call == "preflight_ssh":
+            result = pod._preflight_ssh(cfg, *args)
+        elif call == "tunnel_log_tail":
+            result = pod.tunnel_log_tail()
+        elif call == "tunnel_status":
+            result = pod.tunnel_status(cfg)
+        elif call == "preflight":
+            result = pod.preflight(cfg)
+        elif call == "start_tunnel":
+            result = pod.start_tunnel(cfg, *args, quiet=False)
+        elif call == "stop_tunnel":
+            result = pod.stop_tunnel(cfg, quiet=False)
+        elif call == "resolve_ssh_target":
+            _, pod_id, ip, port = pod._resolve_ssh_target(cfg)
+            result = [pod_id, ip, port]
+        out = {"ok": scrub(result)}
+    except SystemExit as e:
+        out = {"exit": e.code}
+    for left, what in ((runs, "runs"), (replies, "replies"), (answers or [], "listening")):
+        if left:
+            raise SystemExit(f"{case['name']}: {len(left)} {what} unused")
+    after = {key: path.read_text() if path.exists() else None
+             for key, path in (("state", config.STATE_PATH), ("known_hosts", pod.KNOWN_HOSTS))}
+    print(json.dumps({**case, "ran": list(ran), "sent": list(sent), "said": scrub(said),
+                      "signals": list(signals), **out, **{k + "_after": v
+                                                          for k, v in after.items()}}))
+"""
+
+
+def gen_pod_ssh(snap):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": tmp,
+               "XDG_CONFIG_HOME": tmp, "XDG_STATE_HOME": tmp, "XDG_DATA_HOME": tmp}
+        out = subprocess.run([*rp_python(), "-I", "-c", SSH_RUNNER, str(snap),
+                              json.dumps(SSH_CASES), json.dumps(SSH_CFG)],
+                             cwd=tmp, env=env, check=True, capture_output=True, text=True)
+    return {
+        "about": "rpctl's ssh and tunnel functions in pod.py: per case the call and its args, "
+                 "pod.json, known_hosts and tunnel.log before, config keys over DEFAULTS "
+                 f"and {SSH_CFG} with POD_NAME={OUR_NAME!r}, the answers its commands "
+                 "(`runs`) and RunPod requests (`replies`) get in order, whether the local "
+                 "end accepts (`listening`), whether pid 4242 is a live ssh (`live`) and what "
+                 "the tunnel's ssh does (`popen`); out: the commands run, the requests sent, "
+                 "what rpctl printed with its colour, the signals sent, the result or the "
+                 "SystemExit, and pod.json and known_hosts after. The state directory is "
+                 "<STATE>. Run by the installed rp's interpreter in a temporary HOME",
+        "cases": [json.loads(line) for line in out.stdout.splitlines()],
+    }
+
+
 GENERATORS = {
     "cli/flags": gen_cli_flags,
     "cli/parse": gen_cli_parse,
@@ -1285,6 +1677,7 @@ GENERATORS = {
     "pod/api": gen_pod_api,
     "pod/boot": gen_pod_boot,
     "pod/resolve": gen_pod_resolve,
+    "pod/ssh": gen_pod_ssh,
 }
 
 # ------------------------------------------------------------------ driver

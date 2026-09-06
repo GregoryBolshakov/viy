@@ -1,0 +1,2787 @@
+{
+ "rpctl_commit": "b6427138ae8811180aa51aaf395dd270c7bb810a",
+ "generator": "tools/fixtures.py pod/ssh",
+ "about": "rpctl's ssh and tunnel functions in pod.py: per case the call and its args, pod.json, known_hosts and tunnel.log before, config keys over DEFAULTS and {'NETWORK_VOLUME_ID': 'vol222', 'TUNNEL_LOCAL_PORT': '18001', 'VLLM_PORT': '8000'} with POD_NAME='qwen-pod', the answers its commands (`runs`) and RunPod requests (`replies`) get in order, whether the local end accepts (`listening`), whether pid 4242 is a live ssh (`live`) and what the tunnel's ssh does (`popen`); out: the commands run, the requests sent, what rpctl printed with its colour, the signals sent, the result or the SystemExit, and pod.json and known_hosts after. The state directory is <STATE>. Run by the installed rp's interpreter in a temporary HOME",
+ "cases": [
+  {
+   "name": "alias_without_state",
+   "call": "alias",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "rpctl-qwen-pod",
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "alias_primary_volume",
+   "call": "alias",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "rpctl-qwen-pod",
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "alias_backup_volume",
+   "call": "alias",
+   "state": "{\n  \"volume_id\": \"vol999\"\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "rpctl-qwen-pod-vol999",
+   "state_after": "{\n  \"volume_id\": \"vol999\"\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "alias_no_primary_configured",
+   "call": "alias",
+   "state": "{\n  \"volume_id\": \"vol999\"\n}\n",
+   "config": {
+    "NETWORK_VOLUME_ID": ""
+   },
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "rpctl-qwen-pod",
+   "state_after": "{\n  \"volume_id\": \"vol999\"\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "alias_empty_volume",
+   "call": "alias",
+   "state": "{\n  \"volume_id\": \"\"\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "rpctl-qwen-pod",
+   "state_after": "{\n  \"volume_id\": \"\"\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "ssh_opts_primary",
+   "call": "ssh_opts",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "-o",
+    "UserKnownHostsFile=<STATE>/known_hosts",
+    "-o",
+    "GlobalKnownHostsFile=/dev/null",
+    "-o",
+    "HostKeyAlias=rpctl-qwen-pod",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "ServerAliveInterval=15",
+    "-o",
+    "ServerAliveCountMax=3"
+   ],
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "ssh_opts_backup_volume",
+   "call": "ssh_opts",
+   "state": "{\n  \"volume_id\": \"vol999\"\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "-o",
+    "UserKnownHostsFile=<STATE>/known_hosts",
+    "-o",
+    "GlobalKnownHostsFile=/dev/null",
+    "-o",
+    "HostKeyAlias=rpctl-qwen-pod-vol999",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "ServerAliveInterval=15",
+    "-o",
+    "ServerAliveCountMax=3"
+   ],
+   "state_after": "{\n  \"volume_id\": \"vol999\"\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "tunnel_cmd_default_ports",
+   "call": "tunnel_cmd",
+   "config": {
+    "TUNNEL_LOCAL_PORT": ""
+   },
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "ssh",
+    "-N",
+    "-T",
+    "-L",
+    "127.0.0.1:8000:127.0.0.1:8000",
+    "-o",
+    "ExitOnForwardFailure=yes",
+    "-o",
+    "UserKnownHostsFile=<STATE>/known_hosts",
+    "-o",
+    "GlobalKnownHostsFile=/dev/null",
+    "-o",
+    "HostKeyAlias=rpctl-qwen-pod",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "ServerAliveInterval=15",
+    "-o",
+    "ServerAliveCountMax=3",
+    "-p",
+    "40122",
+    "root@203.0.113.7"
+   ],
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "tunnel_cmd_own_ports",
+   "call": "tunnel_cmd",
+   "config": {
+    "VLLM_PORT": "8100"
+   },
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "ssh",
+    "-N",
+    "-T",
+    "-L",
+    "127.0.0.1:18001:127.0.0.1:8100",
+    "-o",
+    "ExitOnForwardFailure=yes",
+    "-o",
+    "UserKnownHostsFile=<STATE>/known_hosts",
+    "-o",
+    "GlobalKnownHostsFile=/dev/null",
+    "-o",
+    "HostKeyAlias=rpctl-qwen-pod",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "ServerAliveInterval=15",
+    "-o",
+    "ServerAliveCountMax=3",
+    "-p",
+    "40122",
+    "root@203.0.113.7"
+   ],
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "endpoint_mapped",
+   "call": "ssh_endpoint",
+   "args": [
+    {
+     "id": "pod111",
+     "name": "qwen-pod",
+     "desiredStatus": "RUNNING",
+     "publicIp": "203.0.113.7",
+     "portMappings": {
+      "22": 40122
+     }
+    }
+   ],
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "203.0.113.7",
+    "40122"
+   ],
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "endpoint_no_ip",
+   "call": "ssh_endpoint",
+   "args": [
+    {
+     "id": "pod111",
+     "name": "qwen-pod",
+     "desiredStatus": "RUNNING",
+     "publicIp": null,
+     "portMappings": {
+      "22": 40122
+     }
+    }
+   ],
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "endpoint_empty_ip",
+   "call": "ssh_endpoint",
+   "args": [
+    {
+     "id": "pod111",
+     "name": "qwen-pod",
+     "desiredStatus": "RUNNING",
+     "publicIp": "",
+     "portMappings": {
+      "22": 40122
+     }
+    }
+   ],
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "endpoint_no_mappings",
+   "call": "ssh_endpoint",
+   "args": [
+    {
+     "id": "pod111",
+     "name": "qwen-pod",
+     "desiredStatus": "RUNNING",
+     "publicIp": "203.0.113.7",
+     "portMappings": null
+    }
+   ],
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "endpoint_other_ports_only",
+   "call": "ssh_endpoint",
+   "args": [
+    {
+     "id": "pod111",
+     "name": "qwen-pod",
+     "desiredStatus": "RUNNING",
+     "publicIp": "203.0.113.7",
+     "portMappings": {
+      "8000": 40800
+     }
+    }
+   ],
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "endpoint_port_zero",
+   "call": "ssh_endpoint",
+   "args": [
+    {
+     "id": "pod111",
+     "name": "qwen-pod",
+     "desiredStatus": "RUNNING",
+     "publicIp": "203.0.113.7",
+     "portMappings": {
+      "22": 0
+     }
+    }
+   ],
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "endpoint_port_as_text",
+   "call": "ssh_endpoint",
+   "args": [
+    {
+     "id": "pod111",
+     "name": "qwen-pod",
+     "desiredStatus": "RUNNING",
+     "publicIp": "203.0.113.7",
+     "portMappings": {
+      "22": "40122"
+     }
+    }
+   ],
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "203.0.113.7",
+    "40122"
+   ],
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "endpoint_empty_pod",
+   "call": "ssh_endpoint",
+   "args": [
+    {}
+   ],
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "fingerprint_no_known_hosts",
+   "call": "pinned_fingerprint",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "fingerprint_pinned",
+   "call": "pinned_fingerprint",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "rpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000",
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "fingerprint_not_pinned",
+   "call": "pinned_fingerprint",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-other ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "runs": [
+    {
+     "returncode": 1
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-other ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "forget_nothing_pinned",
+   "call": "forget_host_key",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [
+    [
+     "dim",
+     "No host key pinned for 'rpctl-qwen-pod'."
+    ]
+   ],
+   "signals": [],
+   "ok": null,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "forget_pinned",
+   "call": "forget_host_key",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    },
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-R",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "warn",
+     "Forgot the pinned host key for 'rpctl-qwen-pod'. The next `rp tunnel` trusts whatever answers."
+    ]
+   ],
+   "signals": [],
+   "ok": null,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "forget_backup_alias",
+   "call": "forget_host_key",
+   "state": "{\n  \"volume_id\": \"vol999\"\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "runs": [
+    {
+     "returncode": 1
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod-vol999",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "dim",
+     "No host key pinned for 'rpctl-qwen-pod-vol999'."
+    ]
+   ],
+   "signals": [],
+   "ok": null,
+   "state_after": "{\n  \"volume_id\": \"vol999\"\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "scan_finds_the_key",
+   "call": "scan_host_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "runs": [
+    {
+     "stdout": "# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n[203.0.113.7]:40122 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+    },
+    {
+     "stdout": "256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 x (ED25519)\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-lf",
+      "-"
+     ],
+     "input": "x ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "SHA256:Synthetic0000HostKeyFingerprintForTheTests0000",
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures"
+   ],
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "scan_spaces_in_the_line",
+   "call": "scan_host_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "runs": [
+    {
+     "stdout": "  [203.0.113.7]:40122  ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\t \n"
+    },
+    {
+     "stdout": "256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 x (ED25519)\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-lf",
+      "-"
+     ],
+     "input": "x ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "SHA256:Synthetic0000HostKeyFingerprintForTheTests0000",
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures"
+   ],
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "scan_times_out",
+   "call": "scan_host_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "runs": [
+    {
+     "raise_": "timeout"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    }
+   ],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "scan_without_keyscan",
+   "call": "scan_host_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "runs": [
+    {
+     "raise_": "missing"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    }
+   ],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "scan_no_ed25519_key",
+   "call": "scan_host_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "runs": [
+    {
+     "stdout": "# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n",
+     "returncode": 1
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    }
+   ],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "scan_keygen_prints_no_fingerprint",
+   "call": "scan_host_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "runs": [
+    {
+     "stdout": "# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n[203.0.113.7]:40122 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+    },
+    {
+     "stderr": "(stdin) is not a key file.\n",
+     "returncode": 255
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-lf",
+      "-"
+     ],
+     "input": "x ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": null,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "first_contact_without_pod_id",
+   "call": "pin_checked_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"volume_id\": \"vol222\"\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "unchecked",
+   "state_after": "{\n  \"volume_id\": \"vol222\"\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "first_contact_matching_key_is_pinned",
+   "call": "pin_checked_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-other x\n",
+   "replies": [
+    {
+     "body": "data: {\"line\": \"boot\"}\ndata: {\"line\": \"sshd host key: 256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 root@f7fa (ED25519)\"}\n",
+     "content_type": "text/event-stream"
+    }
+   ],
+   "runs": [
+    {
+     "stdout": "# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n[203.0.113.7]:40122 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+    },
+    {
+     "stdout": "256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 x (ED25519)\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-lf",
+      "-"
+     ],
+     "input": "x ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+     "timeout": null
+    }
+   ],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [],
+   "signals": [],
+   "ok": "pinned",
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-other x\nrpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "first_contact_backup_alias",
+   "call": "pin_checked_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"volume_id\": \"vol999\"\n}\n",
+   "replies": [
+    {
+     "body": "data: {\"line\": \"sshd host key: 256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 root@f7fa (ED25519)\"}\n",
+     "content_type": "text/event-stream"
+    }
+   ],
+   "runs": [
+    {
+     "stdout": "# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n[203.0.113.7]:40122 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+    },
+    {
+     "stdout": "256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 x (ED25519)\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-lf",
+      "-"
+     ],
+     "input": "x ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+     "timeout": null
+    }
+   ],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [],
+   "signals": [],
+   "ok": "pinned",
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"volume_id\": \"vol999\"\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod-vol999 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "first_contact_mismatch_pins_nothing",
+   "call": "pin_checked_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "replies": [
+    {
+     "body": "data: {\"line\": \"sshd host key: 256 SHA256:Synthetic9999SomeoneElsesKeyFingerprint99999 root@f7fa (ED25519)\"}\ndata: {\"line\": \"sshd host key: 256 SHA256:Zz9 root@x (ED25519)\"}\n",
+     "content_type": "text/event-stream"
+    }
+   ],
+   "runs": [
+    {
+     "stdout": "# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n[203.0.113.7]:40122 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+    },
+    {
+     "stdout": "256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 x (ED25519)\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-lf",
+      "-"
+     ],
+     "input": "x ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+     "timeout": null
+    }
+   ],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [
+    [
+     "error",
+     "SSH to 203.0.113.7:40122 presented host key SHA256:Synthetic0000HostKeyFingerprintForTheTests0000, but the pod's boot log (read over RunPod's HTTPS API) says SHA256:Synthetic9999SomeoneElsesKeyFingerprint99999, SHA256:Zz9.\nTreat it as a machine-in-the-middle: nothing was pinned and no tunnel started."
+    ]
+   ],
+   "signals": [],
+   "ok": "mismatch",
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "first_contact_log_without_fingerprint",
+   "call": "pin_checked_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "replies": [
+    {
+     "body": "data: {\"line\": \"boot\"}\ndata: {\"line\": \"sshd host key: 256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 root@f7fa (RSA)\"}\n",
+     "content_type": "text/event-stream"
+    }
+   ],
+   "ran": [],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [],
+   "signals": [],
+   "ok": "unchecked",
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "first_contact_logs_unavailable",
+   "call": "pin_checked_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "replies": [
+    {
+     "status": 503,
+     "body": "upstream unavailable",
+     "content_type": "text/plain"
+    }
+   ],
+   "ran": [],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [],
+   "signals": [],
+   "ok": "unchecked",
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "first_contact_scan_finds_nothing",
+   "call": "pin_checked_key",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "replies": [
+    {
+     "body": "data: {\"line\": \"sshd host key: 256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 root@f7fa (ED25519)\"}\n",
+     "content_type": "text/event-stream"
+    }
+   ],
+   "runs": [
+    {
+     "raise_": "timeout"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    }
+   ],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [],
+   "signals": [],
+   "ok": "unchecked",
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "preflight_pinned_and_in",
+   "call": "preflight_ssh",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    },
+    {}
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": true,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "preflight_host_key_changed",
+   "call": "preflight_ssh",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    },
+    {
+     "returncode": 255,
+     "stderr": "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\nHost key verification failed.\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "error",
+     "SSH to 203.0.113.7:40122 failed; no tunnel started."
+    ],
+    [
+     "dim",
+     "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\nHost key verification failed."
+    ],
+    [
+     "warn",
+     "\nThe pod presented a different host key than the one pinned for 'rpctl-qwen-pod'.\nExpected if the network volume was recreated, or if the pod predates the persisted key.\nOtherwise treat it as a machine-in-the-middle and do not clear it.\n  rp tunnel --forget-key   (only when you can explain the change)"
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "preflight_host_key_failed_lowercase",
+   "call": "preflight_ssh",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    },
+    {
+     "returncode": 255,
+     "stderr": "No ED25519 HOST KEY is known\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "error",
+     "SSH to 203.0.113.7:40122 failed; no tunnel started."
+    ],
+    [
+     "dim",
+     "No ED25519 HOST KEY is known"
+    ],
+    [
+     "warn",
+     "\nThe pod presented a different host key than the one pinned for 'rpctl-qwen-pod'.\nExpected if the network volume was recreated, or if the pod predates the persisted key.\nOtherwise treat it as a machine-in-the-middle and do not clear it.\n  rp tunnel --forget-key   (only when you can explain the change)"
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "preflight_permission_denied",
+   "call": "preflight_ssh",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    },
+    {
+     "returncode": 255,
+     "stderr": "root@203.0.113.7: Permission denied (publickey).\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "error",
+     "SSH to 203.0.113.7:40122 failed; no tunnel started."
+    ],
+    [
+     "dim",
+     "root@203.0.113.7: Permission denied (publickey)."
+    ],
+    [
+     "warn",
+     "The pod has your public key only if it existed when the pod was created. Recreate it:  rp down && rp up"
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "preflight_refused_quietly",
+   "call": "preflight_ssh",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    },
+    {
+     "returncode": 255,
+     "stderr": "  \n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "error",
+     "SSH to 203.0.113.7:40122 failed; no tunnel started."
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "preflight_first_contact_checked",
+   "call": "preflight_ssh",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-other x\n",
+   "replies": [
+    {
+     "body": "data: {\"line\": \"sshd host key: 256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 root@f7fa (ED25519)\"}\n",
+     "content_type": "text/event-stream"
+    }
+   ],
+   "runs": [
+    {
+     "returncode": 1
+    },
+    {
+     "stdout": "# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n[203.0.113.7]:40122 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+    },
+    {
+     "stdout": "256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 x (ED25519)\n"
+    },
+    {},
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-lf",
+      "-"
+     ],
+     "input": "x ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [
+    [
+     "ok",
+     "Pinned this pod's SSH host key; it matches the fingerprint in the pod's boot log:"
+    ],
+    [
+     "dim",
+     "  rpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000"
+    ],
+    [
+     "dim",
+     "The key lives on the network volume, so every later pod must present the same one or the connection is refused."
+    ]
+   ],
+   "signals": [],
+   "ok": true,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-other x\nrpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "preflight_first_contact_unchecked",
+   "call": "preflight_ssh",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-other x\n",
+   "replies": [
+    {
+     "body": "data: {\"line\": \"no fingerprint here\"}\n",
+     "content_type": "text/event-stream"
+    }
+   ],
+   "runs": [
+    {
+     "returncode": 1
+    },
+    {},
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [
+    [
+     "warn",
+     "Pinned this pod's SSH host key on first use, unchecked: the pod's boot log had no fingerprint to compare with."
+    ],
+    [
+     "dim",
+     "  rpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000"
+    ],
+    [
+     "dim",
+     "The key lives on the network volume, so every later pod must present the same one or the connection is refused."
+    ]
+   ],
+   "signals": [],
+   "ok": true,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-other x\n"
+  },
+  {
+   "name": "preflight_first_contact_nothing_pinned_after",
+   "call": "preflight_ssh",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "replies": [
+    {
+     "body": "",
+     "content_type": "text/event-stream"
+    }
+   ],
+   "runs": [
+    {}
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [
+    [
+     "warn",
+     "Pinned this pod's SSH host key on first use, unchecked: the pod's boot log had no fingerprint to compare with."
+    ],
+    [
+     "dim",
+     "The key lives on the network volume, so every later pod must present the same one or the connection is refused."
+    ]
+   ],
+   "signals": [],
+   "ok": true,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "preflight_first_contact_mismatch",
+   "call": "preflight_ssh",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "replies": [
+    {
+     "body": "data: {\"line\": \"sshd host key: 256 SHA256:Synthetic9999SomeoneElsesKeyFingerprint99999 root@f7fa (ED25519)\"}\n",
+     "content_type": "text/event-stream"
+    }
+   ],
+   "runs": [
+    {
+     "stdout": "# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n[203.0.113.7]:40122 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+    },
+    {
+     "stdout": "256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 x (ED25519)\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-lf",
+      "-"
+     ],
+     "input": "x ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+     "timeout": null
+    }
+   ],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [
+    [
+     "error",
+     "SSH to 203.0.113.7:40122 presented host key SHA256:Synthetic0000HostKeyFingerprintForTheTests0000, but the pod's boot log (read over RunPod's HTTPS API) says SHA256:Synthetic9999SomeoneElsesKeyFingerprint99999.\nTreat it as a machine-in-the-middle: nothing was pinned and no tunnel started."
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "preflight_first_contact_then_refused",
+   "call": "preflight_ssh",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "replies": [
+    {
+     "body": "data: {\"line\": \"sshd host key: 256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 root@f7fa (ED25519)\"}\n",
+     "content_type": "text/event-stream"
+    }
+   ],
+   "runs": [
+    {
+     "stdout": "# 203.0.113.7:40122 SSH-2.0-OpenSSH_8.9p1\n[203.0.113.7]:40122 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+    },
+    {
+     "stdout": "256 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000 x (ED25519)\n"
+    },
+    {
+     "returncode": 255,
+     "stderr": "ssh: connect to host 203.0.113.7 port 40122: Connection refused\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keyscan",
+      "-T",
+      "10",
+      "-t",
+      "ed25519",
+      "-p",
+      "40122",
+      "203.0.113.7"
+     ],
+     "input": null,
+     "timeout": 20
+    },
+    {
+     "argv": [
+      "ssh-keygen",
+      "-lf",
+      "-"
+     ],
+     "input": "x ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [
+    "GET https://api.runpod.io/v2/pods/pod111/logs?tail=5000"
+   ],
+   "said": [
+    [
+     "error",
+     "SSH to 203.0.113.7:40122 failed; no tunnel started."
+    ],
+    [
+     "dim",
+     "ssh: connect to host 203.0.113.7 port 40122: Connection refused"
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "log_tail_no_file",
+   "call": "tunnel_log_tail",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "",
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "log_tail_last_tunnel_only",
+   "call": "tunnel_log_tail",
+   "tunnel_log": "=== 2026-07-15 09:00:00 ssh tunnel to 203.0.113.7:40122 ===\nold one\n=== 2026-07-16 09:00:00 ssh tunnel to 203.0.113.7:40122 ===\na\n\n  \nb\r\nc\rd\ne\nf\ng\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "c\nd\ne\nf\ng",
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "log_tail_without_header",
+   "call": "tunnel_log_tail",
+   "tunnel_log": "first line dropped\nsecond\nthird",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "second\nthird",
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "log_tail_header_only",
+   "call": "tunnel_log_tail",
+   "tunnel_log": "=== 2026-07-16 09:00:00 ssh tunnel to 203.0.113.7:40122 ===",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": "2026-07-16 09:00:00 ssh tunnel to 203.0.113.7:40122 ===",
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "status_down_not_pinned",
+   "call": "tunnel_status",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "listening": false,
+   "ran": [],
+   "sent": [],
+   "said": [
+    [
+     "warn",
+     "  tunnel:    down  (rp tunnel)"
+    ],
+    [
+     "plain",
+     "  host key:  not pinned yet (pinned on first connect)"
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "status_running_pinned",
+   "call": "tunnel_status",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_pid\": 4242\n}\n",
+   "live": true,
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    }
+   ],
+   "listening": true,
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "ok",
+     "  tunnel:    running (pid 4242) on 127.0.0.1:18001"
+    ],
+    [
+     "plain",
+     "  host key:  rpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000"
+    ]
+   ],
+   "signals": [],
+   "ok": true,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_pid\": 4242\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "status_someone_elses_listener",
+   "call": "tunnel_status",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_pid\": 99999999\n}\n",
+   "listening": true,
+   "ran": [],
+   "sent": [],
+   "said": [
+    [
+     "warn",
+     "  tunnel:    something is listening on 127.0.0.1:18001, but it is not a tunnel rp started"
+    ],
+    [
+     "plain",
+     "  host key:  not pinned yet (pinned on first connect)"
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_pid\": 99999999\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "warnings_proxy_pod",
+   "call": "preflight",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_only\": false\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "This pod is reached through RunPod's proxy, which terminates TLS: prompts, replies and the bearer token are readable there.",
+    "For an encrypted path:  rp down && TUNNEL=1 rp up"
+   ],
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_only\": false\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "warnings_tunnel_up",
+   "call": "preflight",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_only\": true,\n  \"tunnel_pid\": 4242\n}\n",
+   "live": true,
+   "listening": false,
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [],
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_only\": true,\n  \"tunnel_pid\": 4242\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "warnings_no_tunnel",
+   "call": "preflight",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "listening": false,
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "No SSH tunnel is up, so http://127.0.0.1:18001 will refuse connections.",
+    "Start one with:  rp tunnel -b"
+   ],
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "warnings_untracked_listener",
+   "call": "preflight",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "listening": true,
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [],
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "warnings_predates_tunnel_mode",
+   "call": "preflight",
+   "state": "{\n  \"pod_id\": \"pod111\"\n}\n",
+   "listening": false,
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "This pod predates tunnel mode: the tunnel works, but its http port through RunPod's proxy is still open. Close it with:  rp down && rp up",
+    "No SSH tunnel is up, so http://127.0.0.1:18001 will refuse connections.",
+    "Start one with:  rp tunnel -b"
+   ],
+   "state_after": "{\n  \"pod_id\": \"pod111\"\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "warnings_no_pod_tunnel_off",
+   "call": "preflight",
+   "config": {
+    "TUNNEL": "0"
+   },
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "This pod is reached through RunPod's proxy, which terminates TLS: prompts, replies and the bearer token are readable there.",
+    "For an encrypted path:  rp down && TUNNEL=1 rp up"
+   ],
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "start_already_running",
+   "call": "start_tunnel",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_pid\": 4242\n}\n",
+   "live": true,
+   "ran": [],
+   "sent": [],
+   "said": [
+    [
+     "dim",
+     "Tunnel already running (pid 4242)."
+    ]
+   ],
+   "signals": [],
+   "ok": true,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_pid\": 4242\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "start_port_taken",
+   "call": "start_tunnel",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "listening": true,
+   "ran": [],
+   "sent": [],
+   "said": [
+    [
+     "error",
+     "127.0.0.1:18001 is already in use, so no tunnel was started."
+    ],
+    [
+     "dim",
+     "An untracked tunnel from an earlier session, or another service. Free the port, or set TUNNEL_LOCAL_PORT to a different one."
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "start_preflight_fails",
+   "call": "start_tunnel",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "listening": false,
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    },
+    {
+     "returncode": 255,
+     "stderr": "Connection timed out during banner exchange\n"
+    }
+   ],
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "error",
+     "SSH to 203.0.113.7:40122 failed; no tunnel started."
+    ],
+    [
+     "dim",
+     "Connection timed out during banner exchange"
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "start_exits_at_once",
+   "call": "start_tunnel",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "listening": false,
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    },
+    {}
+   ],
+   "popen": {
+    "exits": 255,
+    "stderr": "bind [127.0.0.1]:18001: Address already in use\nchannel_setup_fwd_listener_tcpip: cannot listen to port: 18001\nCould not request local forwarding.\n"
+   },
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-N",
+      "-T",
+      "-L",
+      "127.0.0.1:18001:127.0.0.1:8000",
+      "-o",
+      "ExitOnForwardFailure=yes",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7"
+     ],
+     "input": null,
+     "timeout": null,
+     "detached": true
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "error",
+     "The tunnel exited immediately (ssh 255)."
+    ],
+    [
+     "dim",
+     "bind [127.0.0.1]:18001: Address already in use\nchannel_setup_fwd_listener_tcpip: cannot listen to port: 18001\nCould not request local forwarding."
+    ]
+   ],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "start_listens",
+   "call": "start_tunnel",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "listening": [
+    false,
+    false,
+    true
+   ],
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    },
+    {}
+   ],
+   "popen": {},
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-N",
+      "-T",
+      "-L",
+      "127.0.0.1:18001:127.0.0.1:8000",
+      "-o",
+      "ExitOnForwardFailure=yes",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7"
+     ],
+     "input": null,
+     "timeout": null,
+     "detached": true
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "ok",
+     "Tunnel up (pid 4242): 127.0.0.1:18001 -> 203.0.113.7:40122 -> 127.0.0.1:8000"
+    ]
+   ],
+   "signals": [],
+   "ok": true,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true,\n  \"tunnel_pid\": 4242,\n  \"tunnel_local_port\": \"18001\"\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "start_never_listens",
+   "call": "start_tunnel",
+   "args": [
+    "203.0.113.7",
+    40122
+   ],
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n",
+   "listening": false,
+   "runs": [
+    {
+     "stdout": "# Host rpctl-qwen-pod found: line 1 \nrpctl-qwen-pod ED25519 SHA256:Synthetic0000HostKeyFingerprintForTheTests0000\n"
+    },
+    {}
+   ],
+   "popen": {},
+   "ran": [
+    {
+     "argv": [
+      "ssh-keygen",
+      "-l",
+      "-F",
+      "rpctl-qwen-pod",
+      "-f",
+      "<STATE>/known_hosts"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7",
+      "true"
+     ],
+     "input": null,
+     "timeout": null
+    },
+    {
+     "argv": [
+      "ssh",
+      "-N",
+      "-T",
+      "-L",
+      "127.0.0.1:18001:127.0.0.1:8000",
+      "-o",
+      "ExitOnForwardFailure=yes",
+      "-o",
+      "UserKnownHostsFile=<STATE>/known_hosts",
+      "-o",
+      "GlobalKnownHostsFile=/dev/null",
+      "-o",
+      "HostKeyAlias=rpctl-qwen-pod",
+      "-o",
+      "StrictHostKeyChecking=accept-new",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "ServerAliveCountMax=3",
+      "-p",
+      "40122",
+      "root@203.0.113.7"
+     ],
+     "input": null,
+     "timeout": null,
+     "detached": true
+    }
+   ],
+   "sent": [],
+   "said": [
+    [
+     "error",
+     "The tunnel never started listening on 127.0.0.1:18001."
+    ]
+   ],
+   "signals": [
+    [
+     "terminate",
+     4242
+    ]
+   ],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": "rpctl-qwen-pod ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAASyntheticHostKeyForViyFixtures\n"
+  },
+  {
+   "name": "stop_nothing_recorded",
+   "call": "stop_tunnel",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "stop_dead_pid",
+   "call": "stop_tunnel",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_pid\": 99999999,\n  \"tunnel_local_port\": \"18001\"\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_pid\": null,\n  \"tunnel_local_port\": \"18001\"\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "stop_junk_pid",
+   "call": "stop_tunnel",
+   "state": "{\n  \"tunnel_pid\": \"not a pid\"\n}\n",
+   "ran": [],
+   "sent": [],
+   "said": [],
+   "signals": [],
+   "ok": false,
+   "state_after": "{\n  \"tunnel_pid\": null\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "stop_live",
+   "call": "stop_tunnel",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_pid\": 4242,\n  \"tunnel_local_port\": \"18001\"\n}\n",
+   "live": true,
+   "ran": [],
+   "sent": [],
+   "said": [
+    [
+     "ok",
+     "Stopped the tunnel (pid 4242)."
+    ]
+   ],
+   "signals": [
+    [
+     "kill",
+     4242,
+     15
+    ]
+   ],
+   "ok": true,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"tunnel_pid\": null,\n  \"tunnel_local_port\": \"18001\"\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "target_runpod_unreachable",
+   "call": "resolve_ssh_target",
+   "replies": [
+    {
+     "status": 503,
+     "body": "upstream unavailable",
+     "content_type": "text/plain"
+    }
+   ],
+   "ran": [],
+   "sent": [
+    "GET https://rest.runpod.io/v1/pods"
+   ],
+   "said": [
+    [
+     "error",
+     "Could not reach RunPod."
+    ],
+    [
+     "dim",
+     "GET /pods -> HTTP 503\nupstream unavailable"
+    ]
+   ],
+   "signals": [],
+   "exit": 1,
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "target_no_pod",
+   "call": "resolve_ssh_target",
+   "replies": [
+    {
+     "body": "[]"
+    }
+   ],
+   "ran": [],
+   "sent": [
+    "GET https://rest.runpod.io/v1/pods"
+   ],
+   "said": [],
+   "signals": [],
+   "exit": "No pod named 'qwen-pod'. Run rp up",
+   "state_after": null,
+   "known_hosts_after": null
+  },
+  {
+   "name": "target_no_mapping_yet",
+   "call": "resolve_ssh_target",
+   "state": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": \"vol222\",\n  \"tunnel_only\": true\n}\n",
+   "replies": [
+    {
+     "body": "{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"publicIp\": \"203.0.113.7\", \"portMappings\": {}}"
+    },
+    {
+     "body": "{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"publicIp\": \"203.0.113.7\", \"portMappings\": {}}"
+    }
+   ],
+   "ran": [],
+   "sent": [
+    "GET https://rest.runpod.io/v1/pods/pod111",
+    "GET https://rest.runpod.io/v1/pods/pod111"
+   ],
+   "said": [
+    [
+     "warn",
+     "The pod has no TCP port for SSH yet; it appears about a minute after boot. Try again shortly."
+    ]
+   ],
+   "signals": [],
+   "exit": 1,
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"volume_id\": null,\n  \"tunnel_only\": true,\n  \"cost_per_hr\": null\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "target_from_the_detail",
+   "call": "resolve_ssh_target",
+   "replies": [
+    {
+     "body": "[{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"publicIp\": \"203.0.113.7\"}]"
+    },
+    {
+     "body": "{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"publicIp\": \"203.0.113.7\", \"portMappings\": {\"22\": 40122}}"
+    }
+   ],
+   "ran": [],
+   "sent": [
+    "GET https://rest.runpod.io/v1/pods",
+    "GET https://rest.runpod.io/v1/pods/pod111"
+   ],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "pod111",
+    "203.0.113.7",
+    40122
+   ],
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": null,\n  \"volume_id\": null\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "target_detail_gone_keeps_the_list_pod",
+   "call": "resolve_ssh_target",
+   "replies": [
+    {
+     "body": "[{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"publicIp\": \"203.0.113.7\", \"portMappings\": {\"22\": 40122}}]"
+    },
+    {
+     "status": 404,
+     "body": "{\"error\": \"pod not found\", \"status\": 404}"
+    }
+   ],
+   "ran": [],
+   "sent": [
+    "GET https://rest.runpod.io/v1/pods",
+    "GET https://rest.runpod.io/v1/pods/pod111"
+   ],
+   "said": [],
+   "signals": [],
+   "ok": [
+    "pod111",
+    "203.0.113.7",
+    40122
+   ],
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": null,\n  \"volume_id\": null\n}\n",
+   "known_hosts_after": null
+  },
+  {
+   "name": "target_several_pods",
+   "call": "resolve_ssh_target",
+   "replies": [
+    {
+     "body": "[{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"publicIp\": \"203.0.113.7\", \"portMappings\": {\"22\": 40122}}, {\"id\": \"pod333\", \"name\": \"qwen-pod\", \"desiredStatus\": \"EXITED\", \"publicIp\": \"203.0.113.7\", \"portMappings\": {\"22\": 40122}}]"
+    },
+    {
+     "body": "{\"id\": \"pod111\", \"name\": \"qwen-pod\", \"desiredStatus\": \"RUNNING\", \"publicIp\": \"203.0.113.7\", \"portMappings\": {\"22\": 40122}}"
+    }
+   ],
+   "ran": [],
+   "sent": [
+    "GET https://rest.runpod.io/v1/pods",
+    "GET https://rest.runpod.io/v1/pods/pod111"
+   ],
+   "said": [
+    [
+     "warn",
+     "Multiple pods named 'qwen-pod' (pod111, pod333); using pod111."
+    ]
+   ],
+   "signals": [],
+   "ok": [
+    "pod111",
+    "203.0.113.7",
+    40122
+   ],
+   "state_after": "{\n  \"pod_id\": \"pod111\",\n  \"name\": \"qwen-pod\",\n  \"cost_per_hr\": null,\n  \"volume_id\": null\n}\n",
+   "known_hosts_after": null
+  }
+ ]
+}

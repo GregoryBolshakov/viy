@@ -8,9 +8,12 @@
 pub mod api;
 pub mod boot;
 pub mod lock;
+pub mod notice;
 pub mod process;
+pub mod ssh;
 pub mod state;
 pub mod tracked;
+pub mod tunnel;
 
 /// rp, from the pinned snapshot, and viy on one state directory.
 #[cfg(test)]

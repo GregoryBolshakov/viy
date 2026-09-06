@@ -493,8 +493,10 @@ fn quote(s: &str) -> String {
     Value::from(s).to_string()
 }
 
-/// Whether GraphQL's `errors` holds anything: not null, false, 0, or empty.
-fn truthy(value: &Value) -> bool {
+/// Python's truth of a JSON value, as rp tests one: not null, false, 0,
+/// or empty. GraphQL's `errors`, and pod.json's `tunnel_only` and
+/// `tunnel_pid`.
+pub(crate) fn truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(b) => *b,

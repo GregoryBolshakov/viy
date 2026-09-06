@@ -108,6 +108,18 @@ impl Paths {
         self.pod_state_dir().join("pod.lock")
     }
 
+    /// The pods' SSH host keys, pinned under an alias per volume, apart
+    /// from `~/.ssh/known_hosts`.
+    pub fn known_hosts_file(&self) -> PathBuf {
+        self.pod_state_dir().join("known_hosts")
+    }
+
+    /// The background tunnel's stderr, so a forward that dies says why
+    /// (shared with rp, kb d049).
+    pub fn tunnel_log_file(&self) -> PathBuf {
+        self.pod_state_dir().join("tunnel.log")
+    }
+
     /// `~/.config/rpctl`: rp's global config, which `viy migrate` copies.
     pub fn rpctl_config_dir(&self) -> PathBuf {
         self.config_home.join(RPCTL)

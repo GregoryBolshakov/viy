@@ -26,6 +26,7 @@ use viy_config::Paths;
 use viy_time::TimeProvider;
 
 use crate::api::LogEntry;
+use crate::api::shown;
 use crate::compile_regex;
 
 /// Pod creation to a local /health 200, image pull included, in seconds. A
@@ -615,6 +616,180 @@ impl<'a> Records<'a> {
         let rows = rows.unwrap_or_default();
         rows[rows.len().saturating_sub(limit)..].to_vec()
     }
+}
+
+/// `viy boots`: the last boots, one row each with its stages.
+pub fn history_table(records: &Records<'_>, limit: usize) -> String {
+    let rows = records.history(limit);
+    if rows.is_empty() {
+        return format!(
+            "no boots recorded yet ({})",
+            records.paths.boots_history_file().display()
+        );
+    }
+    let keys: Vec<&str> = STAGES
+        .iter()
+        .map(|(k, _, _)| *k)
+        .chain([LOCAL_STAGE.0])
+        .collect();
+    let mut lines = vec![format!(
+        "{:<20} {:>6}  {}  gpu",
+        "when (UTC)",
+        "total",
+        keys.iter()
+            .map(|k| format!("{:>9}", &k[..k.len().min(9)]))
+            .collect::<Vec<_>>()
+            .join(" ")
+    )];
+    for row in &rows {
+        let total = row.get("total_s").and_then(Value::as_f64).unwrap_or(0.0);
+        let budget = row
+            .get("budget_s")
+            .and_then(Value::as_f64)
+            .unwrap_or(BUDGET_S as f64);
+        let mark = if row
+            .get("outcome")
+            .and_then(Value::as_str)
+            .unwrap_or("ready")
+            != "ready"
+        {
+            "x"
+        } else if total > budget {
+            "!"
+        } else {
+            " "
+        };
+        let at: String = row
+            .get("at")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .chars()
+            .take(19)
+            .collect();
+        let stages = row.get("stages");
+        let cells: Vec<String> = keys
+            .iter()
+            .map(
+                |k| match stages.and_then(|s| s.get(*k)).and_then(Value::as_f64) {
+                    Some(seconds) => format!("{seconds:>9.0}"),
+                    None => format!("{:>9}", "-"),
+                },
+            )
+            .collect();
+        lines.push(format!(
+            "{at:<20} {total:>5.0}{mark}  {}  {}",
+            cells.join(" "),
+            row.get("gpu").map_or("?".to_string(), |g| shown(Some(g)))
+        ));
+    }
+    lines.push(format!(
+        "budget {BUDGET_S}s; ! = over budget, x = failed or interrupted. Details: viy boots show \
+         [boot_id]"
+    ));
+    lines.join("\n")
+}
+
+/// `viy boots show`: one boot's record, the latest unless `boot_id`
+/// (or a part of one) is given. Err is the message to exit with.
+pub fn show(records: &Records<'_>, boot_id: Option<&str>) -> Result<String, String> {
+    let ids: Vec<String> = records
+        .history(200)
+        .iter()
+        .filter_map(|r| r.get("boot_id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    let boot_id = match boot_id {
+        None | Some("latest") => ids
+            .last()
+            .ok_or("no boot records yet; they start with the next viy up")?
+            .clone(),
+        Some(part) => ids
+            .iter()
+            .rfind(|id| id.contains(part))
+            .ok_or_else(|| format!("no boot record matching {part}"))?
+            .clone(),
+    };
+    let data = records.read(&boot_id).ok_or_else(|| {
+        format!(
+            "record {} is missing",
+            records.record_path(&boot_id).display()
+        )
+    })?;
+    let mut lines = vec![format!(
+        "boot {boot_id}  outcome: {}  total: {}s (budget {}s)  gpu: {}",
+        shown(data.get("outcome")),
+        shown(data.get("total_s")),
+        shown(data.get("budget_s")),
+        data.get("gpu").map_or("?".to_string(), |g| shown(Some(g)))
+    )];
+    lines.push("stages:".to_string());
+    for (key, seconds) in data
+        .get("stages")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+    {
+        let label = STAGES
+            .iter()
+            .map(|(k, l, _)| (*k, *l))
+            .chain([LOCAL_STAGE])
+            .find(|(k, _)| k == key)
+            .map_or(key.as_str(), |(_, l)| l);
+        lines.push(format!(
+            "  {label:<34} {:6.1}s",
+            seconds.as_f64().unwrap_or(0.0)
+        ));
+    }
+    for name in ["weights_read_s", "prewarm_s", "compile_s"] {
+        if let Some(seconds) = data.get(name).and_then(Value::as_f64) {
+            lines.push(format!("  {name:<34} {seconds:6.1}s"));
+        }
+    }
+    lines.push("facts:".to_string());
+    let mut facts = data
+        .get("facts")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(host) = data.get("host").and_then(Value::as_object) {
+        facts.extend(host.clone());
+    }
+    for (key, value) in &facts {
+        lines.push(format!("  {key:<34} {}", shown(Some(value))));
+    }
+    lines.push("viy up timeline (seconds from start):".to_string());
+    for entry in data
+        .get("timeline")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let t = entry.get("t").and_then(Value::as_f64).unwrap_or(0.0);
+        let mut extra = entry.as_object().cloned().unwrap_or_default();
+        extra.shift_remove("t");
+        let event = extra.shift_remove("event");
+        let extra = if extra.is_empty() {
+            String::new()
+        } else {
+            format!("  {}", Value::Object(extra))
+        };
+        lines.push(format!("  {t:7.1}  {}{extra}", shown(event.as_ref())));
+    }
+    lines.push("files:".to_string());
+    lines.push(format!(
+        "  record        {}",
+        records.record_path(&boot_id).display()
+    ));
+    let files = data.get("files").and_then(Value::as_object);
+    for (name, path) in files.into_iter().flatten() {
+        lines.push(format!("  {name:<13} {}", shown(Some(path))));
+    }
+    if files.is_none_or(Map::is_empty) {
+        lines.push(format!(
+            "  (logs are still being collected, or collection failed: see {})",
+            records.file(&boot_id, "capture.err").display()
+        ));
+    }
+    Ok(lines.join("\n"))
 }
 
 #[cfg(test)]

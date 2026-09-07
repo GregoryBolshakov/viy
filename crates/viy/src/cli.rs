@@ -112,6 +112,10 @@ pub enum Command {
     },
     #[command(about = "manage the weights network volume")]
     Volume(VolumeArgs),
+    /// Internal: collect a boot's logs next to its record; `viy up` starts
+    /// it in the background (`viy_pod::wait::spawn_capture`).
+    #[command(hide = true, name = "capture-boot")]
+    CaptureBoot { boot_id: String, pod_id: String },
 }
 
 impl Command {
@@ -137,6 +141,7 @@ impl Command {
             Self::Model(_) => "model",
             Self::Backup { .. } => "backup",
             Self::Volume(_) => "volume",
+            Self::CaptureBoot { .. } => "capture-boot",
         }
     }
 }

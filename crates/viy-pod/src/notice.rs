@@ -51,19 +51,28 @@ pub struct Alert {
 }
 
 /// Everything a long pod function reports while it runs, in order: what
-/// it says, the clock of a wait, a desktop alert. A terminal prints them;
+/// it says, the clock of a wait, a passing status line, a desktop alert.
+/// A terminal prints them;
 /// the chat turns them into events, so its `/up` can run in the
 /// background (kb d041).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Report {
     Notice(Notice),
     Clock(Clock),
+    /// A line that stands only until the next report, such as `down`'s
+    /// countdown; a terminal redraws it in place, then erases it.
+    Passing(String),
     Alert(Alert),
 }
 
 /// Where reports go. Shared, not `&mut`: a wait reports its clock while
 /// its probe reports too.
 pub type Reporter<'a> = &'a (dyn Fn(Report) + Send + Sync);
+
+/// Reports a notice.
+pub(crate) fn say(report: Reporter<'_>, tone: Tone, text: impl Into<String>) {
+    report(Report::Notice(Notice::new(tone, text)));
+}
 
 /// A wait's clock, once a second: rpctl's `  MM:SS label (state)` line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,14 +91,16 @@ impl fmt::Display for Clock {
     }
 }
 
-/// How a terminal shows the clock, as rpctl prints it: on a tty one line
-/// redrawn every second; elsewhere a line when the wait or its state
-/// changes, and every 30 s.
+/// How a terminal shows the clock and passing lines, as rpctl prints
+/// them: on a tty the clock is one line redrawn every second, which the
+/// next notice starts below, and a passing line is redrawn in place and
+/// erased; elsewhere the clock is a line when the wait or its state
+/// changes and every 30 s, and passing lines are left out.
 #[derive(Debug, Default)]
 pub struct ClockPrinter {
     tty: bool,
-    /// A redrawn line is on screen, unfinished.
-    open: bool,
+    /// What ends the redrawn line on screen, if one is.
+    open: Option<&'static str>,
     /// The wait and state last printed, and when.
     shown: Option<(&'static str, String, u64)>,
 }
@@ -105,7 +116,7 @@ impl ClockPrinter {
     /// What to write for `clock`, if anything.
     pub fn clock(&mut self, clock: &Clock) -> Option<String> {
         if self.tty {
-            self.open = true;
+            self.open = Some("\n");
             return Some(format!("\r{clock}   \x1b[K"));
         }
         let quiet = self.shown.as_ref().is_some_and(|(label, state, at)| {
@@ -118,8 +129,35 @@ impl ClockPrinter {
         Some(format!("{clock}\n"))
     }
 
+    /// What to write for a passing line, if anything.
+    pub fn passing(&mut self, text: &str) -> Option<String> {
+        if !self.tty {
+            return None;
+        }
+        // A clock on screen stays, with its last state.
+        let after_clock = if self.open == Some("\n") { "\n" } else { "" };
+        self.open = Some("\r\x1b[K");
+        Some(format!("{after_clock}\r{text}\x1b[K"))
+    }
+
     /// What to write before anything else: the end of a redrawn line.
     pub fn close(&mut self) -> Option<&'static str> {
-        std::mem::take(&mut self.open).then_some("\n")
+        self.open.take()
     }
+}
+
+/// Sends `alert` to the desktop with `notify-send`, in its own session and
+/// not waited on, so it never delays what raised it. Best effort; the
+/// caller checks there is a desktop to notify (`DISPLAY` or
+/// `WAYLAND_DISPLAY`).
+pub fn desktop_notify(exec: &dyn viy_exec::ExecBackend, alert: &Alert) {
+    let Ok(null) = std::fs::File::create("/dev/null") else {
+        return;
+    };
+    let urgency = if alert.urgent { "critical" } else { "normal" };
+    let command = viy_exec::Command::new("notify-send")
+        .args(["-a", "viy", "-u", urgency])
+        .arg(&alert.title)
+        .arg(&alert.body);
+    let _ = exec.spawn(command, viy_exec::Spawn::Detached { stderr: null });
 }

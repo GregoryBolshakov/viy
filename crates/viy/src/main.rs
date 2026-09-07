@@ -4,6 +4,7 @@ fn main() {
         std::env::args_os().skip(1),
         &mut std::io::stdout(),
         &mut std::io::stderr(),
+        viy_cli::Terminal::detect(),
     );
     std::process::exit(code);
 }

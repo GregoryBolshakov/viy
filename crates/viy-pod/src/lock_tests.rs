@@ -172,7 +172,13 @@ fn down_kills_an_rp_or_viy_holder_and_takes_the_lock() {
         )
         .unwrap();
         child.wait().unwrap();
-        assert_eq!(done.killed, ["up"]);
+        assert_eq!(
+            done.killed
+                .iter()
+                .map(|h| h.verb.as_str())
+                .collect::<Vec<_>>(),
+            ["up"]
+        );
         assert!(done.lock.is_some());
         assert_eq!(lock_file(&paths), format!("down {}", std::process::id()));
         let killing = PreemptNotice::Killing(Holder {

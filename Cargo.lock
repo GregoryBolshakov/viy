@@ -2478,8 +2478,13 @@ dependencies = [
  "libc",
  "pretty_assertions",
  "serde_json",
+ "tokio",
  "viy-config",
+ "viy-exec",
+ "viy-http",
+ "viy-pod",
  "viy-testkit",
+ "viy-time",
 ]
 
 [[package]]

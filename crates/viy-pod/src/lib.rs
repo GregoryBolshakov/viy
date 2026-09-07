@@ -8,10 +8,12 @@
 pub mod api;
 pub mod boot;
 pub mod bootreport;
+pub mod commands;
 pub mod idle;
 pub mod lock;
 pub mod notice;
 pub mod process;
+pub mod regions;
 pub mod ssh;
 pub mod state;
 pub mod tracked;

@@ -20,7 +20,12 @@ workspace = true
 [dependencies]
 clap = { workspace = true }
 libc = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "signal", "time"] }
 viy-config = { workspace = true }
+viy-exec = { workspace = true }
+viy-http = { workspace = true }
+viy-pod = { workspace = true }
+viy-time = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

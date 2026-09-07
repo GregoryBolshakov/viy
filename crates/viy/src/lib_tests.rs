@@ -3,7 +3,12 @@ use super::*;
 fn run_capture(args: &[&str]) -> (i32, String, String) {
     let mut out = Vec::new();
     let mut err = Vec::new();
-    let code = run(args.iter().map(OsString::from), &mut out, &mut err);
+    let code = run(
+        args.iter().map(OsString::from),
+        &mut out,
+        &mut err,
+        Terminal::default(),
+    );
     (
         code,
         String::from_utf8(out).unwrap(),
@@ -52,8 +57,7 @@ fn help_exits_0_on_stdout_with_rps_descriptions() {
 #[test]
 fn commands_still_to_come_say_so() {
     for (args, phase) in [
-        (&["up"][..], 2),
-        (&["volume", "list"], 2),
+        (&["volume", "list"][..], 2),
         (&["chat", "-c"], 3),
         (&["trace"], 7),
     ] {

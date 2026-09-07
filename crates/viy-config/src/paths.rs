@@ -120,6 +120,17 @@ impl Paths {
         self.pod_state_dir().join("tunnel.log")
     }
 
+    /// When this machine last streamed from the pod (`last_activity`):
+    /// `viy reap` and rp's terminate a pod whose stamp is stale.
+    pub fn activity_file(&self) -> PathBuf {
+        self.pod_state_dir().join("last_activity")
+    }
+
+    /// One line per refused pod creation, `up_failures.jsonl`.
+    pub fn up_failures_file(&self) -> PathBuf {
+        self.pod_state_dir().join("up_failures.jsonl")
+    }
+
     /// One line per recorded boot, `boots.jsonl` (`viy boots`).
     pub fn boots_history_file(&self) -> PathBuf {
         self.pod_state_dir().join("boots.jsonl")

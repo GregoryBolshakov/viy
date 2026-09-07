@@ -54,10 +54,10 @@ use crate::compile_regex;
 use crate::idle;
 use crate::notice::Alert;
 use crate::notice::Clock;
-use crate::notice::Notice;
 use crate::notice::Report;
 use crate::notice::Reporter;
 use crate::notice::Tone;
+use crate::notice::say;
 use crate::ssh::Ssh;
 use crate::ssh::SshWatch;
 use crate::ssh::ssh_endpoint;
@@ -93,10 +93,6 @@ pub enum WaitError {
     Interrupted,
     #[error(transparent)]
     Io(#[from] io::Error),
-}
-
-fn say(report: Reporter<'_>, tone: Tone, text: impl Into<String>) {
-    report(Report::Notice(Notice::new(tone, text)));
 }
 
 /// `line` with the config's secrets and anything shaped like a key masked,
@@ -426,7 +422,7 @@ impl<'a> TunnelGuard<'a> {
 
 /// What a failed /health request shows on the clock: the kind of failure,
 /// by `requests`' names.
-fn failure_name(error: &HttpError) -> &'static str {
+pub(crate) fn failure_name(error: &HttpError) -> &'static str {
     match error {
         HttpError::Timeout => "Timeout",
         HttpError::Connect(_) | HttpError::Network(_) => "ConnectionError",
@@ -878,7 +874,7 @@ pub async fn capture_boot(
         Some(Value::Object(data)) => data,
         _ => Map::new(),
     };
-    let mut files = match data.remove("files") {
+    let mut files = match data.shift_remove("files") {
         Some(Value::Object(files)) => files,
         _ => Map::new(),
     };

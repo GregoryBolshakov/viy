@@ -493,6 +493,18 @@ fn quote(s: &str) -> String {
     Value::from(s).to_string()
 }
 
+/// A JSON value as Python's `str()` shows it in rpctl's messages and
+/// listings: `None`, `True`, strings bare.
+pub(crate) fn shown(value: Option<&Value>) -> String {
+    match value {
+        None | Some(Value::Null) => "None".to_string(),
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Bool(true)) => "True".to_string(),
+        Some(Value::Bool(false)) => "False".to_string(),
+        Some(other) => other.to_string(),
+    }
+}
+
 /// Python's truth of a JSON value, as rp tests one: not null, false, 0,
 /// or empty. GraphQL's `errors`, and pod.json's `tunnel_only` and
 /// `tunnel_pid`.

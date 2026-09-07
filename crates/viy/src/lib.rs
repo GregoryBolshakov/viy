@@ -1,15 +1,18 @@
 //! The `viy` command: argument parsing and dispatch, rpctl's `__main__.py`.
 //!
 //! The parser has all of rpctl's 19 subcommands (WP 1.6); those whose work
-//! package has not come yet say so and exit 1.
+//! package has not come yet say so and exit 1. The pod commands are in
+//! [`pods`].
 
 pub mod cli;
 pub mod hardening;
 pub mod init;
 pub mod migrate;
 pub mod model;
+pub mod pods;
 
 use std::ffi::OsString;
+use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -18,14 +21,72 @@ use viy_config::Project;
 
 use crate::cli::Command;
 
+/// Where `viy` writes: whether stdout and stderr are terminals (colour,
+/// the clock redrawn in place, the bell) and whether there is a desktop to
+/// notify.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Terminal {
+    pub tty: bool,
+    /// Whether stderr is one, for the colour of an error message.
+    pub err_tty: bool,
+    pub desktop: bool,
+}
+
+impl Terminal {
+    /// This process's.
+    pub fn detect() -> Self {
+        use std::io::IsTerminal;
+        let set = |name| std::env::var_os(name).is_some_and(|v| !v.is_empty());
+        Self {
+            tty: io::stdout().is_terminal(),
+            err_tty: io::stderr().is_terminal(),
+            desktop: set("DISPLAY") || set("WAYLAND_DISPLAY"),
+        }
+    }
+}
+
+/// How a command failed: rpctl's `SystemExit`, a message for stderr or
+/// none, and the exit status.
+#[derive(Debug)]
+pub struct Failure {
+    message: Option<String>,
+    code: i32,
+}
+
+impl Failure {
+    /// Everything was said already.
+    pub fn silent(code: i32) -> Self {
+        Self {
+            message: None,
+            code,
+        }
+    }
+}
+
+impl From<String> for Failure {
+    fn from(message: String) -> Self {
+        Self {
+            message: Some(message),
+            code: 1,
+        }
+    }
+}
+
+impl From<&str> for Failure {
+    fn from(message: &str) -> Self {
+        message.to_string().into()
+    }
+}
+
 /// Runs `viy` with `args` (without the program name) and returns the exit
 /// status: 0, 1 when the command fails (its message on `err`, as rpctl's
-/// `SystemExit`), 2 for a usage error. Output goes to `out` and `err`, so
-/// tests can capture it.
+/// `SystemExit`), 2 for a usage error, 130 after Ctrl-C. Output goes to
+/// `out` and `err`, so tests can capture it.
 pub fn run(
     args: impl IntoIterator<Item = OsString>,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
+    out: &mut (dyn Write + Send),
+    err: &mut (dyn Write + Send),
+    terminal: Terminal,
 ) -> i32 {
     let cli = match cli::parse(args) {
         Ok(cli) => cli,
@@ -44,34 +105,43 @@ pub fn run(
             };
         }
     };
-    match dispatch(&cli.command, out) {
+    match dispatch(&cli.command, out, terminal) {
         Ok(()) => 0,
-        Err(msg) => {
-            let _ = writeln!(err, "{msg}");
-            1
+        Err(failure) => {
+            if let Some(message) = failure.message {
+                let _ = writeln!(err, "{message}");
+            }
+            failure.code
         }
     }
 }
 
-fn dispatch(command: &Command, out: &mut dyn Write) -> Result<(), String> {
+fn dispatch(
+    command: &Command,
+    out: &mut (dyn Write + Send),
+    terminal: Terminal,
+) -> Result<(), Failure> {
     let not_ported = |phase: u8| {
-        Err(format!(
+        Err(Failure::from(format!(
             "viy {}: not ported yet (ROADMAP phase {phase})",
             command.name()
-        ))
+        )))
     };
     let paths = || Paths::from_env().map_err(|e| e.to_string());
     let cwd = || -> Result<PathBuf, String> {
         std::env::current_dir().map_err(|e| format!("the working directory: {e}"))
     };
+    let config = |paths: &Paths| -> Result<viy_config::Config, String> {
+        let project = Project::find(&cwd()?).map_err(|e| e.to_string())?;
+        viy_config::config::load(paths, &project).map_err(|e| e.to_string())
+    };
     match command {
-        Command::Init => init::cmd_init(&paths()?, &cwd()?, out),
-        Command::Migrate => migrate::cmd_migrate(&paths()?, out),
+        Command::Init => Ok(init::cmd_init(&paths()?, &cwd()?, out)?),
+        Command::Migrate => Ok(migrate::cmd_migrate(&paths()?, out)?),
         Command::Model(args) => {
             let paths = paths()?;
-            let project = Project::find(&cwd()?).map_err(|e| e.to_string())?;
-            let cfg = viy_config::config::load(&paths, &project).map_err(|e| e.to_string())?;
-            model::cmd_model(&cfg, &paths, args, out)
+            let cfg = config(&paths)?;
+            Ok(model::cmd_model(&cfg, &paths, args, out)?)
         }
         Command::Up { .. }
         | Command::Status
@@ -79,9 +149,14 @@ fn dispatch(command: &Command, out: &mut dyn Write) -> Result<(), String> {
         | Command::Logs { .. }
         | Command::Stop
         | Command::Down
-        | Command::Reap { .. }
-        | Command::Shutdown(_)
         | Command::Tunnel(_)
+        | Command::CaptureBoot { .. } => {
+            let paths = paths()?;
+            let cfg = config(&paths)?;
+            pods::run(command, &paths, cfg, out, terminal)
+        }
+        Command::Reap { .. }
+        | Command::Shutdown(_)
         | Command::Backup { .. }
         | Command::Volume(_) => not_ported(2),
         Command::Chat(_) | Command::Chats(_) | Command::Ask(_) => not_ported(3),

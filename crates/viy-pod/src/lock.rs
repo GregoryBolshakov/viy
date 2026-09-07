@@ -63,7 +63,8 @@ pub enum LockError {
 }
 
 impl Holder {
-    fn tool_name(&self) -> &'static str {
+    /// rp or viy, as messages name the holder.
+    pub fn tool_name(&self) -> &'static str {
         self.tool.unwrap_or(Tool::Rp).name()
     }
 }
@@ -106,8 +107,8 @@ impl std::fmt::Display for PreemptNotice {
 pub struct Preempted {
     /// `None` when the lock could not be had: down goes on without it.
     pub lock: Option<PodLock>,
-    /// The verbs of the holders it killed, in order.
-    pub killed: Vec<String>,
+    /// The holders it killed, in order.
+    pub killed: Vec<Holder>,
 }
 
 /// How long `down` tries for the lock, how often, and the SIGTERM grace each
@@ -180,7 +181,7 @@ fn preempt_within(
         {
             notice(PreemptNotice::Killing(holder.clone()));
             process::kill(holder.pid, grace);
-            killed.push(holder.verb);
+            killed.push(holder);
         }
         if Instant::now() > end {
             notice(PreemptNotice::GaveUp);

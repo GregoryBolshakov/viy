@@ -302,6 +302,13 @@ fn a_terminal_redraws_the_clock_and_a_log_gets_its_changes() {
     );
     assert_eq!(tty.close(), Some("\n"));
     assert_eq!(tty.close(), None);
+    // A passing line after a clock leaves the clock's last state above it.
+    tty.clock(&clock(76, "waiting for vLLM", "HTTP 503"));
+    assert_eq!(
+        tty.passing("  confirming...").as_deref(),
+        Some("\n\r  confirming...\x1b[K")
+    );
+    assert_eq!(tty.close(), Some("\r\x1b[K"));
 
     let mut log = ClockPrinter::new(false);
     let shown: Vec<Option<String>> = [
@@ -1135,4 +1142,63 @@ async fn capture_without_logs_or_ssh_says_why() {
     );
     assert_eq!(data["host"]["machine_id"], "m1");
     assert!(data["host"].get("same_machine_as_previous_boot").is_none());
+}
+
+#[tokio::test]
+async fn image_pull_is_reported_not_hidden_behind_sshd() {
+    let downloading: Vec<Value> =
+        vec![json!({"source": "system", "line": "0f06d63f7039 Downloading"}); 30];
+    let mut retried =
+        vec![json!({"source": "system", "line": "0f06d63f7039 Retrying in 1 second"})];
+    retried.extend(downloading[..29].iter().cloned());
+    let body = |entries: &[Value]| -> Reply {
+        Reply::answer(
+            200,
+            entries
+                .iter()
+                .map(|e| format!("data: {e}\n"))
+                .collect::<String>(),
+        )
+    };
+    let http = Arc::new(FakeHttp::new([body(&downloading), body(&retried)]));
+    let rp = RunPod::new(API_KEY, http);
+    let progress = Progress::new(&rp, "pod111", true);
+    progress.refresh().await;
+    assert_eq!(
+        progress.summary().result().unwrap(),
+        "pulling container image"
+    );
+    progress.refresh().await;
+    assert_eq!(
+        progress.summary().result().unwrap(),
+        "pulling container image (a layer failed and restarted)"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn unauthorized_is_not_ready() {
+    let health = RouteHttp::new(|_| Reply::answer(401, ""));
+    let told = Told::default();
+    let ready = wait_ready(
+        &health,
+        "http://localhost",
+        None,
+        Duration::from_secs(3),
+        None,
+        None,
+        &told.reporter(),
+    )
+    .await
+    .unwrap();
+    assert!(!ready);
+    assert_eq!(told.clocks().pop().unwrap().state, "HTTP 401");
+}
+
+#[tokio::test]
+async fn ssh_failure_surfaces_from_platform_log() {
+    let reply = log_reply(&["RPCTL_ERROR sshd setup or daemon failed (exit 23)"]);
+    let rp = RunPod::new(API_KEY, Arc::new(FakeHttp::new([reply])));
+    let progress = Progress::new(&rp, "pod111", true);
+    progress.refresh().await;
+    assert!(matches!(progress.poll(), Err(WaitError::Startup(_))));
 }

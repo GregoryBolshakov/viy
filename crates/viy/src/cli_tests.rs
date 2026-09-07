@@ -105,14 +105,23 @@ fn subcommands_and_flags_are_rps() {
             .unwrap()
             .replace("rp - ", "viy - ")
     );
-    let names: Vec<&str> = cmd.get_subcommands().map(clap::Command::get_name).collect();
+    // The hidden ones are viy's own plumbing (`capture-boot`).
+    let names: Vec<&str> = cmd
+        .get_subcommands()
+        .filter(|s| !s.is_hide_set())
+        .map(clap::Command::get_name)
+        .collect();
     let rp_names: Vec<&str> = subcommands
         .iter()
         .map(|s| s["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, rp_names);
     assert_eq!(names.len(), 19);
-    for (sub, rp) in cmd.get_subcommands().zip(subcommands) {
+    for (sub, rp) in cmd
+        .get_subcommands()
+        .filter(|s| !s.is_hide_set())
+        .zip(subcommands)
+    {
         let name = sub.get_name();
         assert_eq!(
             sub.get_about().unwrap().to_string(),
@@ -186,6 +195,8 @@ fn namespace(cli: &Cli) -> Value {
         Command::Volume(a) => {
             json!({"volume_action": word(&a.action), "volume_id": a.volume_id})
         }
+        // viy's own; rp has nothing to compare it with.
+        Command::CaptureBoot { boot_id, pod_id } => json!({"boot_id": boot_id, "pod_id": pod_id}),
     };
     ns["cmd"] = json!(cli.command.name());
     ns

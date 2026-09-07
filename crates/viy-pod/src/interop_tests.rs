@@ -156,7 +156,13 @@ fn viy_down_kills_rp_up_and_takes_the_lock() {
     let mut notices = Vec::new();
     let done = PodLock::preempt(&home.paths, |n| notices.push(n)).unwrap();
     assert!(!rp.wait().unwrap().success());
-    assert_eq!(done.killed, ["up"]);
+    assert_eq!(
+        done.killed
+            .iter()
+            .map(|h| h.verb.as_str())
+            .collect::<Vec<_>>(),
+        ["up"]
+    );
     assert!(done.lock.is_some());
     assert_eq!(home.lock_file(), format!("down {}", std::process::id()));
     assert!(

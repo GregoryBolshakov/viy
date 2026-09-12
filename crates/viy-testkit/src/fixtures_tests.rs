@@ -24,7 +24,7 @@ fn config_layering_cases_keep_the_defaults_order() {
         .unwrap()
         .keys()
         .collect();
-    assert_eq!(defaults.len(), 110);
+    assert_eq!(defaults.len(), 111);
     assert_eq!(defaults.first().map(|k| k.as_str()), Some("MODEL_REPO"));
     for case in &fixture.cases {
         let keys: Vec<&String> = case["config"].as_object().unwrap().keys().collect();

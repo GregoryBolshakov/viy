@@ -222,7 +222,8 @@ pub const DEFAULTS: &[(&str, &str)] = &[
     // --- build tools (write/read/list files + run shell) ------------------
     // On by default: an agent that can only talk about files is not much use.
     // run_shell runs every command in a bubblewrap sandbox on THIS machine
-    // (no network, no home directory, the client's code and .git read-only)
+    // (no network, no home directory, the client's code and your .git
+    // read-only; see SANDBOX_GIT)
     // without asking; only destructive commands and risky network requests
     // ask (rpctl/approve.py). /tools off to disable for a session, or set
     // TOOLS_ENABLED=0 in .env to default it off.
@@ -243,6 +244,12 @@ pub const DEFAULTS: &[(&str, &str)] = &[
     //          machine's services and the LAN. For tools that ignore proxies;
     //          warns on every network command
     ("SANDBOX_NET", "proxy"),
+    // 1: in a workspace with a .git directory, the sandbox's .git is the
+    // model's own repository (rpctl/sandboxgit.py): writable, local only,
+    // encrypted with gocryptfs under ~/.local/share/rpctl/sandbox-git, its
+    // key the tok token rpctl-sandbox-git (/git init). Yours stays read-only;
+    // /git import brings its branches in as sandbox/*. 0: .git read-only.
+    ("SANDBOX_GIT", "1"),
     // Extra hosts every network command may reach, comma-separated (a private
     // registry). *.example.com allows its subdomains; nothing else is a pattern.
     ("SANDBOX_NET_ALLOW", ""),

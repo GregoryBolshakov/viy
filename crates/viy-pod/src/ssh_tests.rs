@@ -399,6 +399,20 @@ fn sse(lines: &[&str]) -> Reply {
 
 /// `_pin_checked_key` with `logged` in the boot log and `seen` presented.
 async fn first_contact(logged: &[&str], seen: &str) -> (Checked, Option<String>) {
+    let scan = [
+        Run::stdout("[1.2.3.4]:22 ssh-ed25519 AAAAkey\n"),
+        Run::stdout(format!("256 {seen} x (ED25519)\n")),
+    ];
+    let (checked, known_hosts, _) = first_contact_scanning(logged, scan).await;
+    (checked, known_hosts)
+}
+
+/// `_pin_checked_key` with `logged` in the boot log and `scan` the runs of
+/// ssh-keyscan and ssh-keygen; the notices it gave too.
+async fn first_contact_scanning(
+    logged: &[&str],
+    scan: impl IntoIterator<Item = Run>,
+) -> (Checked, Option<String>, Vec<String>) {
     let dir = ScratchDir::new("ssh-first-contact").unwrap();
     let paths = scratch_ssh_state(&dir, json!({"pod_id": "x", "volume_id": "bk"}));
     let mut cfg = Config::defaults();
@@ -412,20 +426,21 @@ async fn first_contact(logged: &[&str], seen: &str) -> (Checked, Option<String>)
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>())]));
-    let exec = FakeExec::new([
-        Run::stdout("[1.2.3.4]:22 ssh-ed25519 AAAAkey\n"),
-        Run::stdout(format!("256 {seen} x (ED25519)\n")),
-    ]);
+    let exec = FakeExec::new(scan);
     let ssh = Ssh {
         paths: &paths,
         cfg: &cfg,
         exec: &exec,
     };
+    let mut said = Vec::new();
     let checked = ssh
-        .pin_checked_key(&RunPod::new(API_KEY, http), "1.2.3.4", 22, &mut |_| {})
+        .pin_checked_key(&RunPod::new(API_KEY, http), "1.2.3.4", 22, &mut |n| {
+            said.push(n.text)
+        })
         .await
         .unwrap();
-    (checked, fs::read_to_string(paths.known_hosts_file()).ok())
+    let known_hosts = fs::read_to_string(paths.known_hosts_file()).ok();
+    (checked, known_hosts, said)
 }
 
 #[tokio::test]
@@ -457,6 +472,36 @@ async fn mismatch_pins_nothing() {
         first_contact(&["SHA256:a"], "SHA256:evil").await,
         (Checked::Mismatch, None)
     );
+}
+
+/// rpctl 5a76e0e: an endpoint offering only RSA or ECDSA, or a scan that
+/// timed out, would otherwise have ssh pin whatever it is shown next.
+#[tokio::test]
+async fn no_ed25519_key_against_a_logged_fingerprint_pins_nothing() {
+    let rsa_only = [Run::stdout("[1.2.3.4]:22 ssh-rsa AAAArsa\n")];
+    let (checked, known_hosts, said) = first_contact_scanning(&["SHA256:a"], rsa_only).await;
+    assert_eq!((checked, known_hosts), (Checked::Mismatch, None));
+    assert!(said[0].contains("no ed25519 host key"), "{said:?}");
+}
+
+/// rpctl 5a76e0e: the pod's sshd has only an ed25519 key (boot.py).
+#[test]
+fn ssh_accepts_only_an_ed25519_host_key() {
+    let dir = ScratchDir::new("ssh-key-type").unwrap();
+    let paths = Paths::under(dir.path());
+    let cfg = Config::defaults();
+    let exec = FakeExec::default();
+    let ssh = Ssh {
+        paths: &paths,
+        cfg: &cfg,
+        exec: &exec,
+    };
+    let opts = ssh.opts("accept-new").unwrap();
+    let at = opts
+        .iter()
+        .position(|o| o == "HostKeyAlgorithms=ssh-ed25519")
+        .expect("the option");
+    assert_eq!(opts[at - 1], "-o");
 }
 
 #[tokio::test]

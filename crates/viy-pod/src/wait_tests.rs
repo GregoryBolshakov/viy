@@ -258,8 +258,60 @@ async fn an_answer_counts_the_moment_it_comes() {
     .await
     .unwrap();
     assert_eq!(got, Some("up"));
-    // rpctl would see it on the next whole second, 2 s in (kb f073).
+    // rpctl saw it on the next whole second, 2 s in, until 5a76e0e (kb f073).
     assert_eq!(begun.elapsed(), Duration::from_millis(1250));
+}
+
+/// test_startup.py WaitWithClockTests (rpctl 5a76e0e): each probe's
+/// length in ms and the poll; when the probes start and the wait ends, in
+/// ms. The last probe answers; a timeout of 2 s with no answer ends at 2 s.
+#[tokio::test(start_paused = true)]
+async fn wait_with_clock_cases_are_rpctls() {
+    for (takes, poll, starts_want, ended_want) in [
+        (&[100, 100, 300][..], 1, &[0, 1000, 2000][..], Some(2300)),
+        (&[1500, 200], 1, &[0, 2000], Some(2200)),
+        (&[100, 100], 2, &[0, 2000], Some(2100)),
+        (&[0, 0, 0, 0], 1, &[0, 1000], None),
+    ] {
+        let told = Told::default();
+        let starts = Starts::default();
+        let begun = Instant::now();
+        let probe = {
+            let starts = Arc::clone(&starts);
+            move || {
+                let call = {
+                    let mut starts = starts.lock().unwrap();
+                    starts.push(begun.elapsed().as_millis());
+                    starts.len()
+                };
+                async move {
+                    tokio::time::sleep(Duration::from_millis(takes[call - 1])).await;
+                    Ok(if call == takes.len() {
+                        Step::Done(())
+                    } else {
+                        Step::Waiting(format!("probe {call}"))
+                    })
+                }
+            }
+        };
+        let timeout = if ended_want.is_some() { 30 } else { 2 };
+        let got = wait_with_clock(
+            "waiting",
+            Duration::from_secs(timeout),
+            Duration::from_secs(poll),
+            probe,
+            &told.reporter(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(got.is_some(), ended_want.is_some(), "{takes:?}");
+        assert_eq!(
+            begun.elapsed().as_millis(),
+            ended_want.unwrap_or(2000),
+            "{takes:?}"
+        );
+        assert_eq!(*starts.lock().unwrap(), starts_want, "{takes:?}");
+    }
 }
 
 #[tokio::test(start_paused = true)]

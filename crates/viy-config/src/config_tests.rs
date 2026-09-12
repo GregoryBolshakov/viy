@@ -121,9 +121,9 @@ fn the_layers_merge_as_rpctl_merges_them() {
 }
 
 #[test]
-fn defaults_are_rpctls_110_keys() {
-    assert_eq!(DEFAULTS.len(), 110);
-    assert_eq!(Config::defaults().iter().count(), 110);
+fn defaults_are_rpctls_111_keys() {
+    assert_eq!(DEFAULTS.len(), 111);
+    assert_eq!(Config::defaults().iter().count(), 111);
 }
 
 #[test]

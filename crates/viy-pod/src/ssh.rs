@@ -132,8 +132,10 @@ impl Ssh<'_> {
     }
 
     /// The host-key options every ssh gets: rp's `known_hosts`, the alias,
-    /// `StrictHostKeyChecking=strict` (`accept-new` pins on first use), and
-    /// keepalives that end a dead connection within 45 s.
+    /// `StrictHostKeyChecking=strict` (`accept-new` pins on first use), an
+    /// ed25519 host key only (the pod's sshd has no other, so an endpoint
+    /// offering another type is never pinned or accepted), and keepalives
+    /// that end a dead connection within 45 s.
     pub fn opts(&self, strict: &str) -> io::Result<Vec<OsString>> {
         self.opts_under(&self.alias()?, strict)
     }
@@ -150,6 +152,7 @@ impl Ssh<'_> {
             "GlobalKnownHostsFile=/dev/null".into(),
             format!("HostKeyAlias={alias}").into(),
             format!("StrictHostKeyChecking={strict}").into(),
+            "HostKeyAlgorithms=ssh-ed25519".into(),
             "ServerAliveInterval=15".into(),
             "ServerAliveCountMax=3".into(),
         ]
@@ -250,7 +253,10 @@ impl Ssh<'_> {
     }
 
     /// First contact with a volume's host key: pinned only if it matches
-    /// the fingerprint in the pod's boot log. About 3 s, once per volume.
+    /// the fingerprint in the pod's boot log. With a fingerprint logged, an
+    /// endpoint that shows the scan no ed25519 key is a mismatch too, or
+    /// one offering only another key type would skip the check. About 3 s,
+    /// once per volume.
     pub async fn pin_checked_key(
         &self,
         rp: &RunPod,
@@ -279,18 +285,34 @@ impl Ssh<'_> {
         if logged.is_empty() {
             return Ok(Checked::Unchecked);
         }
+        let logged_list = || {
+            logged
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let Some((seen, key)) = self.scan_host_key(ip, port).await? else {
-            return Ok(Checked::Unchecked);
+            say(Notice::new(
+                Tone::Error,
+                format!(
+                    "SSH to {ip}:{port} showed ssh-keyscan no ed25519 host key, but the pod's \
+                     boot log (read over RunPod's HTTPS API) says {}.\n\
+                     Nothing was pinned and no tunnel started. If the pod is still starting, \
+                     try again: viy tunnel",
+                    logged_list()
+                ),
+            ));
+            return Ok(Checked::Mismatch);
         };
         if !logged.contains(&seen) {
-            let logged: Vec<&str> = logged.iter().map(String::as_str).collect();
             say(Notice::new(
                 Tone::Error,
                 format!(
                     "SSH to {ip}:{port} presented host key {seen}, but the pod's boot log \
                      (read over RunPod's HTTPS API) says {}.\n\
                      Treat it as a machine-in-the-middle: nothing was pinned and no tunnel started.",
-                    logged.join(", ")
+                    logged_list()
                 ),
             ));
             return Ok(Checked::Mismatch);

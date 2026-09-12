@@ -1,9 +1,11 @@
 //! The pod subcommands, rpctl's `cmd_up`, `cmd_status`, `cmd_stop`,
-//! `cmd_down`, `cmd_logs`, `cmd_tunnel` and `cmd_boots`: each runs the
-//! library call of its name (`viy_pod::commands`, `viy_pod::tunnel`) on a
+//! `cmd_down`, `cmd_logs`, `cmd_tunnel`, `cmd_boots`, `cmd_backup` and
+//! `cmd_volume`: each runs the library call of its name
+//! (`viy_pod::commands`, `viy_pod::tunnel`, `viy_pod::regions`) on a
 //! tokio runtime and prints what it reports, as rp prints it, with colour
-//! and the clock redrawn in place on a terminal. Ctrl-C ends a command
-//! with status 130, after `up` has recorded an interrupted boot.
+//! and the clock redrawn in place on a terminal, and asks its questions
+//! there. Ctrl-C ends a command with status 130, after `up` has recorded
+//! an interrupted boot and deleted the volumes its failover made.
 
 use std::io;
 use std::io::Write;
@@ -27,16 +29,21 @@ use viy_pod::commands;
 use viy_pod::commands::CommandError;
 use viy_pod::commands::Env;
 use viy_pod::commands::Interrupt;
+use viy_pod::commands::VolumeAction;
 use viy_pod::notice::Alert;
+use viy_pod::notice::Asking;
 use viy_pod::notice::ClockPrinter;
 use viy_pod::notice::Notice;
 use viy_pod::notice::Report;
 use viy_pod::notice::Tone;
 use viy_pod::notice::desktop_notify;
+use viy_pod::regions;
 use viy_pod::tunnel;
 use viy_pod::tunnel::Action;
 use viy_pod::tunnel::TunnelError;
 use viy_pod::wait;
+use viy_protocol::Answer;
+use viy_protocol::Question;
 use viy_time::SystemTimeProvider;
 
 use crate::Failure;
@@ -45,6 +52,7 @@ use crate::cli::BootsAction;
 use crate::cli::BootsArgs;
 use crate::cli::Command;
 use crate::cli::TunnelArgs;
+use crate::cli::VolumeAction as VolumeArg;
 
 /// rpctl's colours, `C_DIM` and the rest, then `C_RST`.
 fn colour(tone: Tone) -> &'static str {
@@ -117,6 +125,47 @@ impl<'w> Printer<'w> {
         let _ = guard.0.flush();
     }
 
+    /// rpctl's `_ask` on a terminal: the question in its colour with the
+    /// default shown, and a line read from stdin; Enter alone, or the end
+    /// of input, is the default. `None` unless stdin and stdout are both
+    /// terminals.
+    fn ask(&self, question: &Question) -> Option<Asking> {
+        if !(self.terminal.stdin_tty && self.terminal.tty) {
+            return None;
+        }
+        let shown = if question.default == Answer::Yes {
+            "Y/n"
+        } else {
+            "y/N"
+        };
+        self.close();
+        {
+            let mut guard = self.out.lock().unwrap_or_else(PoisonError::into_inner);
+            let prompt = format!("\x1b[33m{} [{shown}] \x1b[0m", question.prompt);
+            let _ = guard.0.write_all(prompt.as_bytes());
+            let _ = guard.0.flush();
+        }
+        // A thread of its own, not tokio's blocking pool: a Ctrl-C ends viy
+        // without waiting for the line.
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        std::thread::spawn(move || {
+            let mut line = String::new();
+            let read = io::stdin().read_line(&mut line);
+            let _ = tx.send(matches!(read, Ok(n) if n > 0).then_some(line));
+        });
+        let default = question.default;
+        Some(Box::pin(async move {
+            let Ok(Some(line)) = rx.await else {
+                return default;
+            };
+            match line.trim().to_lowercase().as_str() {
+                "" => default,
+                "y" | "yes" => Answer::Yes,
+                _ => Answer::No,
+            }
+        }))
+    }
+
     /// Ends a redrawn line, before something else is written.
     fn close(&self) {
         let mut guard = self.out.lock().unwrap_or_else(PoisonError::into_inner);
@@ -149,10 +198,12 @@ pub fn run(
     out: &mut (dyn Write + Send),
     terminal: Terminal,
 ) -> Result<(), Failure> {
-    if let Command::Boots(args) = command {
-        return boots(paths, args, out);
+    match command {
+        Command::Boots(args) => return boots(paths, args, out),
+        // RunPod's own, whatever BACKEND says.
+        Command::Backup { .. } | Command::Volume(_) => {}
+        _ => runpod_backend(&cfg, command.name())?,
     }
-    runpod_backend(&cfg, command.name())?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -186,6 +237,7 @@ async fn pod_command(
         });
     }
     let report = |r| printer.report(r);
+    let ask = |q: &Question| printer.ask(q);
     let time = SystemTimeProvider;
     let env = Env {
         paths,
@@ -197,7 +249,7 @@ async fn pod_command(
     let result = match command {
         Command::Up { timeout } => {
             let timeout = Duration::from_secs(*timeout);
-            commands::up(&env, &mut cfg, timeout, &interrupt, &report).await
+            commands::up(&env, &mut cfg, timeout, &interrupt, &report, &ask).await
         }
         Command::Logs { follow } => {
             commands::logs(&env, &cfg, *follow, interrupt.next(), &report).await
@@ -219,6 +271,18 @@ async fn pod_command(
                     Command::Status => commands::status(&env, &cfg, &report).await,
                     Command::Stop => commands::stop(&env, &cfg, &report).await,
                     Command::Down => commands::down(&env, &cfg, false, &report).await,
+                    Command::Backup { samples } => {
+                        regions::backup(&env, &cfg, *samples, &report).await
+                    }
+                    Command::Volume(args) => {
+                        let action = match args.action {
+                            VolumeArg::List => VolumeAction::List,
+                            VolumeArg::Create => VolumeAction::Create,
+                            VolumeArg::Delete => VolumeAction::Delete,
+                        };
+                        let id = args.volume_id.as_deref();
+                        commands::volume(&env, &mut cfg, action, id, &report, &ask).await
+                    }
                     _ => Err(CommandError::Exit(format!(
                         "viy {}: not a pod command",
                         other.name()

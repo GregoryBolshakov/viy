@@ -25,7 +25,6 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 use viy_config::Config;
 use viy_config::Paths;
-use viy_config::config::gpu_type_list;
 use viy_config::config::require_api_key;
 use viy_config::config::tunnel_enabled;
 use viy_config::profiles;
@@ -34,19 +33,23 @@ use viy_http::HttpClient;
 use viy_http::Method;
 use viy_http::Request;
 use viy_http::user_agent;
+use viy_protocol::Answer;
+use viy_protocol::Question;
 use viy_time::TimeProvider;
 
 use crate::api::RunPod;
 use crate::api::RunPodError;
 use crate::api::proxy_url;
 use crate::api::shown;
-use crate::boot::build_pod_body;
 use crate::bootreport::Outcome;
 use crate::bootreport::Timeline;
+use crate::failover::Creation;
+use crate::failover::User;
 use crate::idle;
 use crate::lock::LockError;
 use crate::lock::PodLock;
 use crate::notice::Alert;
+use crate::notice::Asker;
 use crate::notice::Report;
 use crate::notice::Reporter;
 use crate::notice::Tone;
@@ -134,7 +137,7 @@ impl From<LockError> for CommandError {
     }
 }
 
-fn alert(report: Reporter<'_>, title: &str, body: impl Into<String>, urgent: bool) {
+pub(crate) fn alert(report: Reporter<'_>, title: &str, body: impl Into<String>, urgent: bool) {
     report(Report::Alert(Alert {
         title: title.into(),
         body: body.into(),
@@ -159,7 +162,7 @@ impl Interrupt {
         Self::channel().1
     }
 
-    fn count(&self) -> u32 {
+    pub(crate) fn count(&self) -> u32 {
         *self.0.borrow()
     }
 
@@ -238,6 +241,7 @@ pub async fn up(
     timeout: Duration,
     interrupt: &Interrupt,
     report: Reporter<'_>,
+    ask: Asker<'_>,
 ) -> Result<(), CommandError> {
     // The Ctrl-C that ends `up` at once: the next one, except during the
     // wait, whose own handling of the first records the boot.
@@ -245,12 +249,13 @@ pub async fn up(
     let aborted = interrupt.when(|c| *c >= abort_at.load(Ordering::SeqCst));
     tokio::select! {
         biased;
-        result = up_until(env, cfg, timeout, interrupt, &abort_at, report) => result,
+        result = up_until(env, cfg, timeout, interrupt, &abort_at, report, ask) => result,
         () = aborted => Err(CommandError::Interrupted),
     }
 }
 
-/// [`up`]'s work; `abort_at` is raised around the wait.
+/// [`up`]'s work; `abort_at` is raised around the wait, and while
+/// failover has new volumes to delete.
 async fn up_until(
     env: &Env<'_>,
     cfg: &mut Config,
@@ -258,10 +263,11 @@ async fn up_until(
     interrupt: &Interrupt,
     abort_at: &AtomicU32,
     report: Reporter<'_>,
+    ask: Asker<'_>,
 ) -> Result<(), CommandError> {
     let _lock = PodLock::exclusive(env.paths, "up")?;
-    let started = Instant::now();
-    let started_wall = env.time.now();
+    let mut started = Instant::now();
+    let mut started_wall = env.time.now();
     let mut timeline = Timeline::start(env.time);
     let rp = connect(env, cfg)?;
     let vllm_key = profiles::ensure_vllm_api_key(cfg, env.paths)?;
@@ -284,6 +290,7 @@ async fn up_until(
     if let Some(existing) = existing {
         let cfg = &*cfg;
         let pod_id = text(&existing, "id").unwrap_or_default().to_string();
+        regions::note_pod(env.paths, &existing, regions::now(env.time))?;
         let status = existing.get("desiredStatus");
         let booting = text(&existing, "desiredStatus") == Some("EXITED");
         let name = cfg_at(cfg, "POD_NAME");
@@ -353,6 +360,8 @@ async fn up_until(
                 )
                 .await;
             }
+            let volume_id = tracked::pod_volume_id(&existing).unwrap_or_default();
+            retire_replaced(env, cfg, &rp, volume_id, report).await;
             return Ok(());
         }
         if booting {
@@ -389,17 +398,26 @@ async fn up_until(
     }
     let (volume_id, volume_is_new) = ensure_volume(env, cfg, &rp, report).await?;
     timeline.mark("pod requested", []);
-    let cfg = &*cfg;
-    let pod = create_pod(
-        env,
-        cfg,
-        &rp,
-        &vllm_key,
-        pubkey.as_deref(),
-        &volume_id,
+    let user = User {
         report,
-    )
-    .await?;
+        ask,
+        interrupt,
+        abort_at,
+    };
+    let created = Creation::new(env, cfg, &rp, &vllm_key, pubkey.as_deref(), user)
+        .run(&volume_id, volume_is_new)
+        .await?;
+    // Time spent answering failover questions, or waiting between retries
+    // for a free GPU, is the user's or RunPod's, not the boot's.
+    started += created.waited;
+    started_wall += chrono::Duration::from_std(created.waited).unwrap_or_default();
+    // This boot's copy only: the boot record shows where it ran, and the
+    // next `viy up` (the chat's too, on the same config) starts from the
+    // primary again.
+    let mut booted = cfg.clone();
+    booted.set("DATA_CENTER_ID", &created.region);
+    let cfg = &booted;
+    let (pod, volume_id, volume_is_new) = (created.pod, created.volume_id, created.volume_is_new);
     let pod_id = text(&pod, "id").unwrap_or_default().to_string();
     let cost = pod.get("costPerHr");
     timeline.mark("pod created", [("pod_id", json!(pod_id))]);
@@ -488,6 +506,7 @@ async fn up_until(
             report,
         )
         .await;
+        retire_replaced(env, cfg, &rp, &volume_id, report).await;
         return Ok(());
     }
     let now = env.time.now();
@@ -595,72 +614,97 @@ pub async fn ensure_volume(
     Ok((id, true))
 }
 
-/// Creates the pod in DATA_CENTER_ID: on the success path one create
-/// request. A refusal is logged and said with its likely cause. The
-/// backup region and the retry without the exact CUDA version come with
-/// WP 2.8 (`regions.failover`, `any_cuda_is_safe`).
-pub async fn create_pod(
+/// After readiness only: a new backup that just served deletes the one it
+/// replaced. Never fails `up`; a miss is retried on the next ready.
+async fn retire_replaced(
     env: &Env<'_>,
     cfg: &Config,
     rp: &RunPod,
-    vllm_key: &str,
-    pubkey: Option<&str>,
     volume_id: &str,
     report: Reporter<'_>,
-) -> Result<Value, CommandError> {
-    let region = cfg_at(cfg, "DATA_CENTER_ID");
-    let body = build_pod_body(cfg, vllm_key, volume_id, pubkey)
-        .map_err(|e| CommandError::Exit(e.to_string()))?;
-    let gpus: Vec<&str> = gpu_type_list(cfg).into_iter().take(3).collect();
-    say(
-        report,
-        Tone::Dim,
-        format!(
-            "Creating pod in {region} ({}x from: {}...)",
-            cfg_at(cfg, "GPU_COUNT"),
-            gpus.join(", ")
-        ),
-    );
-    let error = match rp.create_pod(body).await {
-        Ok(Some(pod)) if text(&pod, "id").is_some() => return Ok(pod),
-        Ok(_) => RunPodError::new("RunPod created no pod", None),
-        Err(error) => error,
-    };
-    regions::log_failure(
-        env.paths, env.time, cfg, region, "primary", volume_id, &error,
-    );
-    let capacity = regions::is_capacity_error(&error);
-    if capacity {
+) {
+    let mut tell = |text: String| say(report, Tone::Dim, text);
+    if let Err(error) = regions::retire_replaced(rp, env.paths, cfg, volume_id, &mut tell).await {
         say(
             report,
-            Tone::Warn,
-            format!("  {region} (primary): no GPU free"),
+            Tone::Dim,
+            format!("(old backup not deleted yet: {:?})", error.kind()),
         );
     }
-    say(report, Tone::Error, error.to_string());
-    let hint = if capacity {
-        let first = if regions::failover_enabled(cfg) {
-            "No region took the pod".to_string()
-        } else {
-            format!("No GPU free in {region} (FAILOVER=0: no backup offered)")
-        };
-        format!(
-            "{first}. Retry in a minute (stock flickers); viy backup shows RunPod's A100 stock."
-        )
-    } else {
-        "Common causes: insufficient RunPod credit, or a request RunPod rejects (see the message \
-         above)."
-            .to_string()
-    };
-    say(
-        report,
-        Tone::Warn,
-        format!(
-            "\n{hint}\nEvery refused pod creation is logged in {}",
-            env.paths.up_failures_file().display()
-        ),
-    );
-    Err(CommandError::Failed)
+}
+
+// -------------------------------------------------------------- volume
+
+/// What `viy volume` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VolumeAction {
+    List,
+    Create,
+    Delete,
+}
+
+/// `viy volume list|create|delete`: the weights network volume. Delete
+/// asks first, and with nobody to ask deletes nothing.
+pub async fn volume(
+    env: &Env<'_>,
+    cfg: &mut Config,
+    action: VolumeAction,
+    volume_id: Option<&str>,
+    report: Reporter<'_>,
+    ask: Asker<'_>,
+) -> Result<(), CommandError> {
+    let rp = connect(env, cfg)?;
+    let print = |line: String| say(report, Tone::Plain, line);
+    match action {
+        VolumeAction::List => {
+            let volumes = rp.list_volumes().await?;
+            if volumes.is_empty() {
+                print("no network volumes".to_string());
+            }
+            for v in volumes {
+                print(format!(
+                    "  {}  {:<24} {}GB  {}",
+                    shown(v.get("id")),
+                    shown(v.get("name")),
+                    shown(v.get("size")),
+                    shown(v.get("dataCenterId"))
+                ));
+            }
+        }
+        VolumeAction::Create => {
+            let (id, created) = ensure_volume(env, cfg, &rp, report).await?;
+            let existed = if created { "" } else { " (already existed)" };
+            print(format!("volume: {id}{existed}"));
+        }
+        VolumeAction::Delete => {
+            let configured = cfg.get("NETWORK_VOLUME_ID").filter(|v| !v.is_empty());
+            let Some(id) = volume_id.filter(|v| !v.is_empty()).or(configured) else {
+                return Err(CommandError::Exit(
+                    "nothing to delete: pass an id or set NETWORK_VOLUME_ID".to_string(),
+                ));
+            };
+            let id = id.to_string();
+            let question = Question::yes_no(
+                None,
+                format!("Permanently delete volume {id} and its weights?"),
+            );
+            let answer = match ask(&question) {
+                Some(asking) => asking.await,
+                None => question.unattended,
+            };
+            if answer == Answer::No {
+                print("aborted".to_string());
+                return Ok(());
+            }
+            rp.delete_volume(&id).await?;
+            regions::forget(env.paths, &id)?;
+            if cfg.get("NETWORK_VOLUME_ID") == Some(id.as_str()) {
+                profiles::persist(cfg, env.paths, "NETWORK_VOLUME_ID", "")?;
+            }
+            print(format!("deleted {id}"));
+        }
+    }
+    Ok(())
 }
 
 // -------------------------------------------------------------- status

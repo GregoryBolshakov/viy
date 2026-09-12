@@ -209,8 +209,14 @@ async fn run_up(home: &mut Home, told: &Told) -> Result<(), CommandError> {
         Duration::from_secs(60),
         &Interrupt::never(),
         &told.reporter(),
+        &nobody,
     )
     .await
+}
+
+/// An asker with nobody to ask.
+fn nobody(_: &Question) -> Option<crate::notice::Asking> {
+    None
 }
 
 // ------------------------------------------------------------------ up
@@ -246,6 +252,7 @@ async fn up_interrupted(
         Duration::from_secs(60),
         &interrupt,
         &report,
+        &nobody,
     );
     tokio::select! {
         result = up => result,
@@ -504,6 +511,8 @@ async fn failover_off_exits_after_the_primary() {
     );
     let mut home = Home::new(None, empty_runpod(refused));
     home.cfg.set("FAILOVER", "0");
+    // rpctl's test body has no allowedCudaVersions, so no stock is asked.
+    home.cfg.set("CUDA_VERSIONS", "");
     let told = Told::default();
     let error = run_up(&mut home, &told).await.unwrap_err();
     assert!(matches!(error, CommandError::Failed));
@@ -1052,5 +1061,242 @@ async fn the_activity_stamp_is_throttled_per_state_directory() {
     assert_eq!(
         idle::last_activity(&a.paths),
         Some(Utc.with_ymd_and_hms(2026, 7, 16, 9, 30, 0).unwrap())
+    );
+}
+
+// ------------------------------------------------------------- regions
+
+/// An asker that answers yes after `after` of the user's thinking.
+fn yes_after(after: Duration) -> impl Fn(&Question) -> Option<crate::notice::Asking> + Send + Sync {
+    move |_| {
+        Some(Box::pin(async move {
+            tokio::time::sleep(after).await;
+            Answer::Yes
+        }))
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn failover_through_up_boots_on_the_backup_with_answers_off_the_clock() {
+    let backup = json!({"id": "bk", "name": "qwen38-weights-backup", "dataCenterId": "US-MO-1"});
+    let volumes = json!([
+        {"id": "vol222", "name": "qwen38-weights", "dataCenterId": "EUR-IS-1"},
+        backup,
+    ]);
+    let mut home = Home::new(None, move |r| {
+        let url = r.url.as_str();
+        let body: Value = r
+            .body
+            .as_deref()
+            .and_then(|b| serde_json::from_slice(b).ok())
+            .unwrap_or_default();
+        if url.contains("/logs") {
+            boot_log()
+        } else if url.ends_with("/health") {
+            Reply::answer(200, "")
+        } else if url.ends_with("/v1/pods") && r.method == Method::GET {
+            json_reply(json!([]))
+        } else if url.ends_with("/v1/pods") && body["dataCenterIds"] == json!(["US-MO-1"]) {
+            json_reply(json!({"id": "pod111", "costPerHr": 1.89, "networkVolumeId": "bk"}))
+        } else if url.ends_with("/v1/pods") {
+            Reply::answer(
+                500,
+                json!({"error": "There are no instances currently available"}).to_string(),
+            )
+        } else if url.ends_with("/networkvolumes/vol222") {
+            json_reply(volumes[0].clone())
+        } else if url.ends_with("/v1/networkvolumes") {
+            json_reply(volumes.clone())
+        } else if url.ends_with("/pods/pod111") {
+            json_reply(pod("RUNNING"))
+        } else {
+            panic!("unexpected {} {url}", r.method)
+        }
+    });
+    home.cfg.set("CUDA_VERSIONS", "");
+    let told = Told::default();
+    let env = home.env();
+    let ask = yes_after(Duration::from_secs(30));
+    let mut cfg = home.cfg.clone();
+    up(
+        &env,
+        &mut cfg,
+        Duration::from_secs(60),
+        &Interrupt::never(),
+        &told.reporter(),
+        &ask,
+    )
+    .await
+    .unwrap();
+    let texts = told.texts();
+    assert!(texts.contains(&"  pod created in US-MO-1 on the backup volume bk".to_string()));
+    // The half minute the user took to answer is not boot time.
+    assert!(
+        texts.contains(&"vLLM is serving. Startup took 0s. Run viy chat".to_string()),
+        "{texts:?}"
+    );
+    assert_eq!(told.alerts()[0].title, "viy up needs an answer");
+    assert_eq!(home.state()["volume_id"], "bk");
+    let records = Records::new(&home.paths);
+    let row = records.history(1).pop().unwrap();
+    let record = records.read(row["boot_id"].as_str().unwrap()).unwrap();
+    assert_eq!(record["config"]["DATA_CENTER_ID"], "US-MO-1");
+    // The next `up` on this config starts from the primary again.
+    assert_eq!(cfg.get("DATA_CENTER_ID"), Some("EUR-IS-1"));
+    let backups: Value =
+        serde_json::from_str(&std::fs::read_to_string(home.paths.backups_file()).unwrap()).unwrap();
+    // Used from when the pod was created, after the half minute's answer.
+    assert_eq!(backups["bk"]["last_used"], json!(1_784_194_230.0));
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_adopted_pod_on_a_new_backup_restarts_its_countdown_and_retires_the_old_one() {
+    let mut home = Home::new(tracked(false), |r| {
+        let url = r.url.as_str();
+        if url.contains("/logs") {
+            boot_log()
+        } else if url.ends_with("/health") {
+            Reply::answer(200, "")
+        } else if url.ends_with("/pods/pod111") {
+            let mut running = pod("RUNNING");
+            running["networkVolumeId"] = json!("new1");
+            json_reply(running)
+        } else if url.ends_with("/networkvolumes/bk") && r.method == Method::GET {
+            json_reply(
+                json!({"id": "bk", "name": "qwen38-weights-backup", "dataCenterId": "US-MO-1"}),
+            )
+        } else if url.ends_with("/networkvolumes/bk") {
+            json_reply(json!({}))
+        } else {
+            panic!("unexpected {} {url}", r.method)
+        }
+    });
+    std::fs::write(
+        home.paths.backups_file(),
+        json!({
+            "bk": {"name": "qwen38-weights-backup", "region": "US-MO-1", "last_used": 1000.0},
+            "new1": {"name": "qwen38-weights-backup", "region": "CA-MTL-3", "last_used": 1000.0,
+                     "replaces": "bk"},
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let told = Told::default();
+    run_up(&mut home, &told).await.unwrap();
+    assert!(
+        home.sent()
+            .contains(&"DELETE https://rest.runpod.io/v1/networkvolumes/bk".to_string())
+    );
+    assert_eq!(
+        told.notices().last().unwrap(),
+        &(
+            Tone::Dim,
+            "Deleted the old backup volume bk in US-MO-1.".to_string()
+        )
+    );
+    let backups: Value =
+        serde_json::from_str(&std::fs::read_to_string(home.paths.backups_file()).unwrap()).unwrap();
+    assert_eq!(
+        backups,
+        json!({"new1": {"name": "qwen38-weights-backup", "region": "CA-MTL-3",
+                        "last_used": 1_784_194_200.0}})
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn volume_delete_asks_and_with_nobody_to_ask_deletes_nothing() {
+    let home = Home::new(None, |r| panic!("unexpected {} {}", r.method, r.url));
+    let told = Told::default();
+    let env = home.env();
+    let mut cfg = home.cfg.clone();
+    volume(
+        &env,
+        &mut cfg,
+        VolumeAction::Delete,
+        None,
+        &told.reporter(),
+        &nobody,
+    )
+    .await
+    .unwrap();
+    assert_eq!(told.texts(), ["aborted"]);
+    cfg.set("NETWORK_VOLUME_ID", "");
+    let error = volume(
+        &env,
+        &mut cfg,
+        VolumeAction::Delete,
+        None,
+        &told.reporter(),
+        &nobody,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "nothing to delete: pass an id or set NETWORK_VOLUME_ID"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn volume_delete_on_yes_forgets_the_volume_everywhere() {
+    let home = Home::new(None, |r| {
+        assert_eq!(r.method, Method::DELETE);
+        json_reply(json!({}))
+    });
+    std::fs::create_dir_all(home.paths.pod_state_dir()).unwrap();
+    std::fs::write(
+        home.paths.backups_file(),
+        json!({"vol222": {"name": "x-backup", "last_used": 1.0}}).to_string(),
+    )
+    .unwrap();
+    let told = Told::default();
+    let env = home.env();
+    let mut cfg = home.cfg.clone();
+    let ask = yes_after(Duration::ZERO);
+    volume(
+        &env,
+        &mut cfg,
+        VolumeAction::Delete,
+        None,
+        &told.reporter(),
+        &ask,
+    )
+    .await
+    .unwrap();
+    assert_eq!(told.texts(), ["deleted vol222"]);
+    assert_eq!(cfg.get("NETWORK_VOLUME_ID"), Some(""));
+    assert_eq!(
+        std::fs::read_to_string(home.paths.backups_file()).unwrap(),
+        "{}\n"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn volume_list_shows_each_volume_as_rp_does() {
+    let home = Home::new(None, |_| {
+        json_reply(json!([
+            {"id": "vol222", "name": "qwen38-weights", "size": 100, "dataCenterId": "EUR-IS-1"},
+            {"id": "vol333"},
+        ]))
+    });
+    let told = Told::default();
+    let env = home.env();
+    let mut cfg = home.cfg.clone();
+    volume(
+        &env,
+        &mut cfg,
+        VolumeAction::List,
+        None,
+        &told.reporter(),
+        &nobody,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        told.texts(),
+        [
+            "  vol222  qwen38-weights           100GB  EUR-IS-1",
+            "  vol333  None                     NoneGB  None",
+        ]
     );
 }

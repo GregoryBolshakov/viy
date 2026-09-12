@@ -56,11 +56,7 @@ fn help_exits_0_on_stdout_with_rps_descriptions() {
 
 #[test]
 fn commands_still_to_come_say_so() {
-    for (args, phase) in [
-        (&["volume", "list"][..], 2),
-        (&["chat", "-c"], 3),
-        (&["trace"], 7),
-    ] {
+    for (args, phase) in [(&["reap"][..], 2), (&["chat", "-c"], 3), (&["trace"], 7)] {
         let (code, out, err) = run_capture(args);
         assert_eq!(code, 1, "{args:?}");
         assert_eq!(out, "");

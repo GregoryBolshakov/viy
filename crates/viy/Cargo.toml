@@ -25,6 +25,7 @@ viy-config = { workspace = true }
 viy-exec = { workspace = true }
 viy-http = { workspace = true }
 viy-pod = { workspace = true }
+viy-protocol = { workspace = true }
 viy-time = { workspace = true }
 
 [dev-dependencies]

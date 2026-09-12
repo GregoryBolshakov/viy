@@ -9,6 +9,7 @@ pub mod api;
 pub mod boot;
 pub mod bootreport;
 pub mod commands;
+pub mod failover;
 pub mod idle;
 pub mod lock;
 pub mod notice;

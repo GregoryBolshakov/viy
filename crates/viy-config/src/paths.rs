@@ -131,6 +131,16 @@ impl Paths {
         self.pod_state_dir().join("up_failures.jsonl")
     }
 
+    /// The backup volumes by id, each with its last use, `backups.json`.
+    pub fn backups_file(&self) -> PathBuf {
+        self.pod_state_dir().join("backups.json")
+    }
+
+    /// One line per A100 stock query, `stock.jsonl`.
+    pub fn stock_file(&self) -> PathBuf {
+        self.pod_state_dir().join("stock.jsonl")
+    }
+
     /// One line per recorded boot, `boots.jsonl` (`viy boots`).
     pub fn boots_history_file(&self) -> PathBuf {
         self.pod_state_dir().join("boots.jsonl")

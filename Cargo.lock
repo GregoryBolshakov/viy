@@ -2483,6 +2483,7 @@ dependencies = [
  "viy-exec",
  "viy-http",
  "viy-pod",
+ "viy-protocol",
  "viy-testkit",
  "viy-time",
 ]
@@ -2538,6 +2539,7 @@ dependencies = [
  "viy-config",
  "viy-exec",
  "viy-http",
+ "viy-protocol",
  "viy-testkit",
  "viy-time",
 ]

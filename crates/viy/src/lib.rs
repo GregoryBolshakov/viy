@@ -22,11 +22,12 @@ use viy_config::Project;
 use crate::cli::Command;
 
 /// Where `viy` writes: whether stdout and stderr are terminals (colour,
-/// the clock redrawn in place, the bell) and whether there is a desktop to
-/// notify.
+/// the clock redrawn in place, the bell), whether stdin is one (someone to
+/// ask), and whether there is a desktop to notify.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Terminal {
     pub tty: bool,
+    pub stdin_tty: bool,
     /// Whether stderr is one, for the colour of an error message.
     pub err_tty: bool,
     pub desktop: bool,
@@ -39,6 +40,7 @@ impl Terminal {
         let set = |name| std::env::var_os(name).is_some_and(|v| !v.is_empty());
         Self {
             tty: io::stdout().is_terminal(),
+            stdin_tty: io::stdin().is_terminal(),
             err_tty: io::stderr().is_terminal(),
             desktop: set("DISPLAY") || set("WAYLAND_DISPLAY"),
         }
@@ -150,15 +152,14 @@ fn dispatch(
         | Command::Stop
         | Command::Down
         | Command::Tunnel(_)
+        | Command::Backup { .. }
+        | Command::Volume(_)
         | Command::CaptureBoot { .. } => {
             let paths = paths()?;
             let cfg = config(&paths)?;
             pods::run(command, &paths, cfg, out, terminal)
         }
-        Command::Reap { .. }
-        | Command::Shutdown(_)
-        | Command::Backup { .. }
-        | Command::Volume(_) => not_ported(2),
+        Command::Reap { .. } | Command::Shutdown(_) => not_ported(2),
         Command::Chat(_) | Command::Chats(_) | Command::Ask(_) => not_ported(3),
         Command::Trace(_) | Command::Toolbox(_) => not_ported(7),
     }

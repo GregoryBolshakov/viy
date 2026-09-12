@@ -48,6 +48,7 @@ fn a_terminal_gets_colour_the_redrawn_lines_and_the_bell() {
         tty: true,
         err_tty: false,
         desktop: false,
+        ..Terminal::default()
     };
     assert_eq!(
         printed(terminal, reports()),
@@ -75,9 +76,8 @@ async fn an_alert_reaches_the_desktop_when_there_is_one() {
         "true",
     ))]);
     let terminal = Terminal {
-        tty: false,
-        err_tty: false,
         desktop: true,
+        ..Terminal::default()
     };
     Printer::new(&mut out, terminal, &exec).report(Report::Alert(Alert {
         title: "viy up: vLLM is serving".into(),
@@ -205,4 +205,27 @@ fn boots_lists_and_shows_the_records() {
     );
     let error = list(&args(BootsAction::Show, Some("nope"))).0.unwrap_err();
     assert_eq!(error.message.unwrap(), "no boot record matching nope");
+}
+
+#[test]
+fn a_question_is_asked_only_with_a_terminal_both_ways() {
+    let question = Question::yes_no(None, "Try the backup volume in US-MO-1?");
+    for terminal in [
+        Terminal::default(),
+        Terminal {
+            tty: true,
+            ..Terminal::default()
+        },
+        Terminal {
+            stdin_tty: true,
+            ..Terminal::default()
+        },
+    ] {
+        let mut out = Vec::new();
+        let exec = FakeExec::new([]);
+        let printer = Printer::new(&mut out, terminal, &exec);
+        assert!(printer.ask(&question).is_none(), "{terminal:?}");
+        drop(printer);
+        assert!(out.is_empty());
+    }
 }

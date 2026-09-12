@@ -1918,6 +1918,524 @@ def gen_pod_bootreport(snap):
     }
 
 
+# ---------------------------------------------------------------- pod/failover
+
+# One case: rpctl's `pod._create_pod` (the primary request, the retry
+# without the exact CUDA version, and regions.failover with its questions
+# and retries), `regions.retire_replaced`, `regions.expire`,
+# `regions.cmd_backup`, `regions.rank` or `regions.is_capacity_error`,
+# against a scripted RunPod (`world`) behind a transport adapter. The
+# world: `free` regions take a pod; `later` maps a region to the refusals
+# it gives before it takes one; `newer` regions take one only without
+# allowedCudaVersions; `refuse` maps a region to a non-capacity refusal;
+# `volumes`, `pods`, `stock` (dataCenters) and `cuda` ({region: [fit,
+# old]}) are what RunPod lists; `*_error` make a call fail. `answers` are
+# the user's, in order (null: no terminal); `interrupt` raises
+# KeyboardInterrupt at the nth retry pause (`sleep`) or while deleting a
+# volume (`delete`). Ids, keys and regions are synthetic.
+FO_NOW = 1784194200.0          # 2026-07-16T09:30:00Z
+FO_DAY = 86400
+FULL = "create pod: There are no instances currently available"
+A100 = "NVIDIA A100-SXM4-80GB"
+PRIM = {"id": "prim", "name": "w", "size": 100, "dataCenterId": "EUR-IS-1"}
+BK = {"id": "bk", "name": "w-backup", "size": 100, "dataCenterId": "US-MO-1"}
+FO_CONFIG = {"POD_NAME": "qwen-pod", "NETWORK_VOLUME_NAME": "w", "NETWORK_VOLUME_ID": "prim",
+             "FAILOVER_RETRY_MIN": "1", "CUDA_VERSIONS": "", "RUNPOD_API_KEY": API_KEY,
+             "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000"}
+
+
+def _dc(region, free, storage=True, listed=True):
+    return {"id": region, "location": "synthetic", "listed": listed, "storageSupport": storage,
+            "gpuAvailability": [{"gpuTypeId": A100, "stockStatus": "Low" if free else None,
+                                 "available": free}]}
+
+
+def _bk(last_used, **kw):
+    return {"name": "w-backup", "region": "US-MO-1", "last_used": last_used, **kw}
+
+
+TWO = [_dc("CA-MTL-3", True), _dc("EU-RO-1", True)]
+FAILOVER_CASES = [
+    # The primary request, and the retry without the exact CUDA version.
+    dict(name="success_is_one_create_request", world=dict(free=["EUR-IS-1"])),
+    dict(name="failover_off_exits_after_the_primary", config={"FAILOVER": "0"}, world={}),
+    dict(name="failover_off_word", config={"FAILOVER": " no "}, world={}),
+    dict(name="non_capacity_refusal_names_the_usual_causes",
+         world=dict(refuse={"EUR-IS-1": "Insufficient balance"})),
+    dict(name="cuda_success_path_asks_no_stock", config={"CUDA_VERSIONS": "13.0"},
+         world=dict(free=["EUR-IS-1"])),
+    dict(name="cuda_newer_drivers_only_retried_without_the_version",
+         config={"CUDA_VERSIONS": "13.0"},
+         world=dict(newer=["EUR-IS-1"], cuda={"EUR-IS-1": ["Low", None]})),
+    dict(name="cuda_older_driver_free_keeps_the_filter", config={"CUDA_VERSIONS": "13.0"},
+         world=dict(newer=["EUR-IS-1"], cuda={"EUR-IS-1": ["Low", "Low"]}, volumes=[PRIM]),
+         answers=None),
+    dict(name="cuda_floor_is_the_oldest_listed", config={"CUDA_VERSIONS": "12.9, 13.0,12.8",
+                                                         "FAILOVER": "0"},
+         world=dict(newer=["EUR-IS-1"], cuda={"EUR-IS-1": ["Low", None]})),
+    dict(name="cuda_stock_unreadable_keeps_the_filter",
+         config={"CUDA_VERSIONS": "13.0", "FAILOVER": "0"},
+         world=dict(newer=["EUR-IS-1"], cuda_error=500)),
+    dict(name="cuda_retry_refused_too", config={"CUDA_VERSIONS": "13.0", "FAILOVER": "0"},
+         world=dict(cuda={"EUR-IS-1": ["High", None]})),
+    dict(name="community_cloud_stock", config={"CUDA_VERSIONS": "13.0", "CLOUD_TYPE": "community",
+                                               "FAILOVER": "0"},
+         world=dict(newer=["EUR-IS-1"], cuda={"EUR-IS-1": ["Low", None]})),
+    # The backup volume.
+    dict(name="backup_asked_and_taken", world=dict(free=["US-MO-1"], volumes=[PRIM, BK]),
+         answers=[True]),
+    dict(name="no_to_the_backup_creates_nothing", world=dict(free=["US-MO-1"],
+                                                             volumes=[PRIM, BK]),
+         answers=[False]),
+    dict(name="unrecorded_backup_starts_its_countdown", world=dict(free=["US-MO-1"],
+                                                                   volumes=[PRIM, BK]),
+         answers=[True]),
+    dict(name="recorded_backup_is_touched", backups={"bk": _bk(FO_NOW - 5 * FO_DAY)},
+         world=dict(free=["US-MO-1"], volumes=[PRIM, BK]), answers=[True]),
+    dict(name="two_backups_the_last_used_wins",
+         backups={"bk": _bk(FO_NOW - 9 * FO_DAY), "bk2": _bk(FO_NOW - FO_DAY, region="EU-RO-1")},
+         world=dict(free=["EU-RO-1"], volumes=[PRIM, BK, dict(BK, id="bk2",
+                                                               dataCenterId="EU-RO-1")]),
+         answers=[True]),
+    dict(name="unused_volume_is_no_backup",
+         backups={"new9": _bk(FO_NOW - 60, region="CA-MTL-3", unused=True)},
+         world=dict(volumes=[PRIM, dict(BK, id="new9", dataCenterId="CA-MTL-3")],
+                    stock=[_dc("CA-MTL-3", False)]),
+         answers=None),
+    dict(name="backup_refuses_for_another_reason",
+         world=dict(volumes=[PRIM, BK], refuse={"US-MO-1": "Insufficient balance"}),
+         answers=[True]),
+    # Moving the backup.
+    dict(name="full_backup_then_the_switch_is_asked_and_done",
+         world=dict(free=["CA-MTL-3"], volumes=[PRIM, BK],
+                    stock=[_dc("US-MO-1", False), _dc("CA-MTL-3", True),
+                           _dc("US-KS-2", True, storage=False), _dc("EU-SE-1", True, listed=False)]),
+         answers=[True, True]),
+    dict(name="no_to_the_switch_keeps_the_backup",
+         world=dict(free=["CA-MTL-3"], volumes=[PRIM, BK], stock=[_dc("CA-MTL-3", True)]),
+         answers=[True, False]),
+    dict(name="no_backup_yet_asks_to_make_one",
+         world=dict(free=["CA-MTL-3"], volumes=[PRIM],
+                    stock=[_dc("EUR-IS-1", True), _dc("CA-MTL-3", True)]),
+         answers=[True]),
+    dict(name="no_backup_yet_idle_days_in_the_question",
+         config={"BACKUP_IDLE_DAYS": "7.6", "FAILOVER_RETRY_MIN": "0.5"},
+         world=dict(free=["CA-MTL-3"], volumes=[PRIM], stock=[_dc("CA-MTL-3", True)]),
+         answers=[True]),
+    dict(name="refused_candidate_loses_its_volume_the_next_is_tried",
+         world=dict(free=["EU-RO-1"], volumes=[PRIM, BK], stock=TWO), answers=[True, True]),
+    dict(name="refusals_retried_until_one_takes_the_pod",
+         world=dict(volumes=[PRIM, BK], later={"EU-RO-1": 3}, stock=TWO), answers=[True, True]),
+    dict(name="primary_freeing_up_during_the_retries_wins",
+         world=dict(volumes=[PRIM, BK], later={"EUR-IS-1": 2}, stock=[_dc("CA-MTL-3", True)]),
+         answers=[True, True]),
+    dict(name="old_backup_freeing_up_during_the_retries_wins",
+         world=dict(volumes=[PRIM, BK], later={"US-MO-1": 2}, stock=[_dc("CA-MTL-3", True)]),
+         answers=[True, True]),
+    dict(name="retries_running_out_delete_the_new_volumes",
+         world=dict(volumes=[PRIM, BK], stock=TWO), answers=[True, True]),
+    dict(name="long_retries_say_how_long_is_left", config={"FAILOVER_RETRY_MIN": "2"},
+         world=dict(volumes=[PRIM, BK], stock=[_dc("CA-MTL-3", True)]), answers=[True, True]),
+    dict(name="zero_retry_minutes_tries_each_region_once", config={"FAILOVER_RETRY_MIN": "0"},
+         world=dict(volumes=[PRIM, BK], stock=[_dc("CA-MTL-3", True)]), answers=[True, True]),
+    dict(name="retry_minutes_not_a_number_is_zero", config={"FAILOVER_RETRY_MIN": "soon"},
+         world=dict(volumes=[PRIM], stock=[_dc("CA-MTL-3", True)]), answers=[True]),
+    dict(name="nowhere_free_keeps_the_backup_without_asking",
+         world=dict(volumes=[PRIM, BK], stock=[_dc("CA-MTL-3", False)]), answers=[True]),
+    dict(name="nowhere_free_without_a_backup", world=dict(volumes=[PRIM], stock=[]),
+         answers=None),
+    dict(name="stock_unreadable", world=dict(volumes=[PRIM, BK], stock_error=500),
+         answers=[True]),
+    dict(name="stock_counts_hosts_at_or_above_the_cuda_floor",
+         config={"CUDA_VERSIONS": "13.0"},
+         world=dict(free=["CA-MTL-3"], volumes=[PRIM, BK],
+                    stock=[_dc("US-MO-1", True), _dc("CA-MTL-3", False)],
+                    cuda={"CA-MTL-3": ["Low", None]}),
+         answers=[True, True]),
+    dict(name="stock_history_breaks_ties", world=dict(
+        free=["EU-RO-1"], volumes=[PRIM], stock=TWO), answers=[True],
+         stock_rows=[{"at": "2026-07-07T00:00:00+00:00", "a100_free": {"EU-RO-1": True}},
+                     {"at": "2026-05-19T00:00:00+00:00", "a100_free": {"CA-MTL-3": True}}]),
+    dict(name="new_volume_creation_refused",
+         world=dict(volumes=[PRIM, BK], stock=TWO, volume_create_error=402),
+         answers=[True, True]),
+    dict(name="unused_volume_delete_refused", world=dict(
+        volumes=[PRIM, BK], stock=[_dc("CA-MTL-3", True)], delete_error={"new1": 500}),
+         answers=[True, True], config={"FAILOVER_RETRY_MIN": "0"}),
+    dict(name="unused_volume_already_gone", world=dict(
+        volumes=[PRIM, BK], stock=[_dc("CA-MTL-3", True)], delete_error={"new1": 404}),
+         answers=[True, True], config={"FAILOVER_RETRY_MIN": "0"}),
+    dict(name="ctrl_c_during_the_retries_deletes_the_new_volumes",
+         world=dict(volumes=[PRIM, BK], stock=TWO), answers=[True, True],
+         interrupt={"sleep": 1}),
+    dict(name="second_ctrl_c_during_cleanup_still_deletes_the_rest",
+         world=dict(volumes=[PRIM, BK], stock=TWO), answers=[True, True],
+         interrupt={"sleep": 2, "delete": ["new1"]}),
+    dict(name="without_a_terminal_the_backup_is_tried_nothing_moved",
+         world=dict(free=["CA-MTL-3"], volumes=[PRIM, BK], stock=[_dc("CA-MTL-3", True)]),
+         answers=None),
+    dict(name="without_a_terminal_no_backup_is_made",
+         world=dict(free=["CA-MTL-3"], volumes=[PRIM], stock=[_dc("CA-MTL-3", True)]),
+         answers=None),
+    dict(name="fresh_primary_volume_stays_fresh_on_the_primary",
+         world=dict(volumes=[PRIM, BK], later={"EUR-IS-1": 2}, stock=[_dc("CA-MTL-3", True)]),
+         answers=[True, True], volume_is_new=True),
+    dict(name="secrets_masked_in_the_refusal_log",
+         world=dict(refuse={"EUR-IS-1": "echo sk-SYNTHETICENDPOINT0000 rpa_SYNTHETICKEY0000"})),
+    # After readiness: the backup a new one replaced.
+    dict(name="retire_nothing_pending", call="retire_replaced", volume="bk",
+         backups={"bk": _bk(FO_NOW)}, world=dict(volumes=[PRIM, BK])),
+    dict(name="retire_unknown_volume", call="retire_replaced", volume="prim",
+         world=dict(volumes=[PRIM, BK])),
+    dict(name="retire_deletes_the_old_backup", call="retire_replaced", volume="new1",
+         backups={"bk": _bk(FO_NOW - FO_DAY),
+                  "new1": _bk(FO_NOW, region="CA-MTL-3", replaces="bk")},
+         world=dict(volumes=[PRIM, BK, dict(BK, id="new1", dataCenterId="CA-MTL-3")])),
+    dict(name="retire_old_backup_already_gone", call="retire_replaced", volume="new1",
+         backups={"bk": _bk(FO_NOW - FO_DAY),
+                  "new1": _bk(FO_NOW, region="CA-MTL-3", replaces="bk")},
+         world=dict(volumes=[PRIM])),
+    dict(name="retire_never_deletes_a_volume_not_named_as_the_backup", call="retire_replaced",
+         volume="new1", backups={"new1": _bk(FO_NOW, region="CA-MTL-3", replaces="prim")},
+         world=dict(volumes=[PRIM])),
+    dict(name="retire_check_fails", call="retire_replaced", volume="new1",
+         backups={"new1": _bk(FO_NOW, region="CA-MTL-3", replaces="bk")},
+         world=dict(volumes=[PRIM, BK], get_error={"bk": 503})),
+    dict(name="retire_delete_fails", call="retire_replaced", volume="new1",
+         backups={"new1": _bk(FO_NOW, region="CA-MTL-3", replaces="bk")},
+         world=dict(volumes=[PRIM, BK], delete_error={"bk": 500})),
+    dict(name="retire_delete_already_gone", call="retire_replaced", volume="new1",
+         backups={"new1": _bk(FO_NOW, region="CA-MTL-3", replaces="bk")},
+         world=dict(volumes=[PRIM, BK], delete_error={"bk": 404})),
+    # rp reap's expiry of backups.
+    dict(name="expire_not_due_costs_no_call", call="expire", now=FO_NOW,
+         backups={"bk": _bk(FO_NOW - FO_DAY)}, world=dict(volumes=[BK])),
+    dict(name="expire_idle_backup_is_deleted", call="expire", now=FO_NOW,
+         backups={"bk": _bk(FO_NOW - 31 * FO_DAY)}, world=dict(volumes=[PRIM, BK])),
+    dict(name="expire_attached_backup_is_kept_its_clock_restarts", call="expire", now=FO_NOW,
+         backups={"bk": _bk(FO_NOW - 31 * FO_DAY)},
+         world=dict(volumes=[BK], pods=[{"id": "p1", "networkVolumeId": "bk",
+                                         "desiredStatus": "RUNNING"}])),
+    dict(name="expire_attached_through_the_volume_object", call="expire", now=FO_NOW,
+         backups={"bk": _bk(FO_NOW - 31 * FO_DAY)},
+         world=dict(volumes=[BK], pods=[{"id": "p1", "networkVolume": {"id": "bk"},
+                                         "desiredStatus": "EXITED"}])),
+    dict(name="expire_terminated_pod_attaches_nothing", call="expire", now=FO_NOW,
+         backups={"bk": _bk(FO_NOW - 31 * FO_DAY)},
+         world=dict(volumes=[BK], pods=[{"id": "p1", "networkVolumeId": "bk",
+                                         "desiredStatus": "TERMINATED"}])),
+    dict(name="expire_never_deletes_a_volume_not_named_as_a_backup", call="expire",
+         now=FO_NOW, backups={"prim": {"name": "w", "region": "EUR-IS-1",
+                                       "last_used": FO_NOW - 99 * FO_DAY}},
+         world=dict(volumes=[PRIM])),
+    dict(name="expire_renamed_volume_is_forgotten", call="expire", now=FO_NOW,
+         backups={"bk": _bk(FO_NOW - 31 * FO_DAY, name="old-backup")},
+         world=dict(volumes=[BK])),
+    dict(name="expire_zero_days_keeps_backups", call="expire", now=FO_NOW,
+         config={"BACKUP_IDLE_DAYS": "0"}, backups={"bk": _bk(1000.0)},
+         world=dict(volumes=[BK])),
+    dict(name="expire_unused_within_the_grace_is_kept", call="expire", now=FO_NOW,
+         backups={"new1": _bk(FO_NOW - 60, unused=True)},
+         world=dict(volumes=[PRIM, dict(BK, id="new1")])),
+    dict(name="expire_unused_after_the_grace_is_deleted", call="expire", now=FO_NOW,
+         config={"BACKUP_IDLE_DAYS": "0"}, backups={"new1": _bk(FO_NOW - 3600, unused=True)},
+         world=dict(volumes=[PRIM, dict(BK, id="new1")])),
+    dict(name="expire_gone_volume_is_forgotten", call="expire", now=FO_NOW,
+         backups={"bk": _bk(FO_NOW - 31 * FO_DAY)}, world=dict(volumes=[])),
+    dict(name="expire_check_fails_keeps_the_record", call="expire", now=FO_NOW,
+         backups={"bk": _bk(FO_NOW - 31 * FO_DAY)},
+         world=dict(volumes=[BK], get_error={"bk": 500})),
+    dict(name="expire_delete_fails", call="expire", now=FO_NOW,
+         backups={"bk": _bk(FO_NOW - 31 * FO_DAY)},
+         world=dict(volumes=[BK], delete_error={"bk": 500})),
+    dict(name="expire_record_without_last_use", call="expire", now=FO_NOW,
+         backups={"bk": {"name": "w-backup"}}, world=dict(volumes=[BK])),
+    # rp backup.
+    dict(name="backup_command_with_a_backup", call="backup", samples=1,
+         backups={"bk": _bk(FO_NOW - 3 * FO_DAY)},
+         world=dict(volumes=[PRIM, BK], stock=[_dc("EUR-IS-1", False), _dc("US-MO-1", True),
+                                               _dc("CA-MTL-3", True), _dc("EU-RO-1", False)]),
+         stock_rows=[{"at": "2026-07-15T00:00:00+00:00",
+                      "a100_free": {"EUR-IS-1": True, "CA-MTL-3": False}},
+                     {"at": "2026-07-14T00:00:00+00:00",
+                      "a100_free": {"EUR-IS-1": True, "CA-MTL-3": True}}],
+         failure_rows=[{"at": "2026-07-15T10:00:00+00:00", "region": "EUR-IS-1",
+                        "capacity": True},
+                       {"at": "2026-07-15T11:00:00+00:00", "region": "EUR-IS-1",
+                        "capacity": True},
+                       {"at": "2026-07-15T12:00:00+00:00", "region": "US-MO-1",
+                        "capacity": True},
+                       {"at": "2026-07-15T13:00:00+00:00", "region": "EUR-IS-1",
+                        "capacity": False},
+                       {"at": "2026-05-19T00:00:00+00:00", "region": "EU-RO-1",
+                        "capacity": True}]),
+    dict(name="backup_command_without_a_backup_failover_off", call="backup", samples=2,
+         config={"FAILOVER": "0", "NETWORK_VOLUME_ID": ""},
+         world=dict(volumes=[PRIM], stock=[_dc("EUR-IS-1", True), _dc("CA-MTL-3", True)]),
+         failure_rows=[{"at": "2026-07-15T10:00:00+00:00", "region": "EUR-IS-1",
+                        "capacity": False}]),
+    dict(name="backup_command_never_used_backup_zero_days", call="backup", samples=0,
+         config={"BACKUP_IDLE_DAYS": "0"}, backups={"bk": {"name": "w-backup"}},
+         world=dict(volumes=[PRIM, BK], stock=[_dc("US-MO-1", False)])),
+    dict(name="backup_command_stock_unreadable", call="backup", samples=1,
+         world=dict(volumes=[PRIM], stock_error=500)),
+    # Pure decisions.
+    dict(name="rank_a100_now_beats_a_better_past", call="rank",
+         samples=[{"A": True, "B": False}, {"A": True, "B": False}], exclude=[],
+         past={"A": 0.1, "B": 1.0}),
+    dict(name="rank_more_often_free_first_then_the_past", call="rank",
+         samples=[{"A": True, "B": True, "C": True, "X": True},
+                  {"A": False, "B": True, "C": True}], exclude=["X"],
+         past={"C": 0.9, "B": 0.2}),
+    dict(name="rank_ties_by_name", call="rank", samples=[{"Z": True, "M": True, "A": False}],
+         exclude=[], past={}),
+    dict(name="capacity_errors", call="capacity", texts=[
+        FULL, "There are no longer any instances available with the requested specifications",
+        "Not enough free GPUs", "not enough GPUs", "No GPU available", "no gpus are available",
+        "Region OUT OF CAPACITY", "instance currently available? no",
+        "Insufficient balance", "HTTP 401 unauthorized", "invalid gpuTypeIds",
+        "no instance", "no longer instances", ""]),
+]
+
+FAILOVER_RUNNER = r"""
+import contextlib, io, json, os, pathlib, re, shutil, sys, types
+sys.path.insert(0, sys.argv[1])
+import requests
+from requests.adapters import BaseAdapter
+from requests.structures import CaseInsensitiveDict
+from rpctl import api, config, pod, regions
+
+NOW, API_KEY, FULL = float(sys.argv[3]), sys.argv[4], sys.argv[5]
+FO_CONFIG = json.loads(sys.argv[6])
+HOME = os.environ["HOME"]
+clock = [0.0]
+# The wall clock moves with the monotonic one, as it does in rp up.
+regions.time = types.SimpleNamespace(time=lambda: NOW + clock[0], monotonic=lambda: clock[0],
+                                     sleep=lambda s: clock.__setitem__(0, clock[0] + s))
+fake = regions.time
+d = list(regions.failover.__defaults__)
+d[-2], d[-1] = fake.sleep, fake.monotonic
+regions.failover.__defaults__ = tuple(d)
+d = list(regions.sample_stock.__defaults__)
+d[-1] = fake.sleep
+regions.sample_stock.__defaults__ = tuple(d)
+TONE = {pod.C_DIM: "dim", pod.C_OK: "ok", pod.C_WARN: "warn", pod.C_ERR: "error", "": "plain"}
+said, asked, sent, replies, presses = [], [], [], [], []
+pod._say = lambda msg, color="": said.append([TONE[color], msg.replace(HOME, "$HOME")])
+pod.notify = lambda *a, **k: None
+real_ask = pod._ask
+STOCK_ALIAS = re.compile(r'(s\d+_\d+)([fo]): gpuTypes\(input: \{id: "([^"]*)"\}\).*?'
+                         r'dataCenterId: "([^"]*)"')
+
+
+class World:
+    def __init__(self, spec):
+        self.spec = spec
+        self.volumes = [dict(v) for v in spec.get("volumes", [])]
+        self.later = dict(spec.get("later", {}))
+        self.n = 0
+
+    def answer(self, method, url, body):
+        s = self.spec
+        if url == api.GRAPHQL:
+            query = body["query"]
+            if "dataCenters" in query:
+                if s.get("stock_error"):
+                    return s["stock_error"], "upstream failed"
+                return 200, {"data": {"dataCenters": s.get("stock", [])}}
+            if s.get("cuda_error"):
+                return s["cuda_error"], "upstream failed"
+            data = {}
+            for alias, kind, gpu, region in STOCK_ALIAS.findall(query):
+                status = s.get("cuda", {}).get(region, [None, None])[kind == "o"]
+                data[alias + kind] = [{"lowestPrice": {"stockStatus": status} if status else None}]
+            return 200, {"data": data}
+        path = url[len(api.BASE):]
+        if path == "/pods" and method == "POST":
+            region, vid = body["dataCenterIds"][0], body["networkVolumeId"]
+            pod_ = {"id": f"pod-{region}", "costPerHr": 1.89, "networkVolumeId": vid}
+            if region in s.get("refuse", {}):
+                return 400, {"error": s["refuse"][region]}
+            if region in s.get("newer", []):
+                if "allowedCudaVersions" in body:
+                    return 500, {"error": FULL}
+                return 200, pod_
+            if region in self.later:
+                self.later[region] -= 1
+                if self.later[region] < 0:
+                    return 200, pod_
+            if region not in s.get("free", []):
+                return 500, {"error": FULL}
+            return 200, pod_
+        if path == "/pods":
+            return 200, s.get("pods", [])
+        if path == "/networkvolumes" and method == "GET":
+            return 200, self.volumes
+        if path == "/networkvolumes":
+            if s.get("volume_create_error"):
+                return s["volume_create_error"], {"error": "volume quota reached"}
+            self.n += 1
+            v = {"id": f"new{self.n}", "name": body["name"], "size": body["size"],
+                 "dataCenterId": body["dataCenterId"]}
+            self.volumes.append(v)
+            return 200, v
+        vid = path.rsplit("/", 1)[1]
+        if method == "GET":
+            if vid in s.get("get_error", {}):
+                return s["get_error"][vid], {"error": "synthetic"}
+            for v in self.volumes:
+                if v["id"] == vid:
+                    return 200, v
+            return 404, {"error": "network volume not found"}
+        if vid in s.get("delete_error", {}):
+            return s["delete_error"][vid], {"error": "synthetic"}
+        self.volumes = [v for v in self.volumes if v["id"] != vid]
+        return 200, ""
+
+
+class Player(BaseAdapter):
+    def __init__(self, world, interrupt):
+        super().__init__()
+        self.world, self.interrupt = world, interrupt
+    def send(self, request, stream=False, timeout=None, **kw):
+        body = request.body
+        if isinstance(body, bytes):
+            body = body.decode()
+        body = json.loads(body) if body else None
+        shown = body
+        if request.url == api.BASE + "/pods" and request.method == "POST":
+            shown = {k: body[k] for k in ("name", "dataCenterIds", "networkVolumeId",
+                                          "allowedCudaVersions") if k in body}
+        sent.append({"method": request.method, "url": request.url, "body": shown})
+        if request.method == "DELETE" and request.url.rsplit("/", 1)[1] in \
+                self.interrupt.get("delete", []):
+            replies.append({"hang": True})
+            presses.append(len(sent))
+            raise KeyboardInterrupt
+        status, payload = self.world.answer(request.method, request.url, body)
+        text = payload if isinstance(payload, str) else json.dumps(payload)
+        replies.append({"status": status, "body": text})
+        r = requests.Response()
+        r.status_code = status
+        r.headers = CaseInsensitiveDict({"Content-Type": "application/json"})
+        r._content = text.encode()
+        r.url, r.request, r.reason, r.encoding = request.url, request, "synthetic", "utf-8"
+        return r
+
+
+def rows(path):
+    try:
+        return [json.loads(l) for l in path.read_text().splitlines()]
+    except OSError:
+        return None
+
+
+cases = []
+for case in json.loads(sys.argv[2]):
+    shutil.rmtree(config.USER_STATE_DIR, ignore_errors=True)
+    config.USER_STATE_DIR.mkdir(parents=True)
+    if "backups" in case:
+        regions.BACKUPS.write_text(json.dumps(case["backups"]))
+    for key, path in (("stock_rows", regions.STOCK), ("failure_rows", regions.FAILURES)):
+        if key in case:
+            path.write_text("".join(json.dumps(r) + "\n" for r in case[key]))
+    for out in (said, asked, sent, replies, presses):
+        out.clear()
+    clock[0] = 0.0
+    pod._answer_wait[0] = 0.0
+    interrupt = case.get("interrupt", {})
+    world = World(case.get("world", {}))
+    class Client(api.RunPod):
+        def __init__(self, key):
+            super().__init__(key)
+            self.s.mount("https://", Player(world, interrupt))
+    regions.RunPod = Client
+    cfg = {**config.DEFAULTS, **FO_CONFIG, **case.get("config", {})}
+    keys = {k: v for k, v in cfg.items() if config.DEFAULTS.get(k) != v}
+    answers = case.get("answers", [])
+    if answers is None:
+        pod._ask = real_ask
+        sys.stdin = types.SimpleNamespace(isatty=lambda: False)
+    else:
+        def scripted(question, default, answers=list(answers)):
+            asked.append([question, default])
+            return answers.pop(0)
+        pod._ask = scripted
+    sleeps = [0]
+    def capacity_sleep(seconds):
+        sleeps[0] += 1
+        if interrupt.get("sleep") == sleeps[0]:
+            presses.append(len(sent))
+            raise KeyboardInterrupt
+        fake.sleep(seconds)
+        pod._answer_wait[0] += seconds
+    pod._capacity_sleep = capacity_sleep
+    call = case.get("call", "create_pod")
+    result = {}
+    rp = Client(API_KEY)
+    try:
+        if call == "create_pod":
+            got = pod._create_pod(rp, cfg, cfg["VLLM_API_KEY"], "ssh-ed25519 AAAAsynthetic",
+                                  "prim", case.get("volume_is_new", False))
+            result = {"ok": list(got)}
+        elif call == "retire_replaced":
+            result = {"ok": regions.retire_replaced(rp, cfg, case["volume"],
+                                                    say=lambda m: pod._say(m, pod.C_DIM))}
+        elif call == "expire":
+            gone = regions.expire(rp, cfg, now=case["now"], say=lambda m: pod._say(m))
+            result = {"ok": [v["id"] for v in gone]}
+        elif call == "backup":
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                try:
+                    regions.cmd_backup(cfg, types.SimpleNamespace(samples=case["samples"]))
+                except api.RunPodError as e:
+                    result = {"error": str(e)}
+            result["stdout"] = out.getvalue().replace(HOME, "$HOME")
+        elif call == "rank":
+            result = {"ok": regions.rank(case["samples"], set(case["exclude"]), case["past"])}
+        elif call == "capacity":
+            result = {"ok": [regions.is_capacity_error(api.RunPodError(t)) for t in case["texts"]]}
+    except SystemExit as e:
+        result = {"exit": e.code}
+    except KeyboardInterrupt:
+        result = {"interrupted": True}
+    sys.stdin = sys.__stdin__
+    cases.append({**case, "cfg": keys, "sent": list(sent), "replies": list(replies),
+                  "presses": list(presses), "asked": list(asked), "said": list(said), **result,
+                  "region_after": cfg["DATA_CENTER_ID"], "answer_wait": pod._answer_wait[0],
+                  "backups_after": json.loads(regions.BACKUPS.read_text())
+                  if regions.BACKUPS.exists() else None,
+                  "stock_after": rows(regions.STOCK), "failures_after": rows(regions.FAILURES)})
+print(json.dumps(cases))
+"""
+
+
+def gen_pod_failover(snap):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": tmp,
+               "XDG_CONFIG_HOME": tmp + "/.config", "XDG_STATE_HOME": tmp + "/.local/state",
+               "XDG_DATA_HOME": tmp + "/.local/share"}
+        out = subprocess.run([*rp_python(), "-I", "-c", FAILOVER_RUNNER, str(snap),
+                              json.dumps(FAILOVER_CASES), repr(FO_NOW), API_KEY, FULL, json.dumps(FO_CONFIG)],
+                             cwd=tmp, env=env, check=True, capture_output=True, text=True)
+    return {
+        "about": "rpctl's pod creation with region failover (pod._create_pod on volume 'prim' "
+                 "with the user's answers, the default without a terminal), "
+                 "regions.retire_replaced, regions.expire, regions.cmd_backup, regions.rank "
+                 "and regions.is_capacity_error, config keys over DEFAULTS and FO_CONFIG, "
+                 "against a scripted RunPod (`world`, see tools/fixtures.py) played through a "
+                 "transport adapter at a fixed clock (FO_NOW). `sent` are the requests made "
+                 "(a pod's body cut to name, dataCenterIds, networkVolumeId and "
+                 "allowedCudaVersions), `replies` what each got (hang: a Ctrl-C arrived "
+                 "while it was in flight), `presses` the request counts at each Ctrl-C, "
+                 "`asked` the questions with their defaults, `said` the notices with their "
+                 "colour ($HOME for the home directory), then the outcome and the state "
+                 "files after",
+        "cases": json.loads(out.stdout),
+    }
+
+
 GENERATORS = {
     "cli/flags": gen_cli_flags,
     "cli/parse": gen_cli_parse,
@@ -1929,6 +2447,7 @@ GENERATORS = {
     "pod/api": gen_pod_api,
     "pod/boot": gen_pod_boot,
     "pod/bootreport": gen_pod_bootreport,
+    "pod/failover": gen_pod_failover,
     "pod/resolve": gen_pod_resolve,
     "pod/ssh": gen_pod_ssh,
 }

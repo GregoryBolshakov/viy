@@ -12,6 +12,7 @@ pub mod bootreport;
 pub mod commands;
 pub mod failover;
 pub mod idle;
+pub mod local;
 pub mod lock;
 pub mod notice;
 pub mod process;

@@ -43,6 +43,8 @@ pub struct Command {
     /// How long [`ExecBackend::run`] waits before it kills the child and
     /// fails with [`io::ErrorKind::TimedOut`]; no limit without one.
     pub timeout: Option<Duration>,
+    /// Set in the child's environment, over this process's.
+    pub env: Vec<(OsString, OsString)>,
 }
 
 impl Command {
@@ -52,6 +54,7 @@ impl Command {
             args: Vec::new(),
             stdin: None,
             timeout: None,
+            env: Vec::new(),
         }
     }
 
@@ -72,6 +75,11 @@ impl Command {
 
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
+        self
+    }
+
+    pub fn env(mut self, name: impl Into<OsString>, value: impl Into<OsString>) -> Self {
+        self.env.push((name.into(), value.into()));
         self
     }
 
@@ -149,6 +157,7 @@ impl ExecBackend for SystemExec {
         Box::pin(async move {
             let mut child = tokio::process::Command::new(&command.program)
                 .args(&command.args)
+                .envs(command.env.iter().map(|(k, v)| (k, v)))
                 .stdin(if command.stdin.is_some() {
                     Stdio::piped()
                 } else {
@@ -201,7 +210,9 @@ impl ExecBackend for SystemExec {
     fn spawn(&self, command: Command, how: Spawn) -> io::Result<Box<dyn Child>> {
         refuse_run_only(&command)?;
         let mut process = tokio::process::Command::new(&command.program);
-        process.args(&command.args);
+        process
+            .args(&command.args)
+            .envs(command.env.iter().map(|(k, v)| (k, v)));
         let detached = match how {
             Spawn::Detached { stderr } => Some((Stdio::null(), Stdio::from(stderr))),
             Spawn::Logged { log } => Some((Stdio::from(log.try_clone()?), Stdio::from(log))),

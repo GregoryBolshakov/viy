@@ -24,6 +24,7 @@ use viy_exec::ExecBackend;
 use viy_exec::SystemExec;
 use viy_http::HttpClient;
 use viy_http::ReqwestHttp;
+use viy_pod::backend;
 use viy_pod::backend::Backend;
 use viy_pod::bootreport;
 use viy_pod::bootreport::Records;
@@ -33,11 +34,13 @@ use viy_pod::commands::Env;
 use viy_pod::commands::Interrupt;
 use viy_pod::commands::VolumeAction;
 use viy_pod::idle;
+use viy_pod::local;
 use viy_pod::notice::Alert;
 use viy_pod::notice::Asking;
 use viy_pod::notice::ClockPrinter;
 use viy_pod::notice::Notice;
 use viy_pod::notice::Report;
+use viy_pod::notice::Reporter;
 use viy_pod::notice::Tone;
 use viy_pod::notice::desktop_notify;
 use viy_pod::regions;
@@ -183,17 +186,6 @@ impl<'w> Printer<'w> {
     }
 }
 
-/// rpctl's `resolve_backend`: only the RunPod one so far.
-fn runpod_backend(cfg: &Config, verb: &str) -> Result<(), Failure> {
-    match Backend::resolve(cfg)? {
-        Backend::Runpod => Ok(()),
-        other => Err(Failure::from(format!(
-            "viy {verb}: the {} backend is not ported yet (ROADMAP phase 2)",
-            other.name()
-        ))),
-    }
-}
-
 /// The pod commands and `viy tunnel`, run to their end.
 pub fn run(
     command: &Command,
@@ -202,12 +194,15 @@ pub fn run(
     out: &mut (dyn Write + Send),
     terminal: Terminal,
 ) -> Result<(), Failure> {
-    match command {
+    let backend = match command {
         Command::Boots(args) => return boots(paths, args, out),
         // RunPod's own, whatever BACKEND says; reap looks itself.
-        Command::Backup { .. } | Command::Volume(_) | Command::Reap { .. } => {}
-        _ => runpod_backend(&cfg, command.name())?,
-    }
+        Command::Backup { .. }
+        | Command::Volume(_)
+        | Command::Reap { .. }
+        | Command::CaptureBoot { .. } => Backend::Runpod,
+        _ => Backend::resolve(&cfg)?,
+    };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -217,13 +212,16 @@ pub fn run(
         Arc::new(ReqwestHttp::new().map_err(|e| Failure::from(e.to_string()))?);
     let exe = std::env::current_exe().map_err(|e| Failure::from(format!("viy itself: {e}")))?;
     let printer = Printer::new(out, terminal, &exec);
-    let result = runtime.block_on(pod_command(command, paths, cfg, &http, &exe, &printer));
+    let result = runtime.block_on(pod_command(
+        command, backend, paths, cfg, &http, &exe, &printer,
+    ));
     printer.close();
     result
 }
 
 async fn pod_command(
     command: &Command,
+    backend: Backend,
     paths: &Paths,
     mut cfg: Config,
     http: &Arc<dyn HttpClient>,
@@ -250,6 +248,11 @@ async fn pod_command(
         time: &time,
         exe,
     };
+    if backend != Backend::Runpod {
+        return other_backend(command, backend, &env, &mut cfg, &interrupt, &report)
+            .await
+            .map_err(|error| failure(error, printer));
+    }
     let result = match command {
         Command::Up { timeout } => {
             let timeout = Duration::from_secs(*timeout);
@@ -307,6 +310,42 @@ async fn pod_command(
         }
     };
     result.map_err(|error| failure(error, printer))
+}
+
+/// The commands for a backend other than RunPod, or rpctl's
+/// NotSupported for one it lacks.
+async fn other_backend(
+    command: &Command,
+    backend: Backend,
+    env: &Env<'_>,
+    cfg: &mut Config,
+    interrupt: &Interrupt,
+    report: Reporter<'_>,
+) -> Result<(), CommandError> {
+    if let (Backend::Local, Command::Logs { follow }) = (backend, command) {
+        // Following ends on Ctrl-C by itself, quietly.
+        return local::logs(env, *follow, interrupt.next(), report).await;
+    }
+    let work = async {
+        match (backend, command) {
+            (Backend::Openai, Command::Up { .. }) => {
+                backend::openai_up(report);
+                Ok(())
+            }
+            (Backend::Openai, Command::Status) => backend::openai_status(env, cfg, report).await,
+            (Backend::Local, Command::Up { timeout }) => {
+                local::up(env, cfg, Duration::from_secs(*timeout), report).await
+            }
+            (Backend::Local, Command::Status) => local::status(env, cfg, report).await,
+            (Backend::Local, Command::Stop | Command::Down) => local::down(env, report).await,
+            (_, other) => Err(backend::not_supported(backend, other.name())),
+        }
+    };
+    tokio::select! {
+        biased;
+        () = interrupt.next() => Err(CommandError::Interrupted),
+        result = work => result,
+    }
 }
 
 /// After Ctrl-C, rpctl's `main` prints a newline before it exits 130.

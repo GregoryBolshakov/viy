@@ -46,6 +46,7 @@ use crate::commands;
 use crate::commands::CommandError;
 use crate::commands::Env;
 use crate::compile_regex;
+use crate::local;
 use crate::notice::Reporter;
 use crate::notice::Tone;
 use crate::notice::say;
@@ -263,14 +264,11 @@ pub async fn poweroff_problems(host: &Host<'_>) -> Vec<String> {
 pub fn down_problems(cfg: &Config) -> Vec<String> {
     match Backend::resolve(cfg) {
         Err(message) => vec![message],
-        Ok(backend) if !backend.has_down() => vec![format!(
+        Ok(backend) if !backend.manages_server() => vec![format!(
             "viy down does nothing for the '{}' backend; that step is skipped",
             backend.name()
         )],
-        Ok(Backend::Local) => {
-            vec!["viy down for the 'local' backend is not ported yet (ROADMAP phase 2)".into()]
-        }
-        Ok(_) if cfg.get("RUNPOD_API_KEY").unwrap_or("").is_empty() => vec![
+        Ok(Backend::Runpod) if cfg.get("RUNPOD_API_KEY").unwrap_or("").is_empty() => vec![
             "RUNPOD_API_KEY is not set, so viy down can't reach RunPod; the pod would be left \
              to its own idle watchdog"
                 .into(),
@@ -492,14 +490,25 @@ pub enum Down {
 /// the log; why it failed otherwise.
 pub async fn take_down(env: &Env<'_>, cfg: &Config, report: Reporter<'_>) -> Result<Down, String> {
     match Backend::resolve(cfg)? {
-        backend if !backend.has_down() => Ok(Down::Nothing(backend.name())),
-        Backend::Local => Err("the local backend is not ported yet (ROADMAP phase 2)".into()),
-        _ => match commands::down(env, cfg, false, report).await {
+        backend if !backend.manages_server() => Ok(Down::Nothing(backend.name())),
+        backend => match backend_down(env, cfg, backend, report).await {
             Ok(()) => Ok(Down::Done),
             // rp's SystemExit(1), everything said already.
             Err(CommandError::Failed) => Err("1".into()),
             Err(error) => Err(error.to_string()),
         },
+    }
+}
+
+async fn backend_down(
+    env: &Env<'_>,
+    cfg: &Config,
+    backend: Backend,
+    report: Reporter<'_>,
+) -> Result<(), CommandError> {
+    match backend {
+        Backend::Local => local::down(env, report).await,
+        _ => commands::down(env, cfg, false, report).await,
     }
 }
 

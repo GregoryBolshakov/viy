@@ -168,6 +168,17 @@ impl Paths {
         self.pod_state_dir().join("shutdown.log")
     }
 
+    /// The local backend's vLLM process: its pid, port and start,
+    /// `local.json`.
+    pub fn local_state_file(&self) -> PathBuf {
+        self.pod_state_dir().join("local.json")
+    }
+
+    /// What the local backend's vLLM writes, `local-vllm.log`.
+    pub fn local_log_file(&self) -> PathBuf {
+        self.pod_state_dir().join("local-vllm.log")
+    }
+
     /// Where `viy reap --install` puts its timer, as rp puts its own:
     /// `~/.config/systemd/user`, which the user's systemd reads whatever
     /// this shell's `XDG_CONFIG_HOME` says.

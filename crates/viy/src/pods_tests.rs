@@ -98,18 +98,55 @@ async fn an_alert_reaches_the_desktop_when_there_is_one() {
     );
 }
 
+/// Commands that need neither RunPod nor an endpoint, under each backend.
 #[test]
-fn only_the_runpod_backend_so_far() {
-    let mut cfg = Config::defaults();
-    assert!(runpod_backend(&cfg, "up").is_ok());
-    cfg.set("BACKEND", "Local");
+fn each_backend_has_its_own_commands() {
+    let dir = ScratchDir::new("backends").unwrap();
+    let paths = Paths::under(dir.path());
+    let run_with = |backend: &str, command: Command| {
+        let mut cfg = Config::defaults();
+        cfg.set("BACKEND", backend);
+        let mut out = Vec::new();
+        let result = run(&command, &paths, cfg, &mut out, Terminal::default());
+        (
+            result.err().and_then(|f| f.message),
+            String::from_utf8(out).unwrap(),
+        )
+    };
     assert_eq!(
-        runpod_backend(&cfg, "up").unwrap_err().message.unwrap(),
-        "viy up: the local backend is not ported yet (ROADMAP phase 2)"
+        run_with("OpenAI", Command::Up { timeout: 60 }),
+        (
+            None,
+            "The 'openai' backend is a hosted endpoint: there is nothing to start. viy status \
+             checks that it answers.\n"
+                .into()
+        )
     );
-    cfg.set("BACKEND", "azure");
+    for (backend, command, verb) in [
+        ("openai", Command::Down, "down"),
+        ("openai", Command::Logs { follow: false }, "logs"),
+        (
+            "local",
+            Command::Tunnel(TunnelArgs {
+                background: false,
+                stop: true,
+                status: false,
+                forget_key: false,
+            }),
+            "tunnel",
+        ),
+    ] {
+        assert_eq!(
+            run_with(backend, command).0.unwrap(),
+            format!("`viy {verb}` is not available for the '{backend}' backend.")
+        );
+    }
     assert_eq!(
-        runpod_backend(&cfg, "status").unwrap_err().message.unwrap(),
+        run_with("local", Command::Down),
+        (None, "local vLLM is not running\n".into())
+    );
+    assert_eq!(
+        run_with("azure", Command::Status).0.unwrap(),
         "unknown BACKEND 'azure'; supported: local, openai, runpod"
     );
 }

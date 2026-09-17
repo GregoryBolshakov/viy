@@ -296,20 +296,18 @@ pub fn notify_problems(host: &Host<'_>) -> Vec<String> {
 // --------------------------------------------------------------- open chats
 
 /// Whether a command line is an `rp chat` or a `viy chat`: the first
-/// argument naming rp, or the first naming viy, is followed, past its
-/// options, by `chat`. rp's rule is rpctl's own, so every chat rp's
-/// shutdown would close, viy's closes too.
+/// argument naming rp or viy is followed, past its options, by `chat`.
 pub fn is_chat(argv: &[Vec<u8>]) -> bool {
-    let chat_after = |names: fn(&[u8]) -> bool| {
-        argv.iter().position(|a| names(a)).is_some_and(|i| {
-            argv[i + 1..]
-                .iter()
-                .find(|a| !a.is_empty() && !a.starts_with(b"-"))
-                .is_some_and(|a| a == b"chat")
-        })
+    let names_tool = |a: &[u8]| {
+        a.ends_with(b"/rp") || a.ends_with(b"/viy") || [&b"rp"[..], b"viy", b"rpctl"].contains(&a)
     };
-    chat_after(|a| a.ends_with(b"/rp") || a == b"rp" || a == b"rpctl")
-        || chat_after(|a| a.ends_with(b"/viy") || a == b"viy")
+    let Some(i) = argv.iter().position(|a| names_tool(a)) else {
+        return false;
+    };
+    argv[i + 1..]
+        .iter()
+        .find(|a| !a.is_empty() && !a.starts_with(b"-"))
+        .is_some_and(|a| a == b"chat")
 }
 
 /// What [`Chats::close`] did with each pid.

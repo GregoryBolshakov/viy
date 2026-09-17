@@ -547,15 +547,33 @@ async fn reap_waits_while_the_pod_lock_is_held() {
     );
 }
 
-#[tokio::test(start_paused = true)]
-async fn reap_leaves_other_backends_alone() {
+// ---------------------------------------------------------- ReapBackendTests
+
+/// Whether reap got as far as the lock check, with BACKEND as given.
+async fn reaps(backend: &str) -> Result<bool, CommandError> {
     let mut home = Home::new(|r: &viy_http::Request| panic!("unexpected {}", r.url));
-    for backend in ["openai", "local", "RunPod", ""] {
-        home.cfg.set("BACKEND", backend);
-        let (result, told) = home.reap(false).await;
-        result.unwrap();
-        assert!(told.texts().is_empty(), "{backend}");
+    home.cfg.set("BACKEND", backend);
+    let _held = PodLock::exclusive(&home.paths, "up").unwrap();
+    let (result, told) = home.reap(false).await;
+    result.map(|()| !told.texts().is_empty())
+}
+
+#[tokio::test(start_paused = true)]
+async fn runpod_in_any_spelling() {
+    for backend in ["runpod", "RunPod", " runpod ", ""] {
+        assert!(reaps(backend).await.unwrap(), "{backend:?}");
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn other_backends_are_left_alone() {
+    for backend in ["openai", "local"] {
+        assert!(!reaps(backend).await.unwrap(), "{backend}");
+    }
+    assert_eq!(
+        reaps("azure").await.unwrap_err().to_string(),
+        "unknown BACKEND 'azure'; supported: local, openai, runpod"
+    );
 }
 
 #[tokio::test(start_paused = true)]

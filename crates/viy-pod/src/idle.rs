@@ -31,6 +31,7 @@ use viy_config::atomic::write_atomically;
 use viy_exec::ExecBackend;
 use viy_time::TimeProvider;
 
+use crate::backend::Backend;
 use crate::commands;
 use crate::commands::CommandError;
 use crate::commands::Env;
@@ -235,7 +236,8 @@ pub async fn reap(
             say(report, Tone::Plain, text);
         }
     };
-    if cfg.get("BACKEND").unwrap_or("runpod") != "runpod" {
+    // BACKEND as up reads it.
+    if Backend::resolve(cfg).map_err(CommandError::Exit)? != Backend::Runpod {
         return Ok(());
     }
     if !PodLock::is_free(env.paths)? {

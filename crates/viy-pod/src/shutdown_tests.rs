@@ -98,8 +98,6 @@ fn viy_chats_too() {
     assert!(is_chat(&argv(&["viy", "--x", "chat"])));
     assert!(!is_chat(&argv(&["viy", "shutdown", "--run-at", "1"])));
     assert!(!is_chat(&argv(&["/x/viyx", "chat"])));
-    // Whatever rp's rule finds, a viy argument before it does not hide.
-    assert!(is_chat(&argv(&["/x/viy", "ask", "rp", "chat"])));
 }
 
 // ---------------------------------------------------------- CloseChatsTests
@@ -1089,10 +1087,9 @@ mod oracle {
         }
     }
 
-    /// Every chat rpctl's rule finds, viy's finds; beyond it, only
-    /// command lines that name viy.
+    /// The same answer as rpctl's `_is_chat` for every command line.
     #[test]
-    fn is_chat_finds_all_that_rpctl_finds() {
+    fn is_chat_matches_rpctl() {
         let mut oracle = Oracle::spawn().unwrap();
         let mut g = Gen::from_env();
         let pieces = [
@@ -1126,12 +1123,7 @@ mod oracle {
             let Outcome::Returned(Value::Bool(theirs)) = theirs else {
                 panic!("{args:?}: {theirs:?}")
             };
-            let names_viy = args.iter().any(|a| *a == "viy" || a.ends_with("/viy"));
-            assert!(
-                ours == theirs || (ours && names_viy),
-                "case {case}, seed {:#x}: {args:?}: viy {ours}, rpctl {theirs}",
-                seed()
-            );
+            assert_eq!(ours, theirs, "case {case}, seed {:#x}: {args:?}", seed());
         }
     }
 

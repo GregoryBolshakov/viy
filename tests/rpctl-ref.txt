@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: 5a76e0eee00b1fc50a1a528c338b43c3e54403e9
+commit: b4cd3736e2226e1a3033ea23576ac4377653aa8f
 branch: leak-protection
 pinned: 2026-07-17
-subject: Accept only an ed25519 pod host key, and see a ready /health at once
+subject: Make rp shutdown close viy chats, and rp reap read BACKEND as rp up does

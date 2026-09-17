@@ -6,6 +6,7 @@
 //! phase 2). The pod side itself is not ported (kb d003).
 
 pub mod api;
+pub mod backend;
 pub mod boot;
 pub mod bootreport;
 pub mod commands;
@@ -15,6 +16,7 @@ pub mod lock;
 pub mod notice;
 pub mod process;
 pub mod regions;
+pub mod shutdown;
 pub mod ssh;
 pub mod state;
 pub mod tracked;

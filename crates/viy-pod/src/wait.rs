@@ -820,8 +820,8 @@ pub fn report_watchdog(cfg: &Config, state: Option<&str>, report: Reporter<'_>) 
             format!(
                 "Idle watchdog armed: the pod terminates itself after {:.0} min without tokens, \
                  or after {:.0} h.",
-                limits.ttl.as_secs_f64() / 60.0,
-                limits.max.as_secs_f64() / 3600.0
+                limits.ttl / 60.0,
+                limits.max / 3600.0
             ),
         ),
         Some(state) if state.starts_with("CANNOT") => say(

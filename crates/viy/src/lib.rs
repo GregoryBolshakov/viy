@@ -2,7 +2,7 @@
 //!
 //! The parser has all of rpctl's 19 subcommands (WP 1.6); those whose work
 //! package has not come yet say so and exit 1. The pod commands are in
-//! [`pods`].
+//! [`pods`], `viy shutdown` in [`shutdown`].
 
 pub mod cli;
 pub mod hardening;
@@ -10,6 +10,7 @@ pub mod init;
 pub mod migrate;
 pub mod model;
 pub mod pods;
+pub mod shutdown;
 
 use std::ffi::OsString;
 use std::io;
@@ -154,12 +155,18 @@ fn dispatch(
         | Command::Tunnel(_)
         | Command::Backup { .. }
         | Command::Volume(_)
+        | Command::Reap { .. }
         | Command::CaptureBoot { .. } => {
             let paths = paths()?;
             let cfg = config(&paths)?;
             pods::run(command, &paths, cfg, out, terminal)
         }
-        Command::Reap { .. } | Command::Shutdown(_) => not_ported(2),
+        Command::Shutdown(args) => {
+            let paths = paths()?;
+            let cfg = config(&paths)?;
+            let reload = || config(&paths);
+            shutdown::run(args, &paths, cfg, reload, out, terminal)
+        }
         Command::Chat(_) | Command::Chats(_) | Command::Ask(_) => not_ported(3),
         Command::Trace(_) | Command::Toolbox(_) => not_ported(7),
     }

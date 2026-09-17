@@ -98,6 +98,9 @@ pub enum Spawn {
     /// In a new session, so the terminal's signals and its closing don't
     /// reach it: stdin and stdout `/dev/null`, stderr to this file.
     Detached { stderr: File },
+    /// Detached the same way, with stdout and stderr both to this file:
+    /// a process that writes its own log.
+    Logged { log: File },
     /// On the terminal, all three streams inherited; Ctrl-C reaches it.
     Terminal,
 }
@@ -199,12 +202,14 @@ impl ExecBackend for SystemExec {
         refuse_run_only(&command)?;
         let mut process = tokio::process::Command::new(&command.program);
         process.args(&command.args);
-        match how {
-            Spawn::Detached { stderr } => {
-                process
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::from(stderr));
+        let detached = match how {
+            Spawn::Detached { stderr } => Some((Stdio::null(), Stdio::from(stderr))),
+            Spawn::Logged { log } => Some((Stdio::from(log.try_clone()?), Stdio::from(log))),
+            Spawn::Terminal => None,
+        };
+        match detached {
+            Some((stdout, stderr)) => {
+                process.stdin(Stdio::null()).stdout(stdout).stderr(stderr);
                 // SAFETY: setsid is async-signal-safe, and the closure
                 // touches nothing else between fork and exec.
                 unsafe {
@@ -216,7 +221,7 @@ impl ExecBackend for SystemExec {
                     });
                 }
             }
-            Spawn::Terminal => {
+            None => {
                 process
                     .stdin(Stdio::inherit())
                     .stdout(Stdio::inherit())

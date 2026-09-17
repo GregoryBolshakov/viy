@@ -1,11 +1,12 @@
 //! The pod subcommands, rpctl's `cmd_up`, `cmd_status`, `cmd_stop`,
-//! `cmd_down`, `cmd_logs`, `cmd_tunnel`, `cmd_boots`, `cmd_backup` and
-//! `cmd_volume`: each runs the library call of its name
-//! (`viy_pod::commands`, `viy_pod::tunnel`, `viy_pod::regions`) on a
-//! tokio runtime and prints what it reports, as rp prints it, with colour
-//! and the clock redrawn in place on a terminal, and asks its questions
-//! there. Ctrl-C ends a command with status 130, after `up` has recorded
-//! an interrupted boot and deleted the volumes its failover made.
+//! `cmd_down`, `cmd_logs`, `cmd_tunnel`, `cmd_boots`, `cmd_backup`,
+//! `cmd_volume` and `cmd_reap`: each runs the library call of its name
+//! (`viy_pod::commands`, `viy_pod::tunnel`, `viy_pod::regions`,
+//! `viy_pod::idle`) on a tokio runtime and prints what it reports, as rp
+//! prints it, with colour and the clock redrawn in place on a terminal,
+//! and asks its questions there. Ctrl-C ends a command with status 130,
+//! after `up` has recorded an interrupted boot and deleted the volumes its
+//! failover made.
 
 use std::io;
 use std::io::Write;
@@ -23,6 +24,7 @@ use viy_exec::ExecBackend;
 use viy_exec::SystemExec;
 use viy_http::HttpClient;
 use viy_http::ReqwestHttp;
+use viy_pod::backend::Backend;
 use viy_pod::bootreport;
 use viy_pod::bootreport::Records;
 use viy_pod::commands;
@@ -30,6 +32,7 @@ use viy_pod::commands::CommandError;
 use viy_pod::commands::Env;
 use viy_pod::commands::Interrupt;
 use viy_pod::commands::VolumeAction;
+use viy_pod::idle;
 use viy_pod::notice::Alert;
 use viy_pod::notice::Asking;
 use viy_pod::notice::ClockPrinter;
@@ -66,14 +69,18 @@ fn colour(tone: Tone) -> &'static str {
 }
 
 /// Prints reports to the terminal or wherever stdout goes.
-struct Printer<'w> {
+pub(crate) struct Printer<'w> {
     out: Mutex<(&'w mut (dyn Write + Send), ClockPrinter)>,
     terminal: Terminal,
     exec: &'w dyn ExecBackend,
 }
 
 impl<'w> Printer<'w> {
-    fn new(out: &'w mut (dyn Write + Send), terminal: Terminal, exec: &'w dyn ExecBackend) -> Self {
+    pub(crate) fn new(
+        out: &'w mut (dyn Write + Send),
+        terminal: Terminal,
+        exec: &'w dyn ExecBackend,
+    ) -> Self {
         Self {
             out: Mutex::new((out, ClockPrinter::new(terminal.tty))),
             terminal,
@@ -81,7 +88,7 @@ impl<'w> Printer<'w> {
         }
     }
 
-    fn report(&self, report: Report) {
+    pub(crate) fn report(&self, report: Report) {
         let mut guard = self.out.lock().unwrap_or_else(PoisonError::into_inner);
         let (out, clock) = &mut *guard;
         let text = match &report {
@@ -167,7 +174,7 @@ impl<'w> Printer<'w> {
     }
 
     /// Ends a redrawn line, before something else is written.
-    fn close(&self) {
+    pub(crate) fn close(&self) {
         let mut guard = self.out.lock().unwrap_or_else(PoisonError::into_inner);
         let (out, clock) = &mut *guard;
         if let Some(end) = clock.close() {
@@ -178,14 +185,11 @@ impl<'w> Printer<'w> {
 
 /// rpctl's `resolve_backend`: only the RunPod one so far.
 fn runpod_backend(cfg: &Config, verb: &str) -> Result<(), Failure> {
-    let kind = cfg.get("BACKEND").unwrap_or("").trim().to_lowercase();
-    match kind.as_str() {
-        "" | "runpod" => Ok(()),
-        "openai" | "local" => Err(Failure::from(format!(
-            "viy {verb}: the {kind} backend is not ported yet (ROADMAP phase 2)"
-        ))),
-        _ => Err(Failure::from(format!(
-            "unknown BACKEND '{kind}'; supported: local, openai, runpod"
+    match Backend::resolve(cfg)? {
+        Backend::Runpod => Ok(()),
+        other => Err(Failure::from(format!(
+            "viy {verb}: the {} backend is not ported yet (ROADMAP phase 2)",
+            other.name()
         ))),
     }
 }
@@ -200,8 +204,8 @@ pub fn run(
 ) -> Result<(), Failure> {
     match command {
         Command::Boots(args) => return boots(paths, args, out),
-        // RunPod's own, whatever BACKEND says.
-        Command::Backup { .. } | Command::Volume(_) => {}
+        // RunPod's own, whatever BACKEND says; reap looks itself.
+        Command::Backup { .. } | Command::Volume(_) | Command::Reap { .. } => {}
         _ => runpod_backend(&cfg, command.name())?,
     }
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -271,6 +275,12 @@ async fn pod_command(
                     Command::Status => commands::status(&env, &cfg, &report).await,
                     Command::Stop => commands::stop(&env, &cfg, &report).await,
                     Command::Down => commands::down(&env, &cfg, false, &report).await,
+                    Command::Reap { install: true, .. } => {
+                        let path = std::env::var_os("PATH");
+                        let viy = viy_config::vault::find_executable(path.as_deref(), "viy");
+                        idle::install(paths, env.exec, viy.as_deref(), &report).await
+                    }
+                    Command::Reap { quiet, .. } => idle::reap(&env, &cfg, *quiet, &report).await,
                     Command::Backup { samples } => {
                         regions::backup(&env, &cfg, *samples, &report).await
                     }

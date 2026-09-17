@@ -102,10 +102,11 @@ impl Tok {
 }
 
 /// The first executable file called `name` in the absolute directories of
-/// `path`. Empty and relative entries name the working directory, which in a
-/// project folder may hold a `tok` the model wrote, so they are skipped, as
-/// rpctl's main drops them from PATH (7fe286b).
-fn find_executable(path: Option<&OsStr>, name: &str) -> Option<PathBuf> {
+/// `path` (a `PATH` value), as `shutil.which` finds one. Empty and relative
+/// entries name the working directory, which in a project folder may hold
+/// a program the model wrote, so they are skipped, as rpctl's main drops
+/// them from PATH (7fe286b).
+pub fn find_executable(path: Option<&OsStr>, name: &str) -> Option<PathBuf> {
     std::env::split_paths(path?)
         .filter(|dir| dir.is_absolute())
         .map(|dir| dir.join(name))

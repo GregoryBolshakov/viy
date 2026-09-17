@@ -56,7 +56,7 @@ fn help_exits_0_on_stdout_with_rps_descriptions() {
 
 #[test]
 fn commands_still_to_come_say_so() {
-    for (args, phase) in [(&["reap"][..], 2), (&["chat", "-c"], 3), (&["trace"], 7)] {
+    for (args, phase) in [(&["ask"][..], 3), (&["chat", "-c"], 3), (&["trace"], 7)] {
         let (code, out, err) = run_capture(args);
         assert_eq!(code, 1, "{args:?}");
         assert_eq!(out, "");
@@ -65,4 +65,25 @@ fn commands_still_to_come_say_so() {
             format!("viy {}: not ported yet (ROADMAP phase {phase})\n", args[0])
         );
     }
+}
+
+/// Only what neither schedules nor runs anything: these go to this
+/// machine's processes.
+#[test]
+fn shutdown_shows_and_refuses() {
+    let (code, out, err) = run_capture(&["shutdown"]);
+    assert_eq!((code, err.as_str()), (0, ""));
+    assert_eq!(
+        out,
+        "no shutdown is scheduled\nschedule one with: viy shutdown 90m   (or 1h30m, 23:30)\n"
+    );
+    let (code, out, _) = run_capture(&["shutdown", "--status"]);
+    assert_eq!((code, out.as_str()), (0, "no shutdown is scheduled\n"));
+    let (code, _, err) = run_capture(&["shutdown", "soon"]);
+    assert_eq!(
+        (code, err.as_str()),
+        (1, "not a duration: 'soon' (try 90m, 1h30m or 23:30)\n")
+    );
+    let (code, _, err) = run_capture(&["shutdown", "--run-at", "later"]);
+    assert_eq!((code, err.as_str()), (1, "--run-at: not a time: later\n"));
 }

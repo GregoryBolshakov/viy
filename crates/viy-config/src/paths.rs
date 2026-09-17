@@ -151,6 +151,30 @@ impl Paths {
         self.pod_state_dir().join("boots")
     }
 
+    /// When `viy reap` first saw the running pod and the activity it last
+    /// warned about, `reap.json`.
+    pub fn reap_state_file(&self) -> PathBuf {
+        self.pod_state_dir().join("reap.json")
+    }
+
+    /// The scheduled shutdown's runner, deadline and poweroff,
+    /// `shutdown.json`: one per machine, whichever tool scheduled it.
+    pub fn shutdown_state_file(&self) -> PathBuf {
+        self.pod_state_dir().join("shutdown.json")
+    }
+
+    /// What the scheduled shutdown's runner writes, `shutdown.log`.
+    pub fn shutdown_log_file(&self) -> PathBuf {
+        self.pod_state_dir().join("shutdown.log")
+    }
+
+    /// Where `viy reap --install` puts its timer, as rp puts its own:
+    /// `~/.config/systemd/user`, which the user's systemd reads whatever
+    /// this shell's `XDG_CONFIG_HOME` says.
+    pub fn systemd_user_dir(&self) -> PathBuf {
+        self.home.join(".config").join("systemd").join("user")
+    }
+
     /// `~/.config/rpctl`: rp's global config, which `viy migrate` copies.
     pub fn rpctl_config_dir(&self) -> PathBuf {
         self.config_home.join(RPCTL)

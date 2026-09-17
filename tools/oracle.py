@@ -55,6 +55,19 @@ def redact_any_pattern(text):
     return any(p.search(text) for p in redact._PATTERNS)
 
 
+def shutdown_parse_when(text, now):
+    """shutdown.parse_when(text, now) with `now` as an ISO local time."""
+    from datetime import datetime
+    from rpctl import shutdown
+    return shutdown.parse_when(text, datetime.fromisoformat(now))
+
+
+def shutdown_is_chat(argv):
+    """shutdown._is_chat on a command line given as text, UTF-8 encoded."""
+    from rpctl import shutdown
+    return shutdown._is_chat([a.encode() for a in argv])
+
+
 # The callable functions: request name -> (module, attribute), or a function
 # defined above. Add entries as work packages need them; every rpctl entry
 # must be free of I/O (plan 5.4).
@@ -64,10 +77,15 @@ FUNCTIONS = {
     "approve.net_ask_reason": ("rpctl.approve", "net_ask_reason"),
     "approve.plain_pipeline": ("rpctl.approve", "plain_pipeline"),
     "approve.prefix_for": ("rpctl.approve", "prefix_for"),
+    "idle.decide": ("rpctl.idle", "decide"),
+    "idle.limits": ("rpctl.idle", "limits"),
     "redact.any_pattern": redact_any_pattern,
     "redact.is_secret_name": ("rpctl.redact", "is_secret_name"),
     "redact.literal_secrets": ("rpctl.redact", "literal_secrets"),
     "redact.text": redact_text,
+    "shutdown.fmt": ("rpctl.shutdown", "_fmt"),
+    "shutdown.is_chat": shutdown_is_chat,
+    "shutdown.parse_when": shutdown_parse_when,
 }
 
 

@@ -194,7 +194,7 @@ pub fn connect(env: &Env<'_>, cfg: &Config) -> Result<RunPod, CommandError> {
 }
 
 /// Our pod as RunPod has it, several of that name said as rpctl does.
-async fn resolve(
+pub(crate) async fn resolve(
     rp: &RunPod,
     env: &Env<'_>,
     cfg: &Config,
@@ -802,13 +802,13 @@ pub async fn status(env: &Env<'_>, cfg: &Config, report: Reporter<'_>) -> Result
     line(format!("  vllm:      {served}"));
     let limits = idle::limits(cfg);
     if let Some(last) = idle::last_activity(env.paths)
-        && !limits.ttl.is_zero()
+        && limits.ttl != 0.0
     {
         let minutes = (env.time.now() - last).as_seconds_f64() / 60.0;
         line(format!(
             "  idle:      {minutes:.0} min since this machine last streamed; the pod shuts \
              itself down after {:.0} min without tokens",
-            limits.ttl.as_secs_f64() / 60.0
+            limits.ttl / 60.0
         ));
     }
     Ok(())

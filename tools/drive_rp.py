@@ -2,6 +2,7 @@
 """Run a scenario through rpctl's Chat, against fakellm, and log its requests.
 
     python3 -I tools/drive_rp.py SCENARIO.json [--out DIR] [--record | --check]
+    python3 -I tools/drive_rp.py SCENARIO.json --client viy [--viy BIN] [--check]
 
 rpctl comes from the pinned snapshot (target/rpctl-ref/<commit>/), never the
 live checkout. The chat runs in a child `python3 -I` with HOME, every XDG_*
@@ -18,10 +19,15 @@ scenario's "approvals", in order, through the same prompt function a person
 would type into. A background title request is waited for after each turn,
 so the request order is the same on every run.
 
-Writes into DIR (default target/scenario-runs/<scenario>/rp/): raw.jsonl
+With --client viy the same tree, fakellm and workspace go to
+`viy dev drive SCENARIO --url URL --result FILE` (default binary
+target/debug/viy: build it first), which does the same around the
+requests; --check then compares viy's requests with rp's recording.
+
+Writes into DIR (default target/scenario-runs/<scenario>/<client>/): raw.jsonl
 (what fakellm logged), requests.jsonl (normalized, meta header first, the
 format tools/parity/compare_requests.py reads), meta.json and output.txt
-(what rp printed). --record copies requests.jsonl to
+(what the client printed). --record copies rp's requests.jsonl to
 tests/scenarios/<scenario>.rp.jsonl; --check compares with that recording.
 Scenario format: tests/scenarios/README.md. Implementation plan 3.4.
 """
@@ -124,7 +130,7 @@ def child(job):
 
 
 # ----------------------------------------------------------------- parent
-def run(scenario_path, out):
+def run(scenario_path, out, viy=None):
     scenario = json.loads(scenario_path.read_text(encoding="utf-8"))
     name = scenario["name"]
     snap, commit = snapshot()
@@ -160,21 +166,25 @@ def run(scenario_path, out):
             job = {"scenario": scenario, "snapshot": str(snap), "url": line.split()[1],
                    "api_key": "fake-key", "base": str(base),
                    "result": str(base / "result.json")}
+            if viy:
+                cmd = [str(viy), "dev", "drive", str(scenario_path), "--url", job["url"],
+                       "--result", job["result"]]
+            else:
+                cmd = [sys.executable, "-I", str(pathlib.Path(__file__).resolve()),
+                       "--child", json.dumps(job)]
             with open(out / "output.txt", "w", encoding="utf-8") as log:
                 rc = subprocess.run(
-                    [sys.executable, "-I", str(pathlib.Path(__file__).resolve()),
-                     "--child", json.dumps(job)],
-                    cwd=ws, env=env, stdout=log, stderr=subprocess.STDOUT,
+                    cmd, cwd=ws, env=env, stdout=log, stderr=subprocess.STDOUT,
                     stdin=subprocess.DEVNULL, timeout=300).returncode
         finally:
             server.terminate()
             server.wait(10)
         if rc != 0:
             tail = (out / "output.txt").read_text(encoding="utf-8").splitlines()[-15:]
-            raise SystemExit(f"rp's chat failed (exit {rc}); the end of "
+            raise SystemExit(f"{'viy' if viy else 'rp'}'s chat failed (exit {rc}); the end of "
                              f"{out / 'output.txt'}:\n" + "\n".join(tail))
         result = json.loads((base / "result.json").read_text())
-        meta = {"client": "rp", "rpctl_commit": commit, "scenario": name,
+        meta = {"client": "viy" if viy else "rp", "rpctl_commit": commit, "scenario": name,
                 "base": str(base), "workspace": str(ws), "today": result["today"],
                 "asked": result["asked"]}
     finally:
@@ -187,7 +197,7 @@ def run(scenario_path, out):
                          f"{bad[0]['method']} {bad[0]['path']})")
     served = sum(1 for e in raw if "response" in e)
     if served != len(scenario.get("responses") or []):
-        raise SystemExit(f"rp made {served} chat requests; the scenario scripts "
+        raise SystemExit(f"{meta['client']} made {served} chat requests; the scenario scripts "
                          f"{len(scenario['responses'])}")
     cmp = _compare_module()
     norm = cmp.normalize(raw, meta)
@@ -210,10 +220,18 @@ def main(argv):
                    help="save the log as tests/scenarios/<name>.rp.jsonl")
     g.add_argument("--check", action="store_true",
                    help="compare the log with tests/scenarios/<name>.rp.jsonl")
+    ap.add_argument("--client", choices=("rp", "viy"), default="rp")
+    ap.add_argument("--viy", type=pathlib.Path, default=ROOT / "target" / "debug" / "viy",
+                    help="the viy binary (--client viy)")
     a = ap.parse_args(argv)
+    viy = a.viy.resolve() if a.client == "viy" else None
+    if viy and a.record:
+        ap.error("--record keeps rp's requests; viy's are checked against them")
+    if viy and not viy.is_file():
+        ap.error(f"{viy} does not exist: cargo build -p viy")
     name = json.loads(a.scenario.read_text(encoding="utf-8"))["name"]
-    out = (a.out or ROOT / "target" / "scenario-runs" / name / "rp").resolve()
-    name, log = run(a.scenario.resolve(), out)
+    out = (a.out or ROOT / "target" / "scenario-runs" / name / a.client).resolve()
+    name, log = run(a.scenario.resolve(), out, viy)
     n = len(log.read_text(encoding="utf-8").splitlines()) - 1
     print(f"{name}: {n} requests logged in {log.relative_to(ROOT) if log.is_relative_to(ROOT) else log}")
     recorded = SCENARIOS / f"{name}.rp.jsonl"

@@ -165,9 +165,17 @@ pub struct DevArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum DevCommand {
-    /// Runs a scenario's steps through the engine and prints its events as
-    /// JSON lines (implementation plan 3.4).
-    Drive { scenario: std::path::PathBuf },
+    /// Runs a scenario through the chat against a model server and prints
+    /// its events as JSON lines (implementation plan 3.4).
+    Drive {
+        scenario: std::path::PathBuf,
+        /// The model server's base URL.
+        #[arg(long)]
+        url: String,
+        /// Where to write the chat's date and the questions asked, as JSON.
+        #[arg(long)]
+        result: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

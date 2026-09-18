@@ -14,3 +14,4 @@ doctest = false
 workspace = true
 
 [dependencies]
+serde_json = { workspace = true }

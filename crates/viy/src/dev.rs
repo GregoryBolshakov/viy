@@ -1,73 +1,137 @@
 //! `viy dev`: developer tools, hidden from `--help`. `viy dev drive
-//! SCENARIO` runs a scenario's steps through the engine
-//! (`viy_agent::drive`) and prints every event as a JSON line; problems of
-//! the run go to stderr with exit status 1. Until the chat's turn exists
-//! (WP 3.2) each turn fails with a message saying so.
+//! SCENARIO --url URL` runs a scenario through the chat against the model
+//! server at URL and prints every event as a JSON line; problems of the run
+//! go to stderr with exit status 1. As drive_rp's child does for rp, the
+//! chat gets rpctl's DEFAULTS plus the scenario's `config`, with
+//! `VLLM_API_KEY` set to `fake-key`, and before the first step asks the
+//! server for its context length. `--result FILE` writes what the request
+//! log is normalized with: the chat's date and the questions asked.
+//!
+//! The server, the workspace (the working directory) and HOME and the XDG
+//! directories are the caller's: `tools/drive_rp.py --client viy` sets them
+//! up as for rp (implementation plan 3.4).
 
 use std::io::Write;
+use std::path::Path;
 use std::sync::Arc;
 
-use viy_agent::BoxFuture;
+use serde_json::Value;
+use serde_json::json;
 use viy_agent::Engine;
-use viy_agent::TurnContext;
-use viy_agent::Turns;
+use viy_agent::chat::Chat;
+use viy_agent::chat::ChatTurns;
 use viy_agent::drive;
 use viy_agent::drive::Scenario;
-use viy_protocol::EventMsg;
-use viy_protocol::NoticeEvent;
-use viy_protocol::NoticeLevel;
-use viy_protocol::TurnOutcome;
+use viy_agent::stream::Endpoint;
+use viy_config::Config;
+use viy_config::Paths;
+use viy_http::HttpClient;
+use viy_http::ReqwestHttp;
+use viy_pod::backend::Backend;
+use viy_pod::idle;
+use viy_protocol::Answer;
+use viy_time::SystemTimeProvider;
 
 use crate::Failure;
 use crate::cli::DevArgs;
 use crate::cli::DevCommand;
 
-/// The engine's turns until WP 3.2 brings the chat's.
-struct NotYet;
-
-impl Turns for NotYet {
-    fn turn(self: Arc<Self>, _: TurnContext, _: String) -> BoxFuture<'static, TurnOutcome> {
-        Box::pin(async {
-            TurnOutcome::Failed {
-                message: "the chat's model turn comes with WP 3.2".into(),
-            }
-        })
-    }
-
-    fn command(self: Arc<Self>, ctx: TurnContext, text: String) -> BoxFuture<'static, ()> {
-        Box::pin(async move {
-            ctx.emit(EventMsg::Notice(NoticeEvent {
-                level: NoticeLevel::Warn,
-                code: "not_ported".into(),
-                message: format!("{text}: slash commands come with phase 3"),
-            }));
-        })
-    }
-}
-
-pub fn run(args: &DevArgs, out: &mut (dyn Write + Send)) -> Result<(), Failure> {
-    let DevCommand::Drive { scenario } = &args.command;
+pub fn run(args: &DevArgs, paths: &Paths, out: &mut (dyn Write + Send)) -> Result<(), Failure> {
+    let DevCommand::Drive {
+        scenario,
+        url,
+        result,
+    } = &args.command;
     let shown = scenario.display();
     let text = std::fs::read_to_string(scenario).map_err(|e| format!("{shown}: {e}"))?;
-    let value = serde_json::from_str(&text).map_err(|e| format!("{shown}: {e}"))?;
-    let scenario = Scenario::from_json(&value).map_err(|e| format!("{shown}: {e}"))?;
+    let value: Value = serde_json::from_str(&text).map_err(|e| format!("{shown}: {e}"))?;
+    let steps = Scenario::from_json(&value).map_err(|e| format!("{shown}: {e}"))?;
+    let cfg = config(&value).map_err(|e| format!("{shown}: {e}"))?;
+    let http: Arc<dyn HttpClient> =
+        Arc::new(ReqwestHttp::new().map_err(|e| Failure::from(e.to_string()))?);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|e| Failure::from(e.to_string()))?;
-    let run = runtime.block_on(async {
-        let mut engine = Engine::spawn(Arc::new(NotYet));
-        drive::drive(&mut engine, &scenario).await
-    });
+    let (run, today) = runtime.block_on(async {
+        let mut chat = chat(&cfg, url, http, paths)?;
+        chat.discover_max_model_len().await;
+        let today = chat.today().to_string();
+        let mut engine = Engine::spawn(Arc::new(ChatTurns::new(chat)));
+        Ok::<_, Failure>((drive::drive(&mut engine, &steps).await, today))
+    })?;
     for event in &run.events {
         let line = serde_json::to_string(event).map_err(|e| Failure::from(e.to_string()))?;
         writeln!(out, "{line}").map_err(|e| Failure::from(e.to_string()))?;
+    }
+    if let Some(file) = result {
+        write_result(file, &today, &run.asked)?;
     }
     if run.problems.is_empty() {
         Ok(())
     } else {
         Err(Failure::from(run.problems.join("\n")))
     }
+}
+
+/// rpctl's DEFAULTS, `fake-key` and the scenario's `config`.
+fn config(scenario: &Value) -> Result<Config, String> {
+    let mut cfg = Config::defaults();
+    cfg.set("VLLM_API_KEY", "fake-key");
+    for (key, value) in scenario["config"].as_object().into_iter().flatten() {
+        let value = value
+            .as_str()
+            .ok_or_else(|| format!("config {key}: not a string"))?;
+        cfg.set(key, value);
+    }
+    if cfg.get("TOOLS_ENABLED") == Some("1") {
+        return Err("build tools come with phase 4; the scenario needs TOOLS_ENABLED \"0\"".into());
+    }
+    Ok(cfg)
+}
+
+/// The chat at `url`, the backend's key and model, streaming touching the
+/// activity file under `paths`.
+fn chat(
+    cfg: &Config,
+    url: &str,
+    http: Arc<dyn HttpClient>,
+    paths: &Paths,
+) -> Result<Chat, Failure> {
+    let backend = Backend::resolve(cfg)?;
+    let endpoint = Endpoint {
+        base: url.trim_end_matches('/').to_string(),
+        key: backend.api_key(cfg).to_string(),
+        backend: backend.name().to_string(),
+        is_vllm: backend.is_vllm(),
+        http,
+    };
+    let paths = paths.clone();
+    let touch = Arc::new(move || idle::touch(&paths, &SystemTimeProvider, false));
+    Ok(Chat::new(
+        cfg,
+        endpoint,
+        backend.model_name(cfg),
+        viy_agent::prompt::today(),
+        touch,
+    )?)
+}
+
+/// drive_rp's `result.json`: the date and the questions asked.
+fn write_result(file: &Path, today: &str, asked: &[(String, Answer)]) -> Result<(), Failure> {
+    let asked: Vec<Value> = asked
+        .iter()
+        .map(|(question, answer)| {
+            let answer = match answer {
+                Answer::Yes => "y",
+                Answer::No => "n",
+                Answer::Always => "a",
+            };
+            json!({"question": question, "answer": answer})
+        })
+        .collect();
+    let text = json!({"today": today, "asked": asked}).to_string();
+    std::fs::write(file, text).map_err(|e| Failure::from(format!("{}: {e}", file.display())))
 }
 
 #[cfg(test)]

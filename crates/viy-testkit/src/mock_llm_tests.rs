@@ -24,7 +24,10 @@ fn reassemble(body: &[u8]) -> Reply {
             r.done = true;
             continue;
         }
-        let chunk: Value = serde_json::from_str(data).unwrap();
+        // A scenario's raw lines may hold what is not JSON on purpose.
+        let Ok(chunk) = serde_json::from_str::<Value>(data) else {
+            continue;
+        };
         for choice in chunk["choices"].as_array().unwrap() {
             if !choice["finish_reason"].is_null() {
                 r.finish = choice["finish_reason"].clone();
@@ -79,11 +82,19 @@ fn serves_each_scenario_to_rps_recorded_requests() {
         let mut responses = sc["responses"].as_array().unwrap().iter();
         for entry in &log.entries {
             let (status, body) = replay(&mock, entry);
-            assert_eq!(status, 200, "{name}: {entry}");
             if entry["path"] != "/v1/chat/completions" {
+                assert_eq!(status, 200, "{name}: {entry}");
                 continue;
             }
             let r = responses.next().unwrap();
+            assert_eq!(
+                u64::from(status),
+                r["status"].as_u64().unwrap_or(200),
+                "{name}: {entry}"
+            );
+            if r.get("status").is_some() {
+                continue;
+            }
             if let Some(text) = r.get("message") {
                 let reply: Value = serde_json::from_slice(&body).unwrap();
                 assert_eq!(&reply["choices"][0]["message"]["content"], text);
@@ -103,11 +114,20 @@ fn serves_each_scenario_to_rps_recorded_requests() {
             for (_, _, args) in &reply.calls {
                 serde_json::from_str::<Value>(args).unwrap();
             }
-            let expected_finish = if want.is_empty() {
-                "stop"
-            } else {
-                "tool_calls"
-            };
+            let events = r["stream"].as_array().unwrap();
+            if events.iter().any(|e| e.get("drop").is_some()) {
+                assert!(!reply.done, "{name}: [DONE] after a drop");
+                continue;
+            }
+            let expected_finish =
+                events
+                    .iter()
+                    .find_map(|e| e["finish"].as_str())
+                    .unwrap_or(if want.is_empty() {
+                        "stop"
+                    } else {
+                        "tool_calls"
+                    });
             assert_eq!(reply.finish, json!(expected_finish), "{name}");
             assert!(reply.done, "{name}: no [DONE]");
         }

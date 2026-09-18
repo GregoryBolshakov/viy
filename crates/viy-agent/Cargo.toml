@@ -14,11 +14,16 @@ doctest = false
 workspace = true
 
 [dependencies]
+chrono = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+viy-config = { workspace = true }
+viy-http = { workspace = true }
 viy-protocol = { workspace = true }
+viy-tools = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+viy-testkit = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "test-util", "time"] }

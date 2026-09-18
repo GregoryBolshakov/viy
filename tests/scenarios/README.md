@@ -17,7 +17,12 @@ Per scenario `<name>`:
   `UPDATE_SNAPSHOTS=1 cargo test -p viy-testkit`).
 
 Compare two logs with `python3 -I tools/parity/compare_requests.py A B`
-(content, not bytes: kb d031).
+(content, not bytes: kb d031). `python3 -I tools/drive_rp.py <name>.json
+--client viy --check` runs the same scenario through `viy dev drive` (build
+`target/debug/viy` first) and compares viy's requests with rp's recording;
+`cargo test -p viy` does the same against `viy_testkit::mock_llm` for every
+scenario with build tools off. Keep stream text ASCII: fakellm's
+`text/event-stream` names no charset, so rp decodes it as ISO-8859-1.
 
 ## Format
 

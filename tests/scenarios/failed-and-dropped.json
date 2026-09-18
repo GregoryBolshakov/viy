@@ -1,0 +1,32 @@
+{
+  "name": "failed-and-dropped",
+  "about": "Web search on, fetch off (one tool offered). Turn 1 gets HTTP 503: nothing is committed and no title is asked for. Turn 2's stream is cut after some text, before the finish reason and [DONE]: what arrived is the answer, and the title follows. Turn 3 streams a server's older `reasoning_content` field, a comment line and a data line that is not JSON, and shows turn 2's cut answer in the history.",
+  "config": {"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "1", "FETCH_ENABLED": "0"},
+  "max_model_len": 65536,
+  "steps": [
+    {"user": "Hello?"},
+    {"user": "Hello again."},
+    {"user": "Are you still there?"}
+  ],
+  "responses": [
+    {"expect": {"stream": true, "tools": "auto", "last_user": "Hello?"},
+     "status": 503, "body": "upstream not ready"},
+    {"expect": {"stream": true, "tools": "auto", "last_user": "Hello again."},
+     "stream": [
+       {"reasoning": "Greet back."},
+       {"content": "Hi! I am here and "},
+       {"content": "ready to"},
+       {"drop": true}
+     ]},
+    {"expect": {"stream": false, "tools": "omit"},
+     "message": "Greeting the assistant"},
+    {"expect": {"stream": true, "tools": "auto", "last_user": "Are you still there?"},
+     "stream": [
+       {"raw": ": keep-alive\n\n"},
+       {"raw": "data: {\"id\":\"chatcmpl-fake\",\"object\":\"chat.completion.chunk\",\"created\":0,\"model\":\"qwen3.8-abliterated\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"An older server names the field reasoning_content.\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n"},
+       {"raw": "data: not json\n\n"},
+       {"content": "Yes, still here."},
+       {"usage": {"prompt_tokens": 700, "completion_tokens": 18, "total_tokens": 718}}
+     ]}
+  ]
+}

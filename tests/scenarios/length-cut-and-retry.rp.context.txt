@@ -1,0 +1,72 @@
+Scenario: length-cut-and-retry
+
+## Window 1
+settings: model="qwen3.8-abliterated" chat_template_kwargs={"reasoning_effort":"high","preserve_thinking":false} stream=true temperature=1.0 top_p=0.95 max_tokens=4096 stream_options={"include_usage":true} top_k=20
+-- request 1 (stream, tools omit) --
+00:system:
+    Today is {TODAY}. The user's machine runs Linux.
+    
+    How to help:
+    - Work toward what the user is trying to achieve, not just the literal request. When they ask for advice or are unsure what is best, give your own recommendatio... (312 chars)
+    - If a request is ambiguous, pick the most sensible reading, say which one you picked, and go ahead. Ask first only when a wrong guess would be costly or hard t... (167 chars)
+    - End every turn with a final answer in plain text: what you did or found, and what is still open. Never leave the answer only in your reasoning.
+    - Put the answer first. Keep it as short as the question allows. Cite files as path:line.
+01:user:
+    Prove that there are infinitely many primes.
+-- request 2 (stream, tools omit) --
+02:assistant:
+    [no answer: the reply hit the token limit first.]
+03:user:
+    Just the idea, in one line.
+
+## Window 2 (after request 2: messages diverged at item 03)
+settings: model="qwen3.8-abliterated" chat_template_kwargs={"reasoning_effort":"high","preserve_thinking":false} stream=true temperature=1.0 top_p=0.95 max_tokens=4096 stream_options={"include_usage":true} top_k=20
+-- request 3 (stream, tools omit) --
+00:system:
+    Today is {TODAY}. The user's machine runs Linux.
+    
+    How to help:
+    - Work toward what the user is trying to achieve, not just the literal request. When they ask for advice or are unsure what is best, give your own recommendatio... (312 chars)
+    - If a request is ambiguous, pick the most sensible reading, say which one you picked, and go ahead. Ask first only when a wrong guess would be costly or hard t... (167 chars)
+    - End every turn with a final answer in plain text: what you did or found, and what is still open. Never leave the answer only in your reasoning.
+    - Put the answer first. Keep it as short as the question allows. Cite files as path:line.
+01:user:
+    Prove that there are infinitely many primes.
+02:assistant:
+    [no answer: the reply hit the token limit first.]
+03:user:
+    Just the idea, in one line.
+    
+    [rpctl: your last reply ended without an answer to the user. Do not call any more tools. Give your final answer now from what you already have, and say briefly ... (187 chars)
+
+## Window 3 (after request 3: messages diverged at item 00, settings changed (chat_template_kwargs, max_tokens, stream, stream_options, temperature, top_k, top_p))
+settings: model="qwen3.8-abliterated" stream=false max_tokens=20 temperature=0.3 chat_template_kwargs={"enable_thinking":false}
+-- request 4 (no stream, tools omit) --
+00:user:
+    Write a title of 3 to 6 words for the conversation below. Reply with the title only: no quotes, no trailing punctuation, no preamble.
+    
+    User: Prove that there are infinitely many primes.
+    
+    Assistant: Multiply all the primes and add one: the result has a prime factor that is not in the list.
+
+## Window 4 (after request 4: messages diverged at item 00, settings changed (chat_template_kwargs, max_tokens, stream, stream_options, temperature, top_k, top_p))
+settings: model="qwen3.8-abliterated" chat_template_kwargs={"reasoning_effort":"high","preserve_thinking":false} stream=true temperature=1.0 top_p=0.95 max_tokens=4096 stream_options={"include_usage":true} top_k=20
+-- request 5 (stream, tools omit) --
+00:system:
+    Today is {TODAY}. The user's machine runs Linux.
+    
+    How to help:
+    - Work toward what the user is trying to achieve, not just the literal request. When they ask for advice or are unsure what is best, give your own recommendatio... (312 chars)
+    - If a request is ambiguous, pick the most sensible reading, say which one you picked, and go ahead. Ask first only when a wrong guess would be costly or hard t... (167 chars)
+    - End every turn with a final answer in plain text: what you did or found, and what is still open. Never leave the answer only in your reasoning.
+    - Put the answer first. Keep it as short as the question allows. Cite files as path:line.
+01:user:
+    Prove that there are infinitely many primes.
+02:assistant:
+    [no answer: the reply hit the token limit first.]
+03:user:
+    Just the idea, in one line.
+04:assistant:
+    Multiply all the primes and add one: the result has a prime factor that is not in the list.
+05:user:
+    Thanks.

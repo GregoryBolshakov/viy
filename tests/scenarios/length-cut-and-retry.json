@@ -1,0 +1,36 @@
+{
+  "name": "length-cut-and-retry",
+  "about": "No tools at all (build tools and web search off), MAX_TOKENS and REASONING_EFFORT from config. Turn 1 spends the whole budget on reasoning: no retry, the 'no answer' placeholder is committed and no title is asked for. Turn 2 reasons without answering: asked once more with the notice and no tools; the title follows. Turn 3 shows the history: placeholders kept, reasoning gone.",
+  "config": {"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0", "MAX_TOKENS": "4096", "REASONING_EFFORT": "high"},
+  "max_model_len": 65536,
+  "steps": [
+    {"user": "Prove that there are infinitely many primes."},
+    {"user": "Just the idea, in one line."},
+    {"user": "Thanks."}
+  ],
+  "responses": [
+    {"expect": {"stream": true, "tools": "omit", "last_user": "Prove that there are infinitely many primes."},
+     "stream": [
+       {"reasoning": "Euclid's argument. Suppose finitely many primes p1..pn. "},
+       {"reasoning": "Consider N = p1*p2*...*pn + 1. Then N is not divisible by any pi, so"},
+       {"finish": "length"},
+       {"usage": {"prompt_tokens": 420, "completion_tokens": 4096, "total_tokens": 4516}}
+     ]},
+    {"expect": {"stream": true, "tools": "omit", "last_user": "Just the idea, in one line."},
+     "stream": [
+       {"reasoning": "Multiply all the primes, add one."},
+       {"usage": {"prompt_tokens": 470, "completion_tokens": 12, "total_tokens": 482}}
+     ]},
+    {"expect": {"stream": true, "tools": "omit", "last_role": "user"},
+     "stream": [
+       {"content": "Multiply all the primes and add one: the result has a prime factor that is not in the list."},
+       {"usage": {"prompt_tokens": 530, "completion_tokens": 22, "total_tokens": 552}}
+     ]},
+    {"expect": {"stream": false, "tools": "omit"},
+     "message": "Title: \"Infinitely many primes.\""},
+    {"expect": {"stream": true, "tools": "omit", "last_user": "Thanks."},
+     "stream": [
+       {"content": "You're welcome."}
+     ]}
+  ]
+}

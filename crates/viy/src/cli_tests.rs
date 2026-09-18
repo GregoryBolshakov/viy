@@ -206,6 +206,8 @@ fn namespace(cli: &Cli) -> Value {
 /// and the command then fails on are refused at parse time.
 fn deviation(argv: &[&str]) -> Option<i32> {
     match argv {
+        // `viy` alone is `viy chat`; `rp` alone is a usage error (kb d067).
+        [] => Some(0),
         // rp: int("abc") raises ValueError in cmd_up, a traceback.
         ["up", "--timeout", "abc"] => Some(2),
         // rp lists `rows[-n:]` with n = -3; a count is not negative.

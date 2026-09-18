@@ -22,8 +22,15 @@ use crate::model::ModelArgs;
     disable_help_subcommand = true,
     about = "viy - run Qwen3.8-27B-abliterated on a RunPod GPU pod and chat with it."
 )]
-pub struct Cli {
+struct Parsed {
     #[command(subcommand)]
+    command: Option<Command>,
+}
+
+/// What `viy` was asked to do. `viy` alone opens the chat, as `codex`
+/// does; rp asks for `rp chat` (kb d067).
+#[derive(Debug)]
+pub struct Cli {
     pub command: Command,
 }
 
@@ -198,7 +205,7 @@ pub struct TunnelArgs {
     pub forget_key: bool,
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Default, Args)]
 pub struct ChatArgs {
     #[arg(long, help = "override the endpoint base URL")]
     pub url: Option<String>,
@@ -295,7 +302,7 @@ pub struct VolumeArgs {
 /// The parser, with argparse's abbreviated long options in every
 /// subcommand (clap's setting does not propagate).
 pub fn command() -> clap::Command {
-    Cli::command().mut_subcommands(|sub| sub.infer_long_args(true))
+    Parsed::command().mut_subcommands(|sub| sub.infer_long_args(true))
 }
 
 /// Parses `args` (without the program name). An `Err` is a usage error,
@@ -303,7 +310,12 @@ pub fn command() -> clap::Command {
 pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Cli, clap::Error> {
     let argv = std::iter::once(OsString::from("viy")).chain(args);
     let matches = command().try_get_matches_from(argv)?;
-    Cli::from_arg_matches(&matches)
+    let parsed = Parsed::from_arg_matches(&matches)?;
+    Ok(Cli {
+        command: parsed
+            .command
+            .unwrap_or_else(|| Command::Chat(ChatArgs::default())),
+    })
 }
 
 #[cfg(test)]

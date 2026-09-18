@@ -29,7 +29,7 @@ fn version_long_and_short() {
 
 #[test]
 fn usage_errors_exit_2_on_stderr() {
-    for args in [&[][..], &["bogus"], &["model"], &["down", "now"]] {
+    for args in [&["bogus"][..], &["model"], &["down", "now"]] {
         let (code, out, err) = run_capture(args);
         assert_eq!(code, 2, "{args:?}");
         assert_eq!(out, "", "{args:?}");
@@ -52,6 +52,15 @@ fn help_exits_0_on_stdout_with_rps_descriptions() {
         out.contains("viy shutdown 23:30        at the next 23:30\n"),
         "{out}"
     );
+}
+
+/// `viy` alone opens the chat (kb d067), so until phase 3 it says what
+/// `viy chat` says.
+#[test]
+fn viy_alone_is_the_chat() {
+    let (code, out, err) = run_capture(&[]);
+    assert_eq!((code, out.as_str()), (1, ""));
+    assert_eq!(err, "viy chat: not ported yet (ROADMAP phase 3)\n");
 }
 
 #[test]

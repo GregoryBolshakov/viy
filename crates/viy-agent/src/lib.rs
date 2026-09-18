@@ -6,11 +6,12 @@
 //!
 //! So far the submission loop ([`Engine`], [`Turns`]), the chat's turn
 //! without tools ([`chat`]: the payload, the streamed reply, the system
-//! prompt's first parts, the title) and the scenario driver ([`drive`]).
+//! prompt with the instruction files, the title) and the scenario driver ([`drive`]).
 
 pub mod chat;
 pub mod drive;
 mod engine;
+pub mod instructions;
 pub mod payload;
 pub mod prompt;
 pub mod stream;

@@ -1,0 +1,28 @@
+{
+  "name": "instructions-in-workspace",
+  "about": "No tools, web search on. The workspace holds AGENTS.md, QWEN.md and docs/CLAUDE.md (below the workspace: not read); INSTRUCTIONS_MAX_CHARS 120 keeps QWEN.md whole and cuts AGENTS.md, which comes first. The instruction block closes the system prompt of every request, and the title request carries none.",
+  "config": {"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "1", "INSTRUCTIONS_MAX_CHARS": "120"},
+  "max_model_len": 65536,
+  "workspace": {
+    "AGENTS.md": "Answer in exactly one sentence. Prefer plain words over jargon, and never use bullet lists in an answer.\n",
+    "QWEN.md": "Sign every answer with -- Q.\n",
+    "docs/CLAUDE.md": "Not read: below the workspace.\n"
+  },
+  "steps": [
+    {"user": "What does a compiler do?"},
+    {"user": "And an interpreter?"}
+  ],
+  "responses": [
+    {"expect": {"stream": true, "tools": "auto", "last_user": "What does a compiler do?"},
+     "stream": [
+       {"reasoning": "One sentence, plain words, signed."},
+       {"content": "A compiler translates a whole program into machine code before it runs. -- Q"}
+     ]},
+    {"expect": {"stream": false, "tools": "omit"},
+     "message": "What compilers do"},
+    {"expect": {"stream": true, "tools": "auto", "last_user": "And an interpreter?"},
+     "stream": [
+       {"content": "An interpreter reads a program and carries it out step by step as it goes. -- Q"}
+     ]}
+  ]
+}

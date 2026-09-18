@@ -8,6 +8,10 @@
 //! log is normalized with: the chat's date and the questions asked.
 //! `--live` drives a real server instead: viy's own config, with the
 //! scenario's `config` on top, and the scripted responses unused.
+//! `--dir DIR` runs the chat as from DIR. A scripted run refuses
+//! instruction files from outside that directory and viy's config
+//! directory, as drive_rp refuses them from outside its tree: a scenario
+//! never carries the files of the project it was started in.
 //!
 //! The server, the workspace (the working directory) and HOME and the XDG
 //! directories are the caller's: `tools/drive_rp.py --client viy` sets them
@@ -22,11 +26,13 @@ use serde_json::json;
 use viy_agent::Engine;
 use viy_agent::chat::Chat;
 use viy_agent::chat::ChatTurns;
+use viy_agent::chat::Places;
 use viy_agent::drive;
 use viy_agent::drive::Scenario;
 use viy_agent::stream::Endpoint;
 use viy_config::Config;
 use viy_config::Paths;
+use viy_config::Project;
 use viy_http::HttpClient;
 use viy_http::ReqwestHttp;
 use viy_pod::backend::Backend;
@@ -65,7 +71,8 @@ pub fn run(
         scenario,
         url,
         result,
-        ..
+        dir,
+        live,
     } = &args.command;
     let shown = scenario.display();
     let text = std::fs::read_to_string(scenario).map_err(|e| format!("{shown}: {e}"))?;
@@ -79,7 +86,14 @@ pub fn run(
         .build()
         .map_err(|e| Failure::from(e.to_string()))?;
     let (run, today) = runtime.block_on(async {
-        let mut chat = chat(&cfg, url, http, paths)?;
+        let start = match dir {
+            Some(dir) => dir.clone(),
+            None => std::env::current_dir().map_err(|e| format!("the working directory: {e}"))?,
+        };
+        let mut chat = chat(&cfg, url, http, paths, &start)?;
+        if !live {
+            outside_files(&chat, &start)?;
+        }
         chat.discover_max_model_len().await;
         let today = chat.today().to_string();
         let mut engine = Engine::spawn(Arc::new(ChatTurns::new(chat)));
@@ -120,6 +134,7 @@ fn chat(
     url: &str,
     http: Arc<dyn HttpClient>,
     paths: &Paths,
+    start: &Path,
 ) -> Result<Chat, Failure> {
     let backend = Backend::resolve(cfg)?;
     let endpoint = Endpoint {
@@ -129,15 +144,38 @@ fn chat(
         is_vllm: backend.is_vllm(),
         http,
     };
+    let project = Project::find(start).map_err(|e| format!("{}: {e}", start.display()))?;
+    let places = Places {
+        workspace: viy_agent::prompt::workspace(cfg, project.root(), &paths.home),
+        config_dir: paths.config_dir(),
+    };
     let paths = paths.clone();
     let touch = Arc::new(move || idle::touch(&paths, &SystemTimeProvider, false));
     Ok(Chat::new(
         cfg,
+        places,
         endpoint,
         backend.model_name(cfg),
         viy_agent::prompt::today(),
         touch,
     )?)
+}
+
+/// Refuses instruction files from outside `start` and the config directory.
+fn outside_files(chat: &Chat, start: &Path) -> Result<(), Failure> {
+    let real = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let (start, config_dir) = (real(start), real(&chat.places().config_dir));
+    for file in chat.instructions() {
+        let path = real(&file.path);
+        if !path.starts_with(&start) && !path.starts_with(&config_dir) {
+            return Err(Failure::from(format!(
+                "an instruction file from outside the scenario would be sent: {} (run from \
+                 the scenario's workspace, or give it with --dir)",
+                file.path.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// drive_rp's `result.json`: the date and the questions asked.

@@ -14,6 +14,14 @@ use viy_testkit::mock_llm::MockLlm;
 use super::*;
 use crate::engine::Engine;
 
+/// Places with no instruction files in them.
+fn nowhere() -> Places {
+    Places {
+        workspace: std::path::PathBuf::from("/nonexistent/viy-workspace"),
+        config_dir: std::path::PathBuf::from("/nonexistent/viy-config"),
+    }
+}
+
 struct Rig {
     mock: MockLlm,
     turns: Arc<ChatTurns>,
@@ -52,6 +60,7 @@ fn rig(responses: Value, over: &[(&str, &str)]) -> Rig {
     });
     let chat = Chat::new(
         &cfg,
+        nowhere(),
         endpoint,
         "m".into(),
         "2026-07-17 (Friday)".into(),
@@ -428,6 +437,7 @@ async fn the_context_length_comes_from_the_server() {
     };
     let mut chat = Chat::new(
         &Config::defaults(),
+        nowhere(),
         endpoint,
         "m".into(),
         String::new(),

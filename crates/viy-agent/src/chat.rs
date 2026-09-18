@@ -14,10 +14,11 @@
 //!
 //! Not yet: the tool loop and its cap (WP 4.10; web search and fetch, whose
 //! schemas a chat already offers, phase 5), so the model's tool calls are
-//! dropped as on rp's last round; instruction files (WP 3.3); context
-//! accounting and calibration (WP 3.4); sessions, so the title is kept in
+//! dropped as on rp's last round, and the build tools' parts of the system
+//! prompt with them (phase 4); context accounting and calibration (WP 3.4); sessions, so the title is kept in
 //! memory (WP 3.5); elision and compaction (phase 6); tracing (phase 7).
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -43,6 +44,7 @@ use viy_protocol::TurnOutcome;
 use crate::engine::BoxFuture;
 use crate::engine::TurnContext;
 use crate::engine::Turns;
+use crate::instructions;
 use crate::payload::NO_ANSWER_NOTICE;
 use crate::payload::Settings;
 use crate::payload::TOOL_BUDGET_NOTICE;
@@ -60,8 +62,22 @@ use crate::stream::stream_once;
 /// Keeps the pod alive while a reply streams: `viy_pod::idle::touch`.
 pub type Touch = Arc<dyn Fn() + Send + Sync>;
 
+/// Where a chat looks for files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Places {
+    /// The workspace ([`crate::prompt::workspace`]).
+    pub workspace: PathBuf,
+    /// viy's config directory, for global instruction files.
+    pub config_dir: PathBuf,
+}
+
 /// One conversation with the model.
 pub struct Chat {
+    /// For what is re-read per request (the instruction files).
+    cfg: Config,
+    places: Places,
+    /// INSTRUCTIONS_ENABLED (`/instructions on|off`).
+    instructions_on: bool,
     endpoint: Endpoint,
     settings: Settings,
     touch: Touch,
@@ -103,6 +119,7 @@ impl Chat {
     /// is the date its system prompt carries.
     pub fn new(
         cfg: &Config,
+        places: Places,
         endpoint: Endpoint,
         model: String,
         today: String,
@@ -111,6 +128,9 @@ impl Chat {
         let on = |key: &str, default: &str| cfg.get(key).unwrap_or(default) == "1";
         let max_rounds = cfg.get("SEARCH_MAX_ROUNDS").unwrap_or("4");
         Ok(Self {
+            cfg: cfg.clone(),
+            places,
+            instructions_on: on("INSTRUCTIONS_ENABLED", "1"),
             settings: Settings::from_config(cfg, model, endpoint.is_vllm)?,
             endpoint,
             touch,
@@ -190,12 +210,44 @@ impl Chat {
         specs
     }
 
+    /// The instruction files in force, re-read so an edit lands on the next
+    /// message.
+    pub fn instructions(&self) -> Vec<instructions::Loaded> {
+        if !self.instructions_on {
+            return Vec::new();
+        }
+        instructions::load(&self.cfg, &self.places.config_dir, &self.places.workspace)
+    }
+
+    /// Where the chat looks for files.
+    pub fn places(&self) -> &Places {
+        &self.places
+    }
+
+    /// What a chat's start and `/instructions` say about them.
+    pub fn report_instructions(&self) -> Vec<String> {
+        instructions::report(
+            self.instructions_on,
+            &instructions::names(&self.cfg),
+            &self.instructions(),
+        )
+    }
+
     fn system_prompt(&self) -> Option<String> {
+        let block = instructions::render(&self.instructions());
         SystemPrompt {
             user: self.system.as_deref(),
+            // The build tools, explore, ask_claude and the toolbox come with
+            // phases 4 and 7.
+            tools_on: false,
             search_on: self.search_on,
             guide_on: self.guide_on,
+            explore_trust: false,
+            consult: false,
+            toolbox_index: None,
+            workspace: &self.places.workspace,
             today: &self.today,
+            instructions: block.as_deref(),
         }
         .render()
     }

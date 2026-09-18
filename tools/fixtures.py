@@ -2436,6 +2436,186 @@ def gen_pod_failover(snap):
     }
 
 
+# ------------------------------------------------------------- prompt/system
+
+# One case: config on top of DEFAULTS (VLLM_API_KEY k, TRACE_ENABLED 0,
+# CONSULT_ENABLED 0 unless the case says), files and symlinks under the case's
+# root $T ("{GLOBAL}/" is the client's own config dir: config/rpctl here,
+# config/viy when viy replays), the project marker, the working directory and
+# a user system prompt (`user_system` in the file). The output is rp's `_effective_system()`, the
+# workspace, the instruction files loaded and what `/instructions` prints,
+# with $T and the date replaced. "$T" in config values is the case's root.
+PROMPT_RUNNER = r"""
+import contextlib, io, json, re, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import chat, config
+case = json.loads(sys.argv[2])
+cfg = dict(config.DEFAULTS, VLLM_API_KEY="k", TRACE_ENABLED="0", CONSULT_ENABLED="0")
+cfg.update(case["config"])
+c = chat.Chat(cfg, "http://127.0.0.1:1")
+if case.get("system") is not None:
+    c.system = case["system"]
+loaded = c._instructions()
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    c._report_instructions()
+print(json.dumps({
+    "system": c._effective_system(), "today": c._today, "workspace": str(c._workspace()),
+    "loaded": [[str(p), len(t), tr] for p, t, tr in loaded],
+    "report": re.sub(r"\x1b\[[0-9;]*m", "", buf.getvalue()).splitlines()}))
+"""
+
+LONG = "Use tabs. " * 10            # 100 chars
+PROMPT_CASES = [
+    dict(name="defaults_tools_and_search_on"),
+    dict(name="no_tools_search_on", config={"TOOLS_ENABLED": "0"}),
+    dict(name="no_tools_no_search", config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0"}),
+    dict(name="tools_on_search_off", config={"SEARCH_ENABLED": "0"}),
+    dict(name="guide_off_tools_on", config={"SYSTEM_GUIDE": "0"}),
+    dict(name="guide_off_nothing_on",
+         config={"SYSTEM_GUIDE": "0", "TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0"}),
+    dict(name="explore_off", config={"EXPLORE_ENABLED": "0"}),
+    dict(name="explore_trust_off", config={"SYSTEM_GUIDE_TRUST_EXPLORE": "0"}),
+    dict(name="consult_with_claude_installed",
+         config={"CONSULT_ENABLED": "1", "CONSULT_CLAUDE_BIN": "$T/bin/claude"},
+         files={"bin/claude": "#!/bin/sh\n"}, executable=["bin/claude"]),
+    dict(name="consult_without_tools",
+         config={"CONSULT_ENABLED": "1", "CONSULT_CLAUDE_BIN": "$T/bin/claude",
+                 "TOOLS_ENABLED": "0"},
+         files={"bin/claude": "#!/bin/sh\n"}, executable=["bin/claude"]),
+    dict(name="user_system_prompt_first", system="Answer in French.",
+         config={"TOOLS_ENABLED": "0"}),
+    dict(name="empty_user_system_prompt", system="",
+         config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0", "SYSTEM_GUIDE": "0"}),
+    dict(name="instruction_files_outermost_first", cwd="project/sub",
+         config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0"},
+         files={"{GLOBAL}/AGENTS.md": "Global: be brief.\n",
+                "AGENTS.md": "Root of the tree.\n",
+                "project/AGENTS.md": "  Project rules.\n\n",
+                "project/QWEN.md": "Qwen-specific.\n",
+                "project/sub/AGENTS.md": "Below the project root: not read.\n"},
+         symlinks={"project/CLAUDE.md": "AGENTS.md"}),
+    dict(name="no_marker_reads_from_the_working_directory", cwd="project/sub",
+         marker=False, config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0"},
+         files={"project/AGENTS.md": "Parent of the cwd.\n",
+                "project/sub/CLAUDE.md": "The cwd itself.\n"}),
+    dict(name="tools_on_with_instruction_files",
+         files={"project/AGENTS.md": "Run the tests with make test.\n"}),
+    dict(name="truncated_innermost_and_the_rest_dropped",
+         config={"TOOLS_ENABLED": "0", "INSTRUCTIONS_MAX_CHARS": "60"},
+         files={"{GLOBAL}/AGENTS.md": "Global.\n", "project/AGENTS.md": LONG}),
+    dict(name="budget_left_for_outer_files",
+         config={"TOOLS_ENABLED": "0", "INSTRUCTIONS_MAX_CHARS": "50"},
+         files={"{GLOBAL}/CLAUDE.md": "G" * 40, "project/AGENTS.md": "P" * 20}),
+    dict(name="budget_counts_characters",
+         config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0", "INSTRUCTIONS_MAX_CHARS": "10"},
+         files={"project/AGENTS.md": "é" * 13 + "\U0001F600"}),
+    dict(name="budget_zero_and_bogus_values",
+         config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0", "INSTRUCTIONS_MAX_CHARS": "0"},
+         files={"project/AGENTS.md": "Never sent.\n"}),
+    dict(name="budget_bogus_means_default",
+         config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0", "INSTRUCTIONS_MAX_CHARS": "lots"},
+         files={"project/AGENTS.md": "Sent.\n"}),
+    dict(name="custom_names_and_empty_files",
+         config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0",
+                 "INSTRUCTION_FILES": " NOTES.md, ,AGENTS.md,"},
+         files={"project/NOTES.md": "Notes first.\n", "project/AGENTS.md": "  \n\n",
+                "project/CLAUDE.md": "Not in the list.\n"}),
+    dict(name="instructions_off",
+         config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0", "INSTRUCTIONS_ENABLED": "0"},
+         files={"project/AGENTS.md": "Not sent.\n"}),
+    dict(name="none_found",
+         config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0",
+                 "INSTRUCTION_FILES": "RULES.md"}),
+    dict(name="invalid_utf8_is_replaced",
+         config={"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0"},
+         raw_files={"project/AGENTS.md": "Caf\\xff ok\n"}),
+    dict(name="workspace_dir_relative", config={"WORKSPACE_DIR": "ws"},
+         files={"project/ws/AGENTS.md": "In the workspace.\n",
+                "project/AGENTS.md": "Its parent, the project.\n"}),
+    dict(name="workspace_dir_absolute", config={"WORKSPACE_DIR": " $T/elsewhere "},
+         files={"elsewhere/AGENTS.md": "Elsewhere.\n"}),
+    dict(name="workspace_dir_in_home", config={"WORKSPACE_DIR": "~/code"},
+         files={"home/code/AGENTS.md": "Home code.\n"}),
+]
+
+
+def prompt_case(snap, case):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+        for name, sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"),
+                          ("XDG_STATE_HOME", "state"), ("XDG_DATA_HOME", "data"),
+                          ("XDG_CACHE_HOME", "cache")):
+            (tmp / sub).mkdir()
+            env[name] = str(tmp / sub)
+        at = lambda rel: tmp / rel.replace("{GLOBAL}", "config/rpctl")
+        (tmp / "project").mkdir()
+        if case.get("marker", True):
+            (tmp / "project" / ".rpctl").mkdir()
+        (tmp / case.get("cwd", "project")).mkdir(parents=True, exist_ok=True)
+        for rel, text in case.get("files", {}).items():
+            at(rel).parent.mkdir(parents=True, exist_ok=True)
+            at(rel).write_bytes(text.encode())
+        for rel, text in case.get("raw_files", {}).items():
+            at(rel).parent.mkdir(parents=True, exist_ok=True)
+            at(rel).write_bytes(text.encode().decode("unicode_escape").encode("latin-1"))
+        for rel in case.get("executable", []):
+            at(rel).chmod(0o755)
+        for link, target in case.get("symlinks", {}).items():
+            at(link).symlink_to(target)
+        job = {"config": {k: v.replace("$T", str(tmp))
+                          for k, v in case.get("config", {}).items()},
+               "system": case.get("system")}
+        out = subprocess.run([sys.executable, "-I", "-c", PROMPT_RUNNER, str(snap),
+                              json.dumps(job)],
+                             cwd=tmp / case.get("cwd", "project"), env=env, check=True,
+                             capture_output=True, text=True)
+        got = json.loads(out.stdout)
+        for p, _, _ in got["loaded"]:
+            if not pathlib.Path(p).is_relative_to(tmp):
+                raise SystemExit(f"prompt/system {case['name']}: an instruction file "
+                                 f"outside the case's tree was read: {p}")
+        today = got.pop("today")
+
+        def norm(v):
+            if isinstance(v, str):
+                return v.replace(str(tmp), "$T").replace(today, "{TODAY}")
+            if isinstance(v, list):
+                return [norm(x) for x in v]
+            return v
+        return {k: norm(v) for k, v in got.items()}
+
+
+def gen_prompt_system(snap):
+    cases = []
+    for case in PROMPT_CASES:
+        inputs = {
+            "name": case["name"],
+            "config": case.get("config", {}),
+            "files": case.get("files", {}),
+            "raw_files": case.get("raw_files", {}),
+            "executable": case.get("executable", []),
+            "symlinks": case.get("symlinks", {}),
+            "marker": case.get("marker", True),
+            "cwd": case.get("cwd", "project"),
+            "user_system": case.get("system"),
+        }
+        cases.append({**inputs, **prompt_case(snap, case)})
+    return {
+        "about": "rpctl chat's system prompt (Chat._effective_system), its workspace, the "
+                 "instruction files loaded ([path, chars, truncated]) and what "
+                 "/instructions prints, for synthetic trees: $T is the case's root, HOME "
+                 "$T/home, XDG_CONFIG_HOME $T/config, the project $T/project (with a "
+                 ".rpctl/ marker unless marker is false); {GLOBAL} in a file name is the "
+                 "client's config dir; DEFAULTS plus VLLM_API_KEY k, TRACE_ENABLED 0, "
+                 "CONSULT_ENABLED 0, then the case's config; raw_files are byte strings "
+                 "with \\xNN escapes; the date is {TODAY}",
+        "cases": cases,
+    }
+
+
+
 GENERATORS = {
     "cli/flags": gen_cli_flags,
     "cli/parse": gen_cli_parse,
@@ -2450,6 +2630,7 @@ GENERATORS = {
     "pod/failover": gen_pod_failover,
     "pod/resolve": gen_pod_resolve,
     "pod/ssh": gen_pod_ssh,
+    "prompt/system": gen_prompt_system,
 }
 
 # ------------------------------------------------------------------ driver

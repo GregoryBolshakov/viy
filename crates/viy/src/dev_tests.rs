@@ -28,13 +28,23 @@ fn run_capture(args: &[&str]) -> (i32, Vec<Value>, String) {
     (code, events, String::from_utf8(err).unwrap())
 }
 
-/// Drives scenario `name` through viy against the scripted server: its
-/// events, and its requests normalized as drive_rp writes them.
+/// Drives scenario `name` through viy against the scripted server, from a
+/// workspace laid out as the scenario says (as drive_rp does): its events,
+/// and its requests normalized as drive_rp writes them.
 fn drive(name: &str) -> (Vec<Value>, Vec<Value>) {
     let file = scenario::dir().join(format!("{name}.json"));
-    let mock = MockLlm::start(&scenario::load(name).unwrap()).unwrap();
+    let script = scenario::load(name).unwrap();
+    let mock = MockLlm::start(&script).unwrap();
     let scratch = ScratchDir::new("drive").unwrap();
-    let result = scratch.path().join("result.json");
+    let base = std::fs::canonicalize(scratch.path()).unwrap();
+    let workspace = base.join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    for (rel, text) in script["workspace"].as_object().into_iter().flatten() {
+        let path = workspace.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text.as_str().unwrap()).unwrap();
+    }
+    let result = base.join("result.json");
     let (code, events, err) = run_capture(&[
         "dev",
         "drive",
@@ -43,14 +53,21 @@ fn drive(name: &str) -> (Vec<Value>, Vec<Value>) {
         &mock.uri(),
         "--result",
         result.to_str().unwrap(),
+        "--dir",
+        workspace.to_str().unwrap(),
     ]);
     assert_eq!((code, err.as_str()), (0, ""), "{name}");
     let result: Value = serde_json::from_str(&std::fs::read_to_string(result).unwrap()).unwrap();
     let today = result["today"].as_str().unwrap();
+    let subs = [
+        (today, "{TODAY}"),
+        (workspace.to_str().unwrap(), "{WORKSPACE}"),
+        (base.to_str().unwrap(), "{BASE}"),
+    ];
     let log = mock
         .requests()
         .iter()
-        .map(|r| scenario::normalize(&r.log_entry(), &[(today, "{TODAY}")]))
+        .map(|r| scenario::normalize(&r.log_entry(), &subs))
         .collect();
     (events, log)
 }
@@ -66,7 +83,7 @@ fn every_scenario_without_build_tools_sends_what_rp_sent() {
         .into_iter()
         .filter(|n| tools_off(n))
         .collect();
-    assert!(names.len() >= 3, "{names:?}");
+    assert!(names.len() >= 4, "{names:?}");
     for name in names {
         let (_, viy) = drive(&name);
         let rp = scenario::rp_log(&name).unwrap().entries;
@@ -126,8 +143,15 @@ fn the_chat_takes_the_key_and_model_from_the_backend() {
     });
     std::fs::write(&file, script.to_string()).unwrap();
     let mock = MockLlm::start(&script).unwrap();
-    let (code, _, err) =
-        run_capture(&["dev", "drive", file.to_str().unwrap(), "--url", &mock.uri()]);
+    let (code, _, err) = run_capture(&[
+        "dev",
+        "drive",
+        file.to_str().unwrap(),
+        "--url",
+        &mock.uri(),
+        "--dir",
+        scratch.path().to_str().unwrap(),
+    ]);
     assert_eq!((code, err.as_str()), (0, ""));
     let post = &mock.requests()[1];
     assert_eq!(post.header("authorization"), Some("Bearer ek"));
@@ -189,4 +213,54 @@ fn live_runs_take_the_given_config_under_the_scenario() {
         panic!()
     };
     assert!(args.live());
+}
+
+#[test]
+fn a_scripted_run_refuses_instruction_files_from_outside_the_workspace() {
+    let scratch = ScratchDir::new("drive").unwrap();
+    let outer = std::fs::canonicalize(scratch.path()).unwrap();
+    std::fs::write(outer.join("AGENTS.md"), "the folder's own rules").unwrap();
+    let inner = outer.join("ws");
+    std::fs::create_dir(&inner).unwrap();
+    let file = scenario::dir().join("plain-two-turns.json");
+    let (code, events, err) = run_capture(&[
+        "dev",
+        "drive",
+        file.to_str().unwrap(),
+        "--url",
+        "http://127.0.0.1:9",
+        "--dir",
+        inner.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 1);
+    assert!(events.is_empty());
+    assert!(
+        err.starts_with(&format!(
+            "an instruction file from outside the scenario would be sent: {}",
+            outer.join("AGENTS.md").display()
+        )),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_scripted_run_in_a_project_refuses_the_projects_own_files() {
+    // The repository sits in a folder whose instruction files a scenario
+    // must never carry.
+    let file = scenario::dir().join("plain-two-turns.json");
+    let crate_dir = env!("CARGO_MANIFEST_DIR");
+    let (code, _, err) = run_capture(&[
+        "dev",
+        "drive",
+        file.to_str().unwrap(),
+        "--url",
+        "http://127.0.0.1:9",
+        "--dir",
+        crate_dir,
+    ]);
+    assert_eq!(code, 1, "{err}");
+    assert!(
+        err.starts_with("an instruction file from outside the scenario would be sent: "),
+        "{err}"
+    );
 }

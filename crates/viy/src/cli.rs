@@ -175,6 +175,10 @@ pub enum DevCommand {
         /// Where to write the chat's date and the questions asked, as JSON.
         #[arg(long)]
         result: Option<std::path::PathBuf>,
+        /// Where the chat runs, in place of the working directory: the
+        /// project and the workspace are found from there.
+        #[arg(long)]
+        dir: Option<std::path::PathBuf>,
         /// Against a real server: viy's own config under the scenario's,
         /// not DEFAULTS and the fake key; the scripted responses are unused.
         #[arg(long)]

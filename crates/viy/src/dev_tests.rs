@@ -169,3 +169,24 @@ fn dev_is_hidden_from_help() {
     );
     assert!(!String::from_utf8(out).unwrap().contains("dev"));
 }
+
+#[test]
+fn live_runs_take_the_given_config_under_the_scenario() {
+    let mut base = viy_config::Config::defaults();
+    base.set("VLLM_API_KEY", "real");
+    base.set("TOOLS_ENABLED", "1");
+    let cfg = super::config(base, &json!({"config": {"TOOLS_ENABLED": "0"}})).unwrap();
+    assert_eq!(
+        (cfg.get("VLLM_API_KEY"), cfg.get("TOOLS_ENABLED")),
+        (Some("real"), Some("0"))
+    );
+    assert_eq!(super::scripted_base().get("VLLM_API_KEY"), Some("fake-key"));
+    let cli = crate::cli::parse(
+        ["dev", "drive", "s.json", "--url", "u", "--live"].map(std::ffi::OsString::from),
+    )
+    .unwrap();
+    let crate::cli::Command::Dev(args) = cli.command else {
+        panic!()
+    };
+    assert!(args.live());
+}

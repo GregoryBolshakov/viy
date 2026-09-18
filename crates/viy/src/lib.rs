@@ -168,7 +168,15 @@ fn dispatch(
             let reload = || config(&paths);
             shutdown::run(args, &paths, cfg, reload, out, terminal)
         }
-        Command::Dev(args) => dev::run(args, &paths()?, out),
+        Command::Dev(args) => {
+            let paths = paths()?;
+            let base = if args.live() {
+                config(&paths)?
+            } else {
+                dev::scripted_base()
+            };
+            dev::run(args, &paths, base, out)
+        }
         Command::Chat(_) | Command::Chats(_) | Command::Ask(_) => not_ported(3),
         Command::Trace(_) | Command::Toolbox(_) => not_ported(7),
     }

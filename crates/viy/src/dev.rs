@@ -6,6 +6,8 @@
 //! `VLLM_API_KEY` set to `fake-key`, and before the first step asks the
 //! server for its context length. `--result FILE` writes what the request
 //! log is normalized with: the chat's date and the questions asked.
+//! `--live` drives a real server instead: viy's own config, with the
+//! scenario's `config` on top, and the scripted responses unused.
 //!
 //! The server, the workspace (the working directory) and HOME and the XDG
 //! directories are the caller's: `tools/drive_rp.py --client viy` sets them
@@ -36,17 +38,40 @@ use crate::Failure;
 use crate::cli::DevArgs;
 use crate::cli::DevCommand;
 
-pub fn run(args: &DevArgs, paths: &Paths, out: &mut (dyn Write + Send)) -> Result<(), Failure> {
+impl DevArgs {
+    /// Whether the run takes viy's own config.
+    pub fn live(&self) -> bool {
+        let DevCommand::Drive { live, .. } = &self.command;
+        *live
+    }
+}
+
+/// What a scripted run's config starts from: rpctl's DEFAULTS and the key
+/// the scenario server takes.
+pub fn scripted_base() -> Config {
+    let mut cfg = Config::defaults();
+    cfg.set("VLLM_API_KEY", "fake-key");
+    cfg
+}
+
+/// Runs the scenario with `base` under its `config`.
+pub fn run(
+    args: &DevArgs,
+    paths: &Paths,
+    base: Config,
+    out: &mut (dyn Write + Send),
+) -> Result<(), Failure> {
     let DevCommand::Drive {
         scenario,
         url,
         result,
+        ..
     } = &args.command;
     let shown = scenario.display();
     let text = std::fs::read_to_string(scenario).map_err(|e| format!("{shown}: {e}"))?;
     let value: Value = serde_json::from_str(&text).map_err(|e| format!("{shown}: {e}"))?;
     let steps = Scenario::from_json(&value).map_err(|e| format!("{shown}: {e}"))?;
-    let cfg = config(&value).map_err(|e| format!("{shown}: {e}"))?;
+    let cfg = config(base, &value).map_err(|e| format!("{shown}: {e}"))?;
     let http: Arc<dyn HttpClient> =
         Arc::new(ReqwestHttp::new().map_err(|e| Failure::from(e.to_string()))?);
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -74,10 +99,8 @@ pub fn run(args: &DevArgs, paths: &Paths, out: &mut (dyn Write + Send)) -> Resul
     }
 }
 
-/// rpctl's DEFAULTS, `fake-key` and the scenario's `config`.
-fn config(scenario: &Value) -> Result<Config, String> {
-    let mut cfg = Config::defaults();
-    cfg.set("VLLM_API_KEY", "fake-key");
+/// `cfg` under the scenario's `config`.
+fn config(mut cfg: Config, scenario: &Value) -> Result<Config, String> {
     for (key, value) in scenario["config"].as_object().into_iter().flatten() {
         let value = value
             .as_str()

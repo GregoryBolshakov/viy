@@ -2616,7 +2616,166 @@ def gen_prompt_system(snap):
 
 
 
+# ------------------------------------------------------------ chat/context
+
+# rpctl chat's context accounting: _estimate_tokens over message lists (with
+# and without the tool schemas), _calibrate over sequences of real
+# prompt_tokens (the chars-per-token after each), _prompt_budget, and
+# _context_state with the system prompt. One python3 -I child for all cases,
+# HOME and XDG_* in a fresh tree, no instruction files, no toolbox.
+CONTEXT_RUNNER = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import chat, config
+job = json.loads(sys.argv[2])
+
+def make(over):
+    cfg = dict(config.DEFAULTS, VLLM_API_KEY="k", TRACE_ENABLED="0", CONSULT_ENABLED="0",
+               INSTRUCTIONS_ENABLED="0", TOOLBOX_ENABLED="0", TOOLS_ENABLED="0")
+    cfg.update(over)
+    return chat.Chat(cfg, "http://127.0.0.1:1")
+
+out = {"estimates": [], "calibrations": [], "budgets": [], "states": []}
+for case in job["estimates"]:
+    c = make(case["config"])
+    out["estimates"].append({
+        "measure": list(c._measure(case["messages"])),
+        "schema_chars": c._tool_schema_chars(),
+        "with_schemas": c._estimate_tokens(case["messages"]),
+        "without_schemas": c._estimate_tokens(case["messages"], schemas=False)})
+for case in job["calibrations"]:
+    c = make(case["config"])
+    seen = []
+    for step in case["steps"]:
+        c._calibrate(step["messages"], step["prompt_tokens"])
+        seen.append(c._chars_per_token)
+    out["calibrations"].append({"chars_per_token": seen,
+                                "estimate_after": c._estimate_tokens(case["steps"][0]["messages"])})
+for case in job["budgets"]:
+    c = make(case["config"])
+    out["budgets"].append({"max_model_len": c.max_model_len, "budget": c._prompt_budget()})
+for case in job["states"]:
+    c = make(case["config"])
+    c._today = "2026-07-03 (Friday)"
+    c.messages = case["history"]
+    tok, frac = c._context_state(case["extra"])
+    out["states"].append({"tokens": tok, "fraction": frac,
+                          "system": c._effective_system()})
+print(json.dumps(out))
+"""
+
+_PROSE = ("The quick brown fox jumps over the lazy dog while the compiler "
+          "checks every borrow twice. ")
+CONTEXT_MESSAGES = {
+    "empty": [],
+    "plain": [{"role": "user", "content": "hello"},
+              {"role": "assistant", "content": "Hi! How can I help?"}],
+    "unicode": [{"role": "user", "content": "Привет, 世界! 🦀🦀 naïve café"}],
+    "multipart_with_images": [{"role": "user", "content": [
+        {"type": "text", "text": "what is in these?"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,BBBB"}},
+        "not a dict", {"type": "text", "text": None}, {"type": "text"}]}],
+    "none_content_reasoning_and_calls": [
+        {"role": "user", "content": "fix it"},
+        {"role": "assistant", "content": None, "reasoning": "plan: read then write",
+         "tool_calls": [{"id": "c1", "type": "function",
+                         "function": {"name": "read_file", "arguments": "{\"path\": \"a.py\"}"}},
+                        {"id": "c2", "type": "function", "function": {}},
+                        {"id": "c3", "type": "function",
+                         "function": {"name": "write_file", "arguments": None}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "print('hi')\n"},
+        {"role": "assistant", "content": "Done.", "thought": True}],
+    "long_prose": [{"role": "user", "content": _PROSE * 40},
+                   {"role": "assistant", "content": _PROSE * 25}],
+}
+CONTEXT_CONFIGS = {
+    "no_tools": {"SEARCH_ENABLED": "0"},
+    "web_search_and_fetch": {"SEARCH_ENABLED": "1"},
+    "web_search_only": {"SEARCH_ENABLED": "1", "FETCH_ENABLED": "0"},
+}
+
+
+def context_job():
+    estimates = [{"name": f"{m}/{c}", "config": CONTEXT_CONFIGS[c],
+                  "messages": CONTEXT_MESSAGES[m]}
+                 for m in CONTEXT_MESSAGES for c in CONTEXT_CONFIGS]
+    big = CONTEXT_MESSAGES["long_prose"]
+    calibrations = [
+        dict(name="converges_on_a_steady_ratio", config={"SEARCH_ENABLED": "0"},
+             steps=[{"messages": big, "prompt_tokens": 1500}] * 4),
+        dict(name="web_schemas_count", config={"SEARCH_ENABLED": "1"},
+             steps=[{"messages": big, "prompt_tokens": 2100},
+                    {"messages": big, "prompt_tokens": 1900}]),
+        dict(name="skips_what_means_nothing", config={"SEARCH_ENABLED": "0"},
+             steps=[{"messages": big, "prompt_tokens": None},
+                    {"messages": big, "prompt_tokens": 0},
+                    {"messages": big, "prompt_tokens": -5},
+                    {"messages": big, "prompt_tokens": 150},
+                    {"messages": CONTEXT_MESSAGES["plain"], "prompt_tokens": 900},
+                    {"messages": big, "prompt_tokens": 100000},
+                    {"messages": big, "prompt_tokens": 210},
+                    {"messages": CONTEXT_MESSAGES["multipart_with_images"] + big,
+                     "prompt_tokens": 3000},
+                    {"messages": big, "prompt_tokens": 1200}]),
+    ]
+    budgets = [dict(name=n, config=c) for n, c in [
+        ("defaults", {}),
+        ("live_profile", {"MAX_MODEL_LEN": "262144", "MAX_TOKENS": "16384"}),
+        ("reply_budget_eats_it", {"MAX_MODEL_LEN": "8192", "MAX_TOKENS": "8000"}),
+        ("bogus_context_length", {"MAX_MODEL_LEN": "lots"}),
+        ("spaces_around", {"MAX_MODEL_LEN": " 131072 ", "MAX_TOKENS": " 4096 "}),
+    ]]
+    states = [
+        dict(name="fresh_chat_no_tools", config={"SEARCH_ENABLED": "0"}, history=[], extra=[]),
+        dict(name="history_and_next_message", config={"SEARCH_ENABLED": "1"},
+             history=CONTEXT_MESSAGES["none_content_reasoning_and_calls"],
+             extra=[{"role": "user", "content": "and now?"}]),
+        dict(name="guide_off_nothing_on",
+             config={"SEARCH_ENABLED": "0", "SYSTEM_GUIDE": "0", "MAX_MODEL_LEN": "4096",
+                     "MAX_TOKENS": "1024"},
+             history=CONTEXT_MESSAGES["long_prose"], extra=[]),
+    ]
+    return {"estimates": estimates, "calibrations": calibrations, "budgets": budgets,
+            "states": states}
+
+
+def gen_chat_context(snap):
+    job = context_job()
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+        for name, sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"),
+                          ("XDG_STATE_HOME", "state"), ("XDG_DATA_HOME", "data"),
+                          ("XDG_CACHE_HOME", "cache")):
+            (tmp / sub).mkdir()
+            env[name] = str(tmp / sub)
+        (tmp / "project" / ".rpctl").mkdir(parents=True)
+        out = subprocess.run([sys.executable, "-I", "-c", CONTEXT_RUNNER, str(snap),
+                              json.dumps(job)],
+                             cwd=tmp / "project", env=env, check=True,
+                             capture_output=True, text=True)
+        got = json.loads(out.stdout)
+        text = json.dumps(got).replace(str(tmp), "$T")
+        got = json.loads(text)
+    cases = []
+    for kind in ("estimates", "calibrations", "budgets", "states"):
+        for case, result in zip(job[kind], got[kind]):
+            cases.append({"kind": kind, **case, **result})
+    return {
+        "about": "rpctl chat's context accounting: _measure, _tool_schema_chars and "
+                 "_estimate_tokens over message lists (estimates), chars-per-token after "
+                 "each _calibrate (calibrations, from 3.6), max_model_len and "
+                 "_prompt_budget (budgets), _context_state with the system prompt "
+                 "(states, the date fixed at 2026-07-03 (Friday), workspace $T/project); DEFAULTS plus "
+                 "VLLM_API_KEY k, TRACE 0, CONSULT 0, INSTRUCTIONS 0, TOOLBOX 0, "
+                 "TOOLS_ENABLED 0, then the case's config",
+        "cases": cases,
+    }
+
+
 GENERATORS = {
+    "chat/context": gen_chat_context,
     "cli/flags": gen_cli_flags,
     "cli/parse": gen_cli_parse,
     "config/init": gen_config_init,

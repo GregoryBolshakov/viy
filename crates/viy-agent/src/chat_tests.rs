@@ -115,11 +115,13 @@ fn tools_mode(body: &Value) -> &str {
     }
 }
 
+/// The notices' codes, without the context length said before the first
+/// request.
 fn codes(events: &[EventMsg]) -> Vec<String> {
     events
         .iter()
         .filter_map(|e| match e {
-            EventMsg::Notice(n) => Some(n.code.clone()),
+            EventMsg::Notice(n) if n.code != "context_length" => Some(n.code.clone()),
             _ => None,
         })
         .collect()
@@ -451,4 +453,183 @@ async fn the_context_length_comes_from_the_server() {
         (requests[0].method.as_str(), requests[0].path.as_str()),
         ("GET", "/v1/models")
     );
+}
+
+#[tokio::test]
+async fn the_first_request_to_a_server_asks_its_context_length_once() {
+    let mut rig = rig(
+        json!([{"stream": [{"content": "one"}]}, {"stream": [{"content": "two"}]}, {"stream": [{"content": "three"}]}]),
+        &[],
+    );
+    let first = rig.send("a").await;
+    rig.send("b").await;
+    let said = first.iter().find_map(|e| match e {
+        EventMsg::Notice(n) if n.code == "context_length" => Some(n.message.clone()),
+        _ => None,
+    });
+    assert_eq!(
+        said.as_deref(),
+        Some(
+            "context 65536 tokens, 49152 usable for history after the 16384-token reply budget (auto-compact at 85%)"
+        )
+    );
+    let paths = |rig: &Rig| -> Vec<String> {
+        rig.mock
+            .requests()
+            .iter()
+            .map(|r| format!("{} {}", r.method, r.path))
+            .collect()
+    };
+    assert_eq!(
+        paths(&rig),
+        [
+            "GET /v1/models",
+            "POST /v1/chat/completions",
+            "POST /v1/chat/completions"
+        ]
+    );
+    // A replaced pod is asked again.
+    rig.turns.with_chat(Chat::server_changed).unwrap();
+    rig.send("c").await;
+    assert_eq!(paths(&rig)[3], "GET /v1/models");
+}
+
+#[tokio::test]
+async fn a_turn_calibrates_reports_the_context_and_keeps_its_numbers() {
+    let prose = "The compiler checks every borrow twice before the fox jumps. ".repeat(30);
+    let mut rig = rig(
+        json!([
+            {"stream": [{"reasoning": "abc"}, {"content": "fine"},
+                        {"usage": {"prompt_tokens": 600, "completion_tokens": 12, "total_tokens": 612}}]},
+            {"stream": [{"reasoning": "hmm"},
+                        {"usage": {"prompt_tokens": 700, "completion_tokens": 5, "total_tokens": 705}}]},
+            {"stream": [{"content": "retried"},
+                        {"usage": {"prompt_tokens": 9000, "completion_tokens": 3, "total_tokens": 9003}}]},
+        ]),
+        &[],
+    );
+    let events = rig.send(&prose).await;
+    let sent = rig.sent()[0]["messages"].as_array().unwrap().clone();
+    let mut want = Estimator::default();
+    want.calibrate(&sent, 0, Some(600));
+    let cpt = rig.turns.with_chat(|c| c.chars_per_token()).unwrap();
+    assert_eq!(cpt, want.chars_per_token);
+    assert_ne!(cpt, crate::context::DEFAULT_CHARS_PER_TOKEN);
+    let (used, budget) = rig
+        .turns
+        .with_chat(|c| (c.context_state(&[]).0, c.prompt_budget()))
+        .unwrap();
+    assert!(events.contains(&EventMsg::TokenCount(TokenCountEvent {
+        used,
+        budget,
+        auto_compact_at: Some((budget as f64 * 0.85) as u64),
+    })));
+    let stats = rig
+        .turns
+        .with_chat(|c| c.stats().cloned())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (
+            stats.prompt_tokens,
+            stats.completion_tokens,
+            stats.reasoning_chars,
+            stats.finish.as_deref()
+        ),
+        (Some(600), Some(12), 3, Some("stop"))
+    );
+    assert_eq!(stats.context_tokens, used);
+    assert!(stats.ttft_s.is_some());
+    assert_eq!(
+        serde_json::to_value(&stats)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect::<Vec<_>>(),
+        [
+            "elapsed_s",
+            "ttft_s",
+            "prompt_tokens",
+            "completion_tokens",
+            "tok_per_s",
+            "reasoning_chars",
+            "finish",
+            "context_tokens",
+            "context_budget",
+            "context_pct",
+            "chars_per_token"
+        ]
+    );
+    // A retried turn sent no schemas the way they are counted: no calibration.
+    rig.send("again").await;
+    assert_eq!(rig.turns.with_chat(|c| c.chars_per_token()).unwrap(), cpt);
+    let stats = rig
+        .turns
+        .with_chat(|c| c.stats().cloned())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (stats.prompt_tokens, stats.reasoning_chars),
+        (Some(9000), 3)
+    );
+}
+
+#[tokio::test]
+async fn the_context_state_equals_rpctl() {
+    let fixture = viy_testkit::fixtures::load("chat/context").unwrap();
+    let states: Vec<&Value> = fixture
+        .cases
+        .iter()
+        .filter(|c| c["kind"] == "states")
+        .collect();
+    assert_eq!(states.len(), 3);
+    for case in states {
+        let mut cfg = Config::defaults();
+        for (key, value) in [
+            ("VLLM_API_KEY", "k"),
+            ("INSTRUCTIONS_ENABLED", "0"),
+            ("TOOLS_ENABLED", "0"),
+        ] {
+            cfg.set(key, value);
+        }
+        for (key, value) in case["config"].as_object().unwrap() {
+            cfg.set(key, value.as_str().unwrap());
+        }
+        let endpoint = Endpoint {
+            base: "http://127.0.0.1:9".into(),
+            key: "k".into(),
+            backend: "runpod".into(),
+            is_vllm: true,
+            http: Arc::new(ReqwestHttp::new().unwrap()),
+        };
+        let mut chat = Chat::new(
+            &cfg,
+            nowhere(),
+            endpoint,
+            "m".into(),
+            "2026-07-03 (Friday)".into(),
+            Arc::new(|| {}),
+        )
+        .unwrap();
+        chat.messages = case["history"].as_array().unwrap().clone();
+        let extra = case["extra"].as_array().unwrap().clone();
+        let name = case["name"].as_str().unwrap();
+        assert_eq!(
+            chat.system_prompt()
+                .map(Value::String)
+                .unwrap_or(Value::Null),
+            case["system"],
+            "{name}"
+        );
+        let (tokens, fraction) = chat.context_state(&extra);
+        assert_eq!(
+            (tokens, fraction),
+            (
+                case["tokens"].as_u64().unwrap(),
+                case["fraction"].as_f64().unwrap()
+            ),
+            "{name}"
+        );
+    }
 }

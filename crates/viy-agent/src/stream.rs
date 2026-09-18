@@ -70,6 +70,8 @@ pub struct Round {
     pub tool_calls: Vec<ToolCall>,
     pub usage: Option<Value>,
     pub finish: Option<String>,
+    /// When the first reasoning or answer text arrived.
+    pub first_token: Option<tokio::time::Instant>,
 }
 
 /// What one SSE line held.
@@ -86,6 +88,7 @@ pub struct Reply {
     calls: BTreeMap<u64, ToolCall>,
     usage: Option<Value>,
     finish: Option<String>,
+    first_token: Option<tokio::time::Instant>,
     done: bool,
 }
 
@@ -135,6 +138,9 @@ impl Reply {
                 pieces.push(Piece::Content(text.to_string()));
             }
         }
+        if !pieces.is_empty() && self.first_token.is_none() {
+            self.first_token = Some(tokio::time::Instant::now());
+        }
         Some(pieces)
     }
 
@@ -150,6 +156,7 @@ impl Reply {
                 .collect(),
             usage: self.usage,
             finish: self.finish,
+            first_token: self.first_token,
         }
     }
 }

@@ -1,8 +1,10 @@
 //! The chat's turn: rpctl's `Chat.send` and `_send` (chat.py 2699-3058)
 //! for a chat whose tools cannot run yet, the background title
-//! (`_maybe_start_title`, `_apply_title`) and the startup's max-model-len
-//! discovery (`_discover_max_model_len`). [`ChatTurns`] runs it for the
-//! engine.
+//! (`_maybe_start_title`, `_apply_title`), the context accounting around it
+//! (`_context_state`, the calibration after a turn, `last_stats`) and the
+//! max-model-len discovery (`_discover_max_model_len`), done before the
+//! first request a ready server gets (kb d041). [`ChatTurns`] runs it for
+//! the engine.
 //!
 //! A turn sends the system prompt, the history and the user's message; a
 //! reply without an answer (reasoning only, or a tool call) is asked for
@@ -15,7 +17,7 @@
 //! Not yet: the tool loop and its cap (WP 4.10; web search and fetch, whose
 //! schemas a chat already offers, phase 5), so the model's tool calls are
 //! dropped as on rp's last round, and the build tools' parts of the system
-//! prompt with them (phase 4); context accounting and calibration (WP 3.4); sessions, so the title is kept in
+//! prompt with them (phase 4); sessions, so the title is kept in
 //! memory (WP 3.5); elision and compaction (phase 6); tracing (phase 7).
 
 use std::path::PathBuf;
@@ -39,8 +41,12 @@ use viy_protocol::NoticeLevel;
 use viy_protocol::RoundKind;
 use viy_protocol::RoundStartedEvent;
 use viy_protocol::TitleChangedEvent;
+use viy_protocol::TokenCountEvent;
 use viy_protocol::TurnOutcome;
 
+use crate::context::Estimator;
+use crate::context::prompt_budget;
+use crate::context::schema_chars;
 use crate::engine::BoxFuture;
 use crate::engine::TurnContext;
 use crate::engine::Turns;
@@ -94,6 +100,13 @@ pub struct Chat {
     /// The system prompt's date, fixed at the chat's start.
     today: String,
     max_model_len: u64,
+    /// Whether this server was asked for its context length.
+    discovered: bool,
+    estimator: Estimator,
+    /// AUTO_COMPACT, and AUTO_COMPACT_THRESHOLD as a fraction of the budget.
+    auto_compact: bool,
+    auto_compact_threshold: f64,
+    stats: Option<TurnStats>,
     title: Arc<Mutex<Title>>,
     /// The turn in progress: its user message, until the turn closes.
     inflight: Option<Vec<Value>>,
@@ -145,10 +158,15 @@ impl Chat {
                 .map_err(|_| format!("SEARCH_MAX_ROUNDS={max_rounds:?} is not a number"))?,
             auto_title: on("CHAT_AUTO_TITLE", "1") && on("CHAT_AUTOSAVE", "1"),
             today,
-            max_model_len: cfg
-                .get("MAX_MODEL_LEN")
+            max_model_len: max_model_len(cfg),
+            discovered: false,
+            estimator: Estimator::default(),
+            auto_compact: on("AUTO_COMPACT", "1"),
+            auto_compact_threshold: cfg
+                .get("AUTO_COMPACT_THRESHOLD")
                 .and_then(|n| n.trim().parse().ok())
-                .unwrap_or(65536),
+                .unwrap_or(0.85),
+            stats: None,
             title: Arc::default(),
             inflight: None,
             partial: String::new(),
@@ -175,10 +193,66 @@ impl Chat {
         lock(&self.title).title.clone()
     }
 
+    /// The last turn's numbers (`/stats`).
+    pub fn stats(&self) -> Option<&TurnStats> {
+        self.stats.as_ref()
+    }
+
+    /// The running chars-per-token estimate.
+    pub fn chars_per_token(&self) -> f64 {
+        self.estimator.chars_per_token
+    }
+
+    /// Forgets the server's context length, to be asked again before the
+    /// next request: the pod was replaced or restarted.
+    pub fn server_changed(&mut self) {
+        self.discovered = false;
+    }
+
+    /// Tokens the conversation may occupy before a reply no longer fits.
+    pub fn prompt_budget(&self) -> u64 {
+        prompt_budget(self.max_model_len, self.settings.max_tokens)
+    }
+
+    /// (estimated tokens, fraction of the budget) for the system prompt,
+    /// the history and `extra`.
+    pub fn context_state(&self, extra: &[Value]) -> (u64, f64) {
+        let mut msgs = Vec::new();
+        if let Some(system) = self.system_prompt() {
+            msgs.push(json!({"role": "system", "content": system}));
+        }
+        msgs.extend(self.messages.iter().cloned());
+        msgs.extend(extra.iter().cloned());
+        let tokens = self
+            .estimator
+            .tokens(&msgs, schema_chars(&self.tool_specs()));
+        (tokens, tokens as f64 / self.prompt_budget() as f64)
+    }
+
+    /// What a chat says once it knows the context length: rp chat's line
+    /// at its start.
+    pub fn context_line(&self) -> String {
+        let compact = if self.auto_compact {
+            format!(
+                "auto-compact at {:.0}%",
+                self.auto_compact_threshold * 100.0
+            )
+        } else {
+            "auto-compact off".into()
+        };
+        format!(
+            "context {} tokens, {} usable for history after the {}-token reply budget ({compact})",
+            self.max_model_len,
+            self.prompt_budget(),
+            self.settings.max_tokens
+        )
+    }
+
     /// Asks the server what context it was launched with: MAX_MODEL_LEN is
     /// only what was asked for, and a running pod can predate a config
     /// edit. Keeps the configured value when the server does not say.
     pub async fn discover_max_model_len(&mut self) -> u64 {
+        self.discovered = true;
         let request = self
             .endpoint
             .request(Method::GET, "/v1/models")
@@ -252,10 +326,20 @@ impl Chat {
         .render()
     }
 
-    /// One user turn; the title is asked for after it.
+    /// One user turn; the title is asked for after it. A server not yet
+    /// asked for its context length is asked first.
     pub async fn send(&mut self, ctx: &TurnContext, content: Value) -> TurnOutcome {
         self.inflight = None;
         self.partial.clear();
+        if !self.discovered {
+            self.discover_max_model_len().await;
+            notice(
+                ctx,
+                NoticeLevel::Info,
+                "context_length",
+                self.context_line(),
+            );
+        }
         let outcome = self.turn(ctx, content).await;
         self.maybe_start_title(ctx);
         self.inflight = None;
@@ -263,6 +347,7 @@ impl Chat {
     }
 
     async fn turn(&mut self, ctx: &TurnContext, content: Value) -> TurnOutcome {
+        let started = tokio::time::Instant::now();
         let user = json!({"role": "user", "content": content});
         let mut msgs = Vec::new();
         if let Some(system) = self.system_prompt() {
@@ -307,6 +392,16 @@ impl Chat {
             };
         };
         self.partial.clear();
+        // What the last request carried, for calibration: the reported
+        // prompt_tokens were measured on exactly these messages.
+        let mut sent = if last_round {
+            with_notice(&msgs, TOOL_BUDGET_NOTICE)
+        } else {
+            msgs.clone()
+        };
+        let mut calibrate = true;
+        let first_token = out.first_token;
+        let mut reasoning_chars = out.reasoning.chars().count();
         let mut usage = out.usage.clone();
         let mut text = out.text.clone();
         // A call cannot run here, so it is dropped as on rp's last round.
@@ -323,7 +418,9 @@ impl Chat {
                 "no_answer_retry",
                 "[the reply had no answer; asking for it once more]",
             );
-            let sent = with_notice(&msgs, NO_ANSWER_NOTICE);
+            sent = with_notice(&msgs, NO_ANSWER_NOTICE);
+            // The prompt carried no tool schemas.
+            calibrate = false;
             if let Some(retry) = self
                 .round(ctx, 2, RoundKind::Retry, &sent, &specs, Tools::Omit)
                 .await
@@ -331,6 +428,7 @@ impl Chat {
                 out = retry;
                 text.clone_from(&out.text);
                 answer_thought |= !out.reasoning.is_empty();
+                reasoning_chars += out.reasoning.chars().count();
                 if out.usage.is_some() {
                     usage.clone_from(&out.usage);
                 }
@@ -384,6 +482,38 @@ impl Chat {
         let mut turn = self.inflight.take().unwrap_or_default();
         turn.push(answer);
         self.messages.extend(without_reasoning(&turn));
+
+        let prompt_tokens = usage.as_ref().and_then(|u| u["prompt_tokens"].as_i64());
+        if calibrate {
+            self.estimator
+                .calibrate(&sent, schema_chars(&specs), prompt_tokens);
+        }
+        let elapsed = started.elapsed().as_secs_f64();
+        let completion_tokens = usage.as_ref().and_then(|u| u["completion_tokens"].as_u64());
+        let (context_tokens, fraction) = self.context_state(&[]);
+        let budget = self.prompt_budget();
+        self.stats = Some(TurnStats {
+            elapsed_s: round_to(elapsed, 2),
+            ttft_s: first_token.map(|t| round_to(t.duration_since(started).as_secs_f64(), 2)),
+            prompt_tokens,
+            completion_tokens,
+            tok_per_s: completion_tokens
+                .filter(|n| *n > 0 && elapsed > 0.0)
+                .map(|n| round_to(n as f64 / elapsed, 1)),
+            reasoning_chars,
+            finish: out.finish.clone(),
+            context_tokens,
+            context_budget: budget,
+            context_pct: round_to(fraction * 100.0, 1),
+            chars_per_token: round_to(self.estimator.chars_per_token, 2),
+        });
+        ctx.emit(EventMsg::TokenCount(TokenCountEvent {
+            used: context_tokens,
+            budget,
+            auto_compact_at: self
+                .auto_compact
+                .then_some((budget as f64 * self.auto_compact_threshold) as u64),
+        }));
         TurnOutcome::Answered
     }
 
@@ -496,6 +626,34 @@ impl Drop for Chat {
             task.abort();
         }
     }
+}
+
+/// MAX_MODEL_LEN, 65536 when it is not a number.
+pub fn max_model_len(cfg: &Config) -> u64 {
+    cfg.get("MAX_MODEL_LEN")
+        .and_then(|n| n.trim().parse().ok())
+        .unwrap_or(65536)
+}
+
+/// A turn's numbers, rp's `last_stats`, in its key order.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct TurnStats {
+    pub elapsed_s: f64,
+    pub ttft_s: Option<f64>,
+    pub prompt_tokens: Option<i64>,
+    pub completion_tokens: Option<u64>,
+    pub tok_per_s: Option<f64>,
+    pub reasoning_chars: usize,
+    pub finish: Option<String>,
+    pub context_tokens: u64,
+    pub context_budget: u64,
+    pub context_pct: f64,
+    pub chars_per_token: f64,
+}
+
+fn round_to(x: f64, digits: i32) -> f64 {
+    let scale = 10f64.powi(digits);
+    (x * scale).round() / scale
 }
 
 fn background(state: BackgroundState) -> EventMsg {

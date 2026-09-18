@@ -9,6 +9,7 @@
 //! prompt with the instruction files, the title) and the scenario driver ([`drive`]).
 
 pub mod chat;
+pub mod context;
 pub mod drive;
 mod engine;
 pub mod instructions;

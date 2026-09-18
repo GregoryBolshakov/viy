@@ -104,12 +104,14 @@ fn drive_shows_scenario_one_as_events() {
         [
             "turn_started",
             "round_started",
+            "token_count",
             "background",
             "turn_complete",
             "title_changed",
             "background",
             "turn_started",
             "round_started",
+            "token_count",
             "turn_complete",
             "shutdown_complete"
         ]

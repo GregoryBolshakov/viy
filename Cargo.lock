@@ -2479,6 +2479,7 @@ dependencies = [
  "pretty_assertions",
  "serde_json",
  "tokio",
+ "viy-agent",
  "viy-config",
  "viy-exec",
  "viy-http",
@@ -2491,6 +2492,13 @@ dependencies = [
 [[package]]
 name = "viy-agent"
 version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "viy-protocol",
+]
 
 [[package]]
 name = "viy-config"

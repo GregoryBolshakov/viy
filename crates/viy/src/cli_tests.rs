@@ -197,6 +197,7 @@ fn namespace(cli: &Cli) -> Value {
         }
         // viy's own; rp has nothing to compare it with.
         Command::CaptureBoot { boot_id, pod_id } => json!({"boot_id": boot_id, "pod_id": pod_id}),
+        Command::Dev(_) => json!({}),
     };
     ns["cmd"] = json!(cli.command.name());
     ns

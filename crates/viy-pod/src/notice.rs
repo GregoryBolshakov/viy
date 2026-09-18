@@ -3,9 +3,7 @@
 //! with `viy` for `rp` where it names a command.
 
 use std::fmt;
-use std::pin::Pin;
 
-use viy_protocol::Answer;
 use viy_protocol::Question;
 
 /// One line or paragraph for the user.
@@ -78,14 +76,14 @@ pub(crate) fn say(report: Reporter<'_>, tone: Tone, text: impl Into<String>) {
     report(Report::Notice(Notice::new(tone, text)));
 }
 
-/// A question on its way to the user: resolves to the answer.
-pub type Asking = Pin<Box<dyn Future<Output = Answer> + Send>>;
+pub use viy_protocol::Asking;
 
 /// Who answers a pod command's questions (rpctl's `pod._ask`): a terminal,
 /// the chat's question box, a test. `None` when nobody is there to ask,
 /// and the command takes the question's `unattended` answer itself. As
-/// Codex's `request_user_input`, the answer is awaited, not blocked on;
-/// WP 3.1 turns it into a request event answered by an `Op` (kb d036).
+/// Codex's `request_user_input`, the answer is awaited, not blocked on; in
+/// the chat it is a request event answered by an `Op` (kb d036,
+/// `viy_agent::TurnContext::asker`).
 pub type Asker<'a> = &'a (dyn Fn(&Question) -> Option<Asking> + Send + Sync);
 
 /// A wait's clock, once a second: rpctl's `  MM:SS label (state)` line.

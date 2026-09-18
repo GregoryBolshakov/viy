@@ -123,6 +123,9 @@ pub enum Command {
     /// it in the background (`viy_pod::wait::spawn_capture`).
     #[command(hide = true, name = "capture-boot")]
     CaptureBoot { boot_id: String, pod_id: String },
+    /// Internal: developer tools, such as `viy dev drive`.
+    #[command(hide = true)]
+    Dev(DevArgs),
 }
 
 impl Command {
@@ -149,8 +152,22 @@ impl Command {
             Self::Backup { .. } => "backup",
             Self::Volume(_) => "volume",
             Self::CaptureBoot { .. } => "capture-boot",
+            Self::Dev(_) => "dev",
         }
     }
+}
+
+#[derive(Debug, Args)]
+pub struct DevArgs {
+    #[command(subcommand)]
+    pub command: DevCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DevCommand {
+    /// Runs a scenario's steps through the engine and prints its events as
+    /// JSON lines (implementation plan 3.4).
+    Drive { scenario: std::path::PathBuf },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

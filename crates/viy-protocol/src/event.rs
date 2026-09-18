@@ -1,6 +1,8 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::Question;
+
 /// One event from the engine.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Event {
@@ -37,6 +39,24 @@ pub enum EventMsg {
     Background(BackgroundEvent),
     /// The history on screen is no longer what was shown: draw `items`.
     HistoryRewritten(HistoryRewrittenEvent),
+    /// A question for the user, answered by [`crate::Op::QuestionAnswer`]
+    /// with its `question_id` (kb d036).
+    QuestionRequest(QuestionRequestEvent),
+    /// A slash command has run.
+    CommandComplete(CommandCompleteEvent),
+    /// The engine has stopped; nothing follows.
+    ShutdownComplete,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuestionRequestEvent {
+    pub question_id: String,
+    pub question: Question,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandCompleteEvent {
+    pub command: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

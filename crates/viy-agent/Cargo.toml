@@ -14,3 +14,11 @@ doctest = false
 workspace = true
 
 [dependencies]
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+viy-protocol = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "test-util", "time"] }

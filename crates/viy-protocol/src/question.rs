@@ -1,10 +1,18 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use serde::Deserialize;
 use serde::Serialize;
 
+/// A question on its way to the user: resolves to the answer. The chat's
+/// engine resolves it when [`crate::Op::QuestionAnswer`] arrives, a
+/// terminal when a line is read.
+pub type Asking = Pin<Box<dyn Future<Output = Answer> + Send>>;
+
 /// A question the engine asks the user (rp's `_confirm`, the failover and
 /// resume questions). The chat mode's auto-yes is decided by the engine
-/// before a question reaches the frontend (rpctl `modes.py`); the frontend
-/// only shows and collects.
+/// before a question reaches the UI (rpctl `modes.py`); the UI only shows
+/// and collects.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Question {
     /// Lets a chat mode answer for the user; `None` always waits
@@ -14,7 +22,7 @@ pub struct Question {
     pub choices: Choices,
     /// What Enter alone answers.
     pub default: Answer,
-    /// What a frontend with nobody to ask answers: no for every approval
+    /// What is answered with nobody to ask: no for every approval
     /// (rp's `_confirm` without a TTY), the default for `viy up`'s questions
     /// (rp's `pod._ask`).
     pub unattended: Answer,

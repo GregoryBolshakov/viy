@@ -74,6 +74,30 @@ fn ops_are_tagged_like_events() {
         json!({"id": "2", "op": {"type": "user_turn", "text": "What is a haiku?"}}),
     );
     round_trip(&Op::Interrupt, json!({"type": "interrupt"}));
+    round_trip(
+        &Op::QuestionAnswer {
+            id: "q1".into(),
+            answer: Answer::Always,
+        },
+        json!({"type": "question_answer", "id": "q1", "answer": "always"}),
+    );
+}
+
+#[test]
+fn a_question_is_a_request_event() {
+    round_trip(
+        &EventMsg::QuestionRequest(QuestionRequestEvent {
+            question_id: "q1".into(),
+            question: Question::yes_no(Some(QuestionKind::Destructive), "  run it?"),
+        }),
+        json!({"type": "question_request", "question_id": "q1", "question": {
+            "kind": "destructive", "prompt": "  run it?", "choices": "yes_no",
+            "default": "no", "unattended": "no"}}),
+    );
+    round_trip(
+        &EventMsg::ShutdownComplete,
+        json!({"type": "shutdown_complete"}),
+    );
 }
 
 #[test]

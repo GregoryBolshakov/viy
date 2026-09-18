@@ -5,6 +5,7 @@
 //! [`pods`], `viy shutdown` in [`shutdown`].
 
 pub mod cli;
+pub mod dev;
 pub mod hardening;
 pub mod init;
 pub mod migrate;
@@ -167,6 +168,7 @@ fn dispatch(
             let reload = || config(&paths);
             shutdown::run(args, &paths, cfg, reload, out, terminal)
         }
+        Command::Dev(args) => dev::run(args, out),
         Command::Chat(_) | Command::Chats(_) | Command::Ask(_) => not_ported(3),
         Command::Trace(_) | Command::Toolbox(_) => not_ported(7),
     }

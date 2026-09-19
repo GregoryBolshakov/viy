@@ -2774,8 +2774,436 @@ def gen_chat_context(snap):
     }
 
 
+# ------------------------------------------------------------ chat/sessions
+
+# rpctl's sessions.py driven by scripts of steps, each case in its own
+# sessions directory. The clock reads 1761868800.25 plus the step's index, so
+# every event's time is fixed; ids are random and come out as the name of the
+# log that made them ("{a}"), the case's directory as $T. For each log: its
+# bytes, its events, replay() and the sidecar; then the listing, searches and
+# resolves the case asks for. Steps:
+#   new      {log, project?, model?}      SessionLog.new
+#   sync     {log, system?, messages, force?}  -> True/False
+#   rename   {log, title}
+#   auto     {log, title}                 set_auto_title -> True/False
+#   fork     {log, as, system?, messages, title?}
+#   close    {log, reason?}
+#   open     {log, as}                    SessionLog.open -> "ok" / "busy"
+#   raw      {log, text}                  appended to the log's file as is
+#   redact   {log, literals}              log.redact = Redactor(literals)
+#   files    {log}                        a file in the log's .files/ dir
+#   unlink_sidecar {log}
+#   trash    {log}                        -> "ok" / "busy"
+#   import   {as, name, mtime, system?, messages, project?}
+SESSIONS_RUNNER = r"""
+import json, os, pathlib, sys, time
+sys.path.insert(0, sys.argv[1])
+from rpctl import config, redact, sessions
+job = json.loads(sys.argv[2])
+base = pathlib.Path(sys.argv[3])
+now = [0.0]
+time.time = lambda: now[0]
+out = []
+
+def sub(v, t):
+    if isinstance(v, str):
+        return v.replace("$T", t)
+    if isinstance(v, list):
+        return [sub(x, t) for x in v]
+    if isinstance(v, dict):
+        return {k: sub(x, t) for k, x in v.items()}
+    return v
+
+def read(p):
+    try:
+        return p.read_text()
+    except OSError:
+        return None
+
+for case in job:
+    root = base / case["name"]
+    (root / "sessions").mkdir(parents=True)
+    config.SESSIONS_DIR = root / "sessions"
+    t = str(root)
+    logs, names, results = {}, {}, []
+    for i, step in enumerate(case["steps"]):
+        now[0] = 1761868800.25 + i
+        s = sub(step, t)
+        op = s["op"]
+        log = logs.get(s.get("log"))
+        r = None
+        if op == "new":
+            log = sessions.SessionLog.new(s.get("project"), s.get("model"))
+            logs[s["log"]] = log
+            names.setdefault(log.id, s["log"])
+        elif op == "sync":
+            r = log.sync(s.get("system"), s["messages"], force=s.get("force", False))
+        elif op == "rename":
+            log.rename(s["title"])
+        elif op == "auto":
+            r = log.set_auto_title(s["title"])
+        elif op == "fork":
+            twin = log.fork(s.get("system"), s["messages"], title=s.get("title"))
+            logs[s["as"]] = twin
+            names.setdefault(twin.id, s["as"])
+        elif op == "close":
+            log.close(s.get("reason", "exit"))
+        elif op == "open":
+            try:
+                logs[s["as"]], _ = sessions.SessionLog.open(log.id)
+                r = "ok"
+            except sessions.SessionBusy:
+                r = "busy"
+        elif op == "raw":
+            with open(log.path, "a") as f:
+                f.write(s["text"])
+        elif op == "redact":
+            log.redact = redact.Redactor(s["literals"])
+        elif op == "files":
+            log.files_dir.mkdir()
+            (log.files_dir / "1").write_text("before")
+        elif op == "unlink_sidecar":
+            log.path.with_suffix(".meta.json").unlink()
+        elif op == "trash":
+            try:
+                sessions.trash(log.id)
+                r = "ok"
+            except sessions.SessionBusy:
+                r = "busy"
+        elif op == "import":
+            src = root / s["name"]
+            src.write_text("x")
+            os.utime(src, (s["mtime"], s["mtime"]))
+            sid = sessions.import_transcript(
+                src, {"system": s.get("system"), "messages": s["messages"]},
+                s.get("project"))
+            names.setdefault(sid, s["as"])
+        results.append(r)
+    sdir = root / "sessions"
+    files = {}
+    for sid, name in names.items():
+        path = sdir / f"{sid}.jsonl"
+        raw = read(path)
+        files[name] = {
+            "raw": raw,
+            "events": sessions.read_events(path) if raw is not None else None,
+            "replay": sessions.replay(path) if raw is not None else None,
+            "sidecar": json.loads(read(path.with_suffix(".meta.json")) or "null"),
+            "files": sorted(p.name for p in sessions.files_dir(path).iterdir())
+                     if sessions.files_dir(path).is_dir() else None,
+        }
+    trash = sdir / "trash"
+    q = case.get("queries", {})
+    got = {
+        "results": results,
+        "files": files,
+        "trash": sorted(p.name for p in trash.iterdir()) if trash.is_dir() else None,
+        "list": [sessions.list_sessions(sub(scope, t)) for scope in q.get("list", [])],
+        "search": [sessions.search(query, sub(scope, t))
+                   for query, scope in q.get("search", [])],
+        "resolve": [sessions.resolve(
+                        next((i for i, n in names.items() if ref == "@" + n), ref),
+                        sub(scope, t))
+                    for ref, scope in q.get("resolve", [])],
+    }
+    text = json.dumps(got, ensure_ascii=False).replace(t, "$T")
+    for sid, name in names.items():
+        text = text.replace(sid, "{" + name + "}")
+    out.append(json.loads(text))
+print(json.dumps(out, ensure_ascii=False))
+"""
+
+
+def _u(text):
+    return {"role": "user", "content": text}
+
+
+def _a(text, **kw):
+    return {"role": "assistant", "content": text, **kw}
+
+
+_SUMMARY_HEAD = "[Summary of the conversation so far. Continue from here.]"
+_SUMMARY_NEXT = "\n\n---\n[Summary of the next part of the conversation]\n\n"
+_SUMMARY_ACK = "Understood. I'll continue from the summary above."
+
+
+def _summary(text):
+    return [_u(_SUMMARY_HEAD + "\n\n" + text), _a(_SUMMARY_ACK)]
+
+
+def _turn(n):
+    return [_u(f"question {n}"), _a(f"answer {n}")]
+
+
+def _compactions():
+    """test_replay_keeps_what_compactions_summarised_away's histories."""
+    msgs = _turn(1) + _turn(2) + _turn(3)
+    out = [msgs]
+    msgs = _summary("one and two") + _turn(3)
+    out.append(msgs)
+    msgs = msgs + _turn(4)
+    out.append(msgs)
+    msgs = msgs[:2] + [msgs[2], _a("[elided]")] + msgs[4:]
+    out.append(msgs)
+    head = dict(msgs[0], content=msgs[0]["content"] + _SUMMARY_NEXT + "three")
+    msgs = [head, msgs[1]] + _turn(4)
+    out.append(msgs)
+    out.append(msgs + _turn(5))
+    return out
+
+
+_TOOL_TURN = [
+    {"role": "user", "content": [
+        {"type": "text", "text": "what is  here?\n"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA"}},
+        {"type": "text", "text": "[rp chat: mounted /x]"}]},
+    {"role": "assistant", "content": None, "thought": True, "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "run_shell", "arguments": "{\"command\": \"ls\\npwd\"}"}}]},
+    {"role": "tool", "tool_call_id": "c1", "content": "TOOL OUTPUT ünïcode"},
+    {"role": "assistant", "content": "Two files. Привет 世界 🦀", "thought": True},
+]
+
+# A secret redact masks that the secret scanner leaves alone.
+_TOKEN = "Authorization: Bearer fixture-bearer-0123456789abcdef"
+
+SESSIONS_CASES = [
+    dict(name="append_and_replay_roundtrip", steps=[
+        dict(op="new", log="a", project="$T/proj", model="m"),
+        dict(op="sync", log="a", system="be brief", messages=[_u("hello there")]),
+        dict(op="sync", log="a", system="be brief",
+             messages=[_u("hello there"), _a("hi")]),
+        dict(op="close", log="a")],
+        queries=dict(list=[None, "$T/proj"])),
+    dict(name="nothing_written_until_first_message", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", system="sys", messages=[]),
+        dict(op="close", log="a"),
+        dict(op="auto", log="a", title="too early")],
+        queries=dict(list=[None])),
+    dict(name="rewrite_is_a_replace_and_search_finds_the_old", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=[_u("start"), _a("the zebra detail")]),
+        dict(op="sync", log="a", messages=_summary("so far")),
+        dict(op="close", log="a")],
+        queries=dict(search=[["zebra", None], ["ZEBRA Detail", "$T/proj"],
+                             ["zebra giraffe", None], ["", None], ["summary", None]])),
+    dict(name="torn_last_line_is_trimmed_on_resume", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=[_u("a")]),
+        dict(op="close", log="a"),
+        dict(op="raw", log="a", text='{"t": "msg", "message": {"role": "assi'),
+        dict(op="open", log="a", **{"as": "a2"}),
+        dict(op="sync", log="a2", messages=[_u("a"), _a("b")]),
+        dict(op="close", log="a2")]),
+    dict(name="resume_with_nothing_new_writes_nothing", steps=[
+        dict(op="new", log="a", project="$T/proj", model="m"),
+        dict(op="sync", log="a", system="s", messages=_turn(1)),
+        dict(op="close", log="a"),
+        dict(op="open", log="a", **{"as": "a2"}),
+        dict(op="sync", log="a2", system="s", messages=_turn(1)),
+        dict(op="sync", log="a2", system=None, messages=_turn(1) + _turn(2)),
+        dict(op="close", log="a2", reason="switch")]),
+    dict(name="user_title_beats_automatic_title", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=[_u("x" * 100)]),
+        dict(op="rename", log="a", title="My plan"),
+        dict(op="raw", log="a", text='{"t": "title", "text": "auto later", "auto": true}\n'),
+        dict(op="auto", log="a", title="model's"),
+        dict(op="close", log="a")],
+        queries=dict(list=[None])),
+    dict(name="model_title_survives_resume", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=[_u("hello")]),
+        dict(op="auto", log="a", title="Greeting the model"),
+        dict(op="close", log="a"),
+        dict(op="open", log="a", **{"as": "a2"}),
+        dict(op="auto", log="a2", title="Another"),
+        dict(op="close", log="a2")]),
+    dict(name="second_writer_is_refused", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=[_u("a")]),
+        dict(op="open", log="a", **{"as": "b"}),
+        dict(op="trash", log="a"),
+        dict(op="close", log="a"),
+        dict(op="open", log="a", **{"as": "b"}),
+        dict(op="close", log="b")]),
+    dict(name="fork_copies_history_and_files", steps=[
+        dict(op="new", log="a", project="$T/proj", model="m"),
+        dict(op="sync", log="a", system="s", messages=_turn(1)),
+        dict(op="files", log="a"),
+        dict(op="fork", log="a", system="s", messages=_turn(1), **{"as": "b"}),
+        dict(op="fork", log="a", system=None, messages=_turn(1), title="Plan B",
+             **{"as": "c"}),
+        dict(op="sync", log="b", system="s", messages=_turn(1) + _turn(2)),
+        dict(op="close", log="a", reason="fork"),
+        dict(op="close", log="b"),
+        dict(op="close", log="c")],
+        queries=dict(list=["$T/proj"])),
+    dict(name="fork_of_a_model_titled_chat", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=_turn(1)),
+        dict(op="auto", log="a", title="Model named"),
+        dict(op="fork", log="a", messages=_turn(1), **{"as": "b"}),
+        dict(op="auto", log="b", title="never"),
+        dict(op="close", log="b"),
+        dict(op="close", log="a")]),
+    dict(name="fork_of_an_untitled_chat_titles_twice", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="fork", log="a", messages=_turn(1), **{"as": "b"}),
+        dict(op="close", log="b")]),
+    dict(name="listing_is_project_scoped_and_title_hits_rank_first", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=[_u("talk about apples")]),
+        dict(op="close", log="a"),
+        dict(op="new", log="b", project="$T/proj"),
+        dict(op="sync", log="b", messages=[_u("unrelated"), _a("but apples appear here")]),
+        dict(op="close", log="b"),
+        dict(op="new", log="c", project="/elsewhere"),
+        dict(op="sync", log="c", messages=[_u("apples elsewhere")]),
+        dict(op="close", log="c"),
+        dict(op="new", log="d"),
+        dict(op="sync", log="d", messages=[_u("apples with no project")]),
+        dict(op="close", log="d")],
+        queries=dict(
+            list=["$T/proj", None, "/elsewhere"],
+            search=[["apples", "$T/proj"], ["apples", None], ["apples pears", None],
+                    ["APPEAR apples", None], ["unrelated apples", "$T/proj"]],
+            resolve=[["", "$T/proj"], ["@b", None], ["2", "$T/proj"], ["apples", "$T/proj"],
+                     ["nothing", None]])),
+    dict(name="scope_follows_the_project_tree", steps=[
+        dict(op="new", log="self", project="$T/proj"),
+        dict(op="sync", log="self", messages=[_u("self")]),
+        dict(op="new", log="sub", project="$T/proj/sub"),
+        dict(op="sync", log="sub", messages=[_u("sub")]),
+        dict(op="new", log="parent", project="$T"),
+        dict(op="sync", log="parent", messages=[_u("parent")]),
+        dict(op="new", log="sib", project="$T/other"),
+        dict(op="sync", log="sib", messages=[_u("sib")]),
+        dict(op="new", log="prefix", project="$T/proj-two"),
+        dict(op="sync", log="prefix", messages=[_u("prefix")]),
+        dict(op="close", log="self"), dict(op="close", log="sub"),
+        dict(op="close", log="parent"), dict(op="close", log="sib"),
+        dict(op="close", log="prefix")],
+        queries=dict(list=["$T/proj", "$T/proj/sub", "$T", "$T/proj/", "/"])),
+    dict(name="stale_sidecar_is_rebuilt", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=[_u("first")]),
+        dict(op="close", log="a"),
+        dict(op="unlink_sidecar", log="a")],
+        queries=dict(list=[None])),
+    dict(name="trash_moves_the_log_and_its_files", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=[_u("a")]),
+        dict(op="files", log="a"),
+        dict(op="close", log="a"),
+        dict(op="trash", log="a")],
+        queries=dict(list=[None])),
+    dict(name="import_keeps_the_transcript_date", steps=[
+        dict(op="import", name="old.md", mtime=1700000000, project="$T/proj",
+             messages=[_u("q"), _a("r")], system="sys", **{"as": "imp"}),
+        dict(op="import", name="older notes.md", mtime=1600000000.5,
+             messages=[], **{"as": "empty"})],
+        queries=dict(list=["$T/proj", None])),
+    dict(name="redaction_masks_on_disk_only", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="redact", log="a", literals=["literal-secret-value"]),
+        dict(op="sync", log="a", system=f"sys {_TOKEN}",
+             messages=[_u(f"use {_TOKEN} and literal-secret-value")]),
+        dict(op="sync", log="a", system=f"sys {_TOKEN}",
+             messages=[_u(f"use {_TOKEN} and literal-secret-value"), _a("ok")]),
+        dict(op="rename", log="a", title=f"about {_TOKEN}"),
+        dict(op="fork", log="a", system=None, messages=[_u(f"again {_TOKEN}")],
+             **{"as": "b"}),
+        dict(op="close", log="a"),
+        dict(op="close", log="b")]),
+    dict(name="compactions_leave_earlier_turns", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        *[dict(op="sync", log="a", messages=m) for m in _compactions()],
+        dict(op="close", log="a")]),
+    dict(name="a_rewind_leaves_nothing_earlier", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=_turn(1) + _turn(2)),
+        dict(op="sync", log="a", messages=_turn(1)),
+        dict(op="sync", log="a", messages=_summary("s") + _turn(2)),
+        dict(op="sync", log="a", messages=_summary("s")),
+        dict(op="close", log="a")]),
+    dict(name="corrupt_and_odd_lines_are_skipped", steps=[
+        dict(op="new", log="a", project="$T/proj", model="m"),
+        dict(op="sync", log="a", system="s", messages=[_u("a")]),
+        dict(op="raw", log="a", text="not json\n"),
+        dict(op="raw", log="a", text="[1, 2]\n"),
+        dict(op="raw", log="a", text="\n"),
+        dict(op="raw", log="a", text='{"t": "mystery", "ts": 5}\n'),
+        dict(op="raw", log="a", text='{"t": "msg", "message": "not a dict"}\n'),
+        dict(op="raw", log="a", text='{"t": "title", "text": ""}\n'),
+        dict(op="raw", log="a", text='{"t": "system", "text": null, "ts": 0}\n'),
+        dict(op="raw", log="a", text='{"t": "msg", "message": {"role": "user", '
+                                     '"content": "raw ünï"}}\n'),
+        dict(op="close", log="a")]),
+    dict(name="titles_skip_notes_summaries_and_blanks", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", messages=_summary("old") + [_u("   \n\t "), _a("?")]
+             + _TOOL_TURN),
+        dict(op="close", log="a"),
+        dict(op="new", log="b", project="$T/proj"),
+        dict(op="sync", log="b", messages=[_u("🦀" * 30 + " Привет " * 10)]),
+        dict(op="close", log="b"),
+        dict(op="new", log="c", project="$T/proj"),
+        dict(op="sync", log="c", messages=[_u("y" * 59 + "z")]),
+        dict(op="close", log="c"),
+        dict(op="new", log="d", project="$T/proj"),
+        dict(op="sync", log="d", messages=[_a("only the model spoke")]),
+        dict(op="close", log="d")],
+        queries=dict(search=[["ls", None], ["пРИВЕТ", None], ["run_shell", None],
+                             ["tool output", None]])),
+    dict(name="system_prompt_changes_are_events", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", system=None, messages=[_u("a")]),
+        dict(op="sync", log="a", system="first", messages=[_u("a")]),
+        dict(op="sync", log="a", system="second", messages=[_u("a"), _a("b")]),
+        dict(op="sync", log="a", system=None, messages=[_u("a"), _a("b")]),
+        dict(op="close", log="a")],
+        queries=dict(search=[["second", None]])),
+    dict(name="rename_creates_the_file", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="rename", log="a", title="Design notes"),
+        dict(op="close", log="a")],
+        queries=dict(list=[None])),
+    dict(name="forced_sync_of_nothing", steps=[
+        dict(op="new", log="a", project="$T/proj"),
+        dict(op="sync", log="a", system=None, messages=[], force=True),
+        dict(op="close", log="a")]),
+]
+
+
+def gen_chat_sessions(snap):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "TZ": "UTC"}
+        for name, sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"),
+                          ("XDG_STATE_HOME", "state"), ("XDG_DATA_HOME", "data"),
+                          ("XDG_CACHE_HOME", "cache")):
+            (tmp / sub).mkdir()
+            env[name] = str(tmp / sub)
+        (tmp / "cases").mkdir()
+        out = subprocess.run([sys.executable, "-I", "-c", SESSIONS_RUNNER, str(snap),
+                              json.dumps(SESSIONS_CASES), str(tmp / "cases")],
+                             cwd=tmp, env=env, check=True, capture_output=True, text=True)
+        got = json.loads(out.stdout)
+    return {
+        "about": "rpctl's sessions.py run through scripts of steps (see tools/fixtures.py "
+                 "chat/sessions): the clock at 1761868800.25 plus the step's index, ids "
+                 "shown as the name of the log that made them, the case's directory as "
+                 "$T. Per log its bytes, events, replay() and sidecar; then the listings, "
+                 "searches and resolves the case asks for",
+        "cases": [{**case, **result} for case, result in zip(SESSIONS_CASES, got)],
+    }
+
+
 GENERATORS = {
     "chat/context": gen_chat_context,
+    "chat/sessions": gen_chat_sessions,
     "cli/flags": gen_cli_flags,
     "cli/parse": gen_cli_parse,
     "config/init": gen_config_init,

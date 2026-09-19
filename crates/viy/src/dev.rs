@@ -5,13 +5,17 @@
 //! chat gets rpctl's DEFAULTS plus the scenario's `config`, with
 //! `VLLM_API_KEY` set to `fake-key`, and before the first step asks the
 //! server for its context length. `--result FILE` writes what the request
-//! log is normalized with: the chat's date and the questions asked.
+//! log is normalized with: the chat's date and the questions asked, and
+//! the path of the chat's session log.
 //! `--live` drives a real server instead: viy's own config, with the
 //! scenario's `config` on top, and the scripted responses unused.
 //! `--dir DIR` runs the chat as from DIR. A scripted run refuses
 //! instruction files from outside that directory and viy's config
 //! directory, as drive_rp refuses them from outside its tree: a scenario
 //! never carries the files of the project it was started in.
+//!
+//! With CHAT_AUTOSAVE on, the chat is saved as a session in viy's sessions
+//! directory, as drive_rp saves rp's.
 //!
 //! The server, the workspace (the working directory) and HOME and the XDG
 //! directories are the caller's: `tools/drive_rp.py --client viy` sets them
@@ -29,6 +33,7 @@ use viy_agent::chat::ChatTurns;
 use viy_agent::chat::Places;
 use viy_agent::drive;
 use viy_agent::drive::Scenario;
+use viy_agent::sessions::Sessions;
 use viy_agent::stream::Endpoint;
 use viy_config::Config;
 use viy_config::Paths;
@@ -85,7 +90,7 @@ pub fn run(
         .enable_all()
         .build()
         .map_err(|e| Failure::from(e.to_string()))?;
-    let (run, today) = runtime.block_on(async {
+    let (run, today, session) = runtime.block_on(async {
         let start = match dir {
             Some(dir) => dir.clone(),
             None => std::env::current_dir().map_err(|e| format!("the working directory: {e}"))?,
@@ -96,15 +101,21 @@ pub fn run(
         }
         chat.discover_max_model_len().await;
         let today = chat.today().to_string();
-        let mut engine = Engine::spawn(Arc::new(ChatTurns::new(chat)));
-        Ok::<_, Failure>((drive::drive(&mut engine, &steps).await, today))
+        let turns = Arc::new(ChatTurns::new(chat));
+        let mut engine = Engine::spawn(turns.clone());
+        let run = drive::drive(&mut engine, &steps).await;
+        let session = turns
+            .with_chat(|c| c.session_id())
+            .flatten()
+            .map(|id| paths.sessions_dir().join(format!("{id}.jsonl")));
+        Ok::<_, Failure>((run, today, session))
     })?;
     for event in &run.events {
         let line = serde_json::to_string(event).map_err(|e| Failure::from(e.to_string()))?;
         writeln!(out, "{line}").map_err(|e| Failure::from(e.to_string()))?;
     }
     if let Some(file) = result {
-        write_result(file, &today, &run.asked)?;
+        write_result(file, &today, &run.asked, session.as_deref())?;
     }
     if run.problems.is_empty() {
         Ok(())
@@ -149,16 +160,19 @@ fn chat(
         workspace: viy_agent::prompt::workspace(cfg, project.root(), &paths.home),
         config_dir: paths.config_dir(),
     };
+    let sessions = Sessions::new(paths.sessions_dir(), Arc::new(SystemTimeProvider));
     let paths = paths.clone();
     let touch = Arc::new(move || idle::touch(&paths, &SystemTimeProvider, false));
-    Ok(Chat::new(
+    let mut chat = Chat::new(
         cfg,
         places,
         endpoint,
         backend.model_name(cfg),
         viy_agent::prompt::today(),
         touch,
-    )?)
+    )?;
+    chat.use_sessions(sessions, Some(project.root().display().to_string()));
+    Ok(chat)
 }
 
 /// Refuses instruction files from outside `start` and the config directory.
@@ -178,8 +192,14 @@ fn outside_files(chat: &Chat, start: &Path) -> Result<(), Failure> {
     Ok(())
 }
 
-/// drive_rp's `result.json`: the date and the questions asked.
-fn write_result(file: &Path, today: &str, asked: &[(String, Answer)]) -> Result<(), Failure> {
+/// drive_rp's `result.json`: the date and the questions asked, and the
+/// session log the chat was saved to.
+fn write_result(
+    file: &Path,
+    today: &str,
+    asked: &[(String, Answer)],
+    session: Option<&Path>,
+) -> Result<(), Failure> {
     let asked: Vec<Value> = asked
         .iter()
         .map(|(question, answer)| {
@@ -191,7 +211,7 @@ fn write_result(file: &Path, today: &str, asked: &[(String, Answer)]) -> Result<
             json!({"question": question, "answer": answer})
         })
         .collect();
-    let text = json!({"today": today, "asked": asked}).to_string();
+    let text = json!({"today": today, "asked": asked, "session": session}).to_string();
     std::fs::write(file, text).map_err(|e| Failure::from(format!("{}: {e}", file.display())))
 }
 

@@ -6,7 +6,8 @@
 //!
 //! So far the submission loop ([`Engine`], [`Turns`]), the chat's turn
 //! without tools ([`chat`]: the payload, the streamed reply, the system
-//! prompt with the instruction files, the title) and the scenario driver ([`drive`]).
+//! prompt with the instruction files, the context accounting, the title),
+//! the session logs ([`sessions`]) and the scenario driver ([`drive`]).
 
 pub mod chat;
 pub mod context;
@@ -15,6 +16,7 @@ mod engine;
 pub mod instructions;
 pub mod payload;
 pub mod prompt;
+pub mod sessions;
 pub mod stream;
 
 pub use engine::BoxFuture;

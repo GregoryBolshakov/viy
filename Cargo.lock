@@ -2495,6 +2495,8 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "pretty_assertions",
+ "rand 0.9.5",
+ "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
@@ -2502,6 +2504,7 @@ dependencies = [
  "viy-http",
  "viy-protocol",
  "viy-testkit",
+ "viy-time",
  "viy-tools",
 ]
 

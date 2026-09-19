@@ -1,0 +1,8 @@
+{"t": "meta", "id": "{ID}", "project": "{WORKSPACE}", "model": "qwen3.8-abliterated"}
+{"t": "msg", "message": {"role": "user", "content": "What does a compiler do?"}}
+{"t": "title", "text": "What does a compiler do?", "auto": true}
+{"t": "msg", "message": {"role": "assistant", "content": "A compiler translates a whole program into machine code before it runs. -- Q", "thought": true}}
+{"t": "title", "text": "What compilers do", "auto": true, "by": "model"}
+{"t": "msg", "message": {"role": "user", "content": "And an interpreter?"}}
+{"t": "msg", "message": {"role": "assistant", "content": "An interpreter reads a program and carries it out step by step as it goes. -- Q"}}
+{"t": "end", "reason": "exit"}

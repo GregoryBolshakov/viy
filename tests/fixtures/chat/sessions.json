@@ -1,0 +1,5955 @@
+{
+ "rpctl_commit": "b4cd3736e2226e1a3033ea23576ac4377653aa8f",
+ "generator": "tools/fixtures.py chat/sessions",
+ "about": "rpctl's sessions.py run through scripts of steps (see tools/fixtures.py chat/sessions): the clock at 1761868800.25 plus the step's index, ids shown as the name of the log that made them, the case's directory as $T. Per log its bytes, events, replay() and sidecar; then the listings, searches and resolves the case asks for",
+ "cases": [
+  {
+   "name": "append_and_replay_roundtrip",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj",
+     "model": "m"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": "be brief",
+     "messages": [
+      {
+       "role": "user",
+       "content": "hello there"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": "be brief",
+     "messages": [
+      {
+       "role": "user",
+       "content": "hello there"
+      },
+      {
+       "role": "assistant",
+       "content": "hi"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a"
+    }
+   ],
+   "queries": {
+    "list": [
+     null,
+     "$T/proj"
+    ]
+   },
+   "results": [
+    null,
+    true,
+    true,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": \"m\", \"ts\": 1761868801.25}\n{\"t\": \"system\", \"text\": \"be brief\", \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"hello there\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"hello there\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"hi\"}, \"ts\": 1761868802.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868803.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868801.25
+      },
+      {
+       "t": "system",
+       "text": "be brief",
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "hello there"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "hello there",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "hi"
+       },
+       "ts": 1761868802.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868803.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868801.25
+      },
+      "system": "be brief",
+      "messages": [
+       {
+        "role": "user",
+        "content": "hello there"
+       },
+       {
+        "role": "assistant",
+        "content": "hi"
+       }
+      ],
+      "earlier": [],
+      "title": "hello there",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868803.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "hello there",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868803.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [
+    [
+     {
+      "id": "{a}",
+      "title": "hello there",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868803.25,
+      "messages": 2,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{a}",
+      "title": "hello there",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868803.25,
+      "messages": 2,
+      "source": null
+     }
+    ]
+   ],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "nothing_written_until_first_message",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": "sys",
+     "messages": []
+    },
+    {
+     "op": "close",
+     "log": "a"
+    },
+    {
+     "op": "auto",
+     "log": "a",
+     "title": "too early"
+    }
+   ],
+   "queries": {
+    "list": [
+     null
+    ]
+   },
+   "results": [
+    null,
+    false,
+    null,
+    false
+   ],
+   "files": {
+    "a": {
+     "raw": null,
+     "events": null,
+     "replay": null,
+     "sidecar": null,
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [
+    []
+   ],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "rewrite_is_a_replace_and_search_finds_the_old",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "start"
+      },
+      {
+       "role": "assistant",
+       "content": "the zebra detail"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "[Summary of the conversation so far. Continue from here.]\n\nso far"
+      },
+      {
+       "role": "assistant",
+       "content": "Understood. I'll continue from the summary above."
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a"
+    }
+   ],
+   "queries": {
+    "search": [
+     [
+      "zebra",
+      null
+     ],
+     [
+      "ZEBRA Detail",
+      "$T/proj"
+     ],
+     [
+      "zebra giraffe",
+      null
+     ],
+     [
+      "",
+      null
+     ],
+     [
+      "summary",
+      null
+     ]
+    ]
+   },
+   "results": [
+    null,
+    true,
+    true,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"start\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"the zebra detail\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"start\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"replace\", \"messages\": [{\"role\": \"user\", \"content\": \"[Summary of the conversation so far. Continue from here.]\\n\\nso far\"}, {\"role\": \"assistant\", \"content\": \"Understood. I'll continue from the summary above.\"}], \"ts\": 1761868802.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868803.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "start"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "the zebra detail"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "start",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "replace",
+       "messages": [
+        {
+         "role": "user",
+         "content": "[Summary of the conversation so far. Continue from here.]\n\nso far"
+        },
+        {
+         "role": "assistant",
+         "content": "Understood. I'll continue from the summary above."
+        }
+       ],
+       "ts": 1761868802.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868803.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "[Summary of the conversation so far. Continue from here.]\n\nso far"
+       },
+       {
+        "role": "assistant",
+        "content": "Understood. I'll continue from the summary above."
+       }
+      ],
+      "earlier": [
+       {
+        "role": "user",
+        "content": "start"
+       },
+       {
+        "role": "assistant",
+        "content": "the zebra detail"
+       },
+       {
+        "compacted": true
+       }
+      ],
+      "title": "start",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868803.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "start",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868803.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [
+    [
+     {
+      "id": "{a}",
+      "title": "start",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868803.25,
+      "messages": 2,
+      "source": null,
+      "snippet": "start the zebra detail [Summary of the conversation so far. Continue from here.] so far U…"
+     }
+    ],
+    [
+     {
+      "id": "{a}",
+      "title": "start",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868803.25,
+      "messages": 2,
+      "source": null,
+      "snippet": "start the zebra detail [Summary of the conversation so far. Continue from here.] so far U…"
+     }
+    ],
+    [],
+    [
+     {
+      "id": "{a}",
+      "title": "start",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868803.25,
+      "messages": 2,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{a}",
+      "title": "start",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868803.25,
+      "messages": 2,
+      "source": null,
+      "snippet": "start the zebra detail [Summary of the conversation so far. Continue from here.] so far U…"
+     }
+    ]
+   ],
+   "resolve": []
+  },
+  {
+   "name": "torn_last_line_is_trimmed_on_resume",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "a"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a"
+    },
+    {
+     "op": "raw",
+     "log": "a",
+     "text": "{\"t\": \"msg\", \"message\": {\"role\": \"assi"
+    },
+    {
+     "op": "open",
+     "log": "a",
+     "as": "a2"
+    },
+    {
+     "op": "sync",
+     "log": "a2",
+     "messages": [
+      {
+       "role": "user",
+       "content": "a"
+      },
+      {
+       "role": "assistant",
+       "content": "b"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a2"
+    }
+   ],
+   "results": [
+    null,
+    true,
+    null,
+    null,
+    "ok",
+    true,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"a\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"a\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868802.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"b\"}, \"ts\": 1761868805.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868806.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "a"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "a",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868802.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "b"
+       },
+       "ts": 1761868805.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868806.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "a"
+       },
+       {
+        "role": "assistant",
+        "content": "b"
+       }
+      ],
+      "earlier": [],
+      "title": "a",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868806.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "a",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868806.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "resume_with_nothing_new_writes_nothing",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj",
+     "model": "m"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": "s",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a"
+    },
+    {
+     "op": "open",
+     "log": "a",
+     "as": "a2"
+    },
+    {
+     "op": "sync",
+     "log": "a2",
+     "system": "s",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a2",
+     "system": null,
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      },
+      {
+       "role": "user",
+       "content": "question 2"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 2"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a2",
+     "reason": "switch"
+    }
+   ],
+   "results": [
+    null,
+    true,
+    null,
+    "ok",
+    false,
+    true,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": \"m\", \"ts\": 1761868801.25}\n{\"t\": \"system\", \"text\": \"s\", \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"question 1\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868802.25}\n{\"t\": \"system\", \"text\": null, \"ts\": 1761868805.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 2\"}, \"ts\": 1761868805.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 2\"}, \"ts\": 1761868805.25}\n{\"t\": \"end\", \"reason\": \"switch\", \"ts\": 1761868806.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868801.25
+      },
+      {
+       "t": "system",
+       "text": "s",
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "question 1",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868802.25
+      },
+      {
+       "t": "system",
+       "text": null,
+       "ts": 1761868805.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 2"
+       },
+       "ts": 1761868805.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 2"
+       },
+       "ts": 1761868805.25
+      },
+      {
+       "t": "end",
+       "reason": "switch",
+       "ts": 1761868806.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "question 1"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       {
+        "role": "user",
+        "content": "question 2"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 2"
+       }
+      ],
+      "earlier": [],
+      "title": "question 1",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868806.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "question 1",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868806.25,
+      "messages": 4,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "user_title_beats_automatic_title",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+     ]
+    },
+    {
+     "op": "rename",
+     "log": "a",
+     "title": "My plan"
+    },
+    {
+     "op": "raw",
+     "log": "a",
+     "text": "{\"t\": \"title\", \"text\": \"auto later\", \"auto\": true}\n"
+    },
+    {
+     "op": "auto",
+     "log": "a",
+     "title": "model's"
+    },
+    {
+     "op": "close",
+     "log": "a"
+    }
+   ],
+   "queries": {
+    "list": [
+     null
+    ]
+   },
+   "results": [
+    null,
+    true,
+    null,
+    null,
+    false,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"My plan\", \"auto\": false, \"ts\": 1761868802.25}\n{\"t\": \"title\", \"text\": \"auto later\", \"auto\": true}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868805.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "My plan",
+       "auto": false,
+       "ts": 1761868802.25
+      },
+      {
+       "t": "title",
+       "text": "auto later",
+       "auto": true
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868805.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+       }
+      ],
+      "earlier": [],
+      "title": "My plan",
+      "title_auto": false,
+      "title_by_model": false,
+      "updated": 1761868805.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "My plan",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868805.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [
+    [
+     {
+      "id": "{a}",
+      "title": "My plan",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868805.25,
+      "messages": 1,
+      "source": null
+     }
+    ]
+   ],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "model_title_survives_resume",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "hello"
+      }
+     ]
+    },
+    {
+     "op": "auto",
+     "log": "a",
+     "title": "Greeting the model"
+    },
+    {
+     "op": "close",
+     "log": "a"
+    },
+    {
+     "op": "open",
+     "log": "a",
+     "as": "a2"
+    },
+    {
+     "op": "auto",
+     "log": "a2",
+     "title": "Another"
+    },
+    {
+     "op": "close",
+     "log": "a2"
+    }
+   ],
+   "results": [
+    null,
+    true,
+    true,
+    null,
+    "ok",
+    true,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"hello\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"hello\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"Greeting the model\", \"auto\": true, \"by\": \"model\", \"ts\": 1761868802.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868803.25}\n{\"t\": \"title\", \"text\": \"Another\", \"auto\": true, \"by\": \"model\", \"ts\": 1761868805.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868806.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "hello"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "hello",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "Greeting the model",
+       "auto": true,
+       "by": "model",
+       "ts": 1761868802.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868803.25
+      },
+      {
+       "t": "title",
+       "text": "Another",
+       "auto": true,
+       "by": "model",
+       "ts": 1761868805.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868806.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "hello"
+       }
+      ],
+      "earlier": [],
+      "title": "Another",
+      "title_auto": true,
+      "title_by_model": true,
+      "updated": 1761868806.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "Another",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868806.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "second_writer_is_refused",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "a"
+      }
+     ]
+    },
+    {
+     "op": "open",
+     "log": "a",
+     "as": "b"
+    },
+    {
+     "op": "trash",
+     "log": "a"
+    },
+    {
+     "op": "close",
+     "log": "a"
+    },
+    {
+     "op": "open",
+     "log": "a",
+     "as": "b"
+    },
+    {
+     "op": "close",
+     "log": "b"
+    }
+   ],
+   "results": [
+    null,
+    true,
+    "busy",
+    "busy",
+    null,
+    "ok",
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"a\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"a\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868804.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868806.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "a"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "a",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868804.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868806.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "a"
+       }
+      ],
+      "earlier": [],
+      "title": "a",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868806.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "a",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868806.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": [],
+   "list": [],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "fork_copies_history_and_files",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj",
+     "model": "m"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": "s",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      }
+     ]
+    },
+    {
+     "op": "files",
+     "log": "a"
+    },
+    {
+     "op": "fork",
+     "log": "a",
+     "system": "s",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      }
+     ],
+     "as": "b"
+    },
+    {
+     "op": "fork",
+     "log": "a",
+     "system": null,
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      }
+     ],
+     "title": "Plan B",
+     "as": "c"
+    },
+    {
+     "op": "sync",
+     "log": "b",
+     "system": "s",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      },
+      {
+       "role": "user",
+       "content": "question 2"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 2"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a",
+     "reason": "fork"
+    },
+    {
+     "op": "close",
+     "log": "b"
+    },
+    {
+     "op": "close",
+     "log": "c"
+    }
+   ],
+   "queries": {
+    "list": [
+     "$T/proj"
+    ]
+   },
+   "results": [
+    null,
+    true,
+    null,
+    null,
+    null,
+    true,
+    null,
+    null,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": \"m\", \"ts\": 1761868801.25}\n{\"t\": \"system\", \"text\": \"s\", \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"question 1\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"fork\", \"ts\": 1761868806.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868801.25
+      },
+      {
+       "t": "system",
+       "text": "s",
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "question 1",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "fork",
+       "ts": 1761868806.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868801.25
+      },
+      "system": "s",
+      "messages": [
+       {
+        "role": "user",
+        "content": "question 1"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 1"
+       }
+      ],
+      "earlier": [],
+      "title": "question 1",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868806.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "question 1",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868806.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": [
+      "1"
+     ]
+    },
+    "b": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{b}\", \"created\": 1761868803.25, \"project\": \"$T/proj\", \"model\": \"m\", \"ts\": 1761868803.25}\n{\"t\": \"system\", \"text\": \"s\", \"ts\": 1761868803.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 1\"}, \"ts\": 1761868803.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 1\"}, \"ts\": 1761868803.25}\n{\"t\": \"title\", \"text\": \"question 1 (fork)\", \"auto\": true, \"by\": \"model\", \"ts\": 1761868803.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 2\"}, \"ts\": 1761868805.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 2\"}, \"ts\": 1761868805.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868807.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868803.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868803.25
+      },
+      {
+       "t": "system",
+       "text": "s",
+       "ts": 1761868803.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 1"
+       },
+       "ts": 1761868803.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       "ts": 1761868803.25
+      },
+      {
+       "t": "title",
+       "text": "question 1 (fork)",
+       "auto": true,
+       "by": "model",
+       "ts": 1761868803.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 2"
+       },
+       "ts": 1761868805.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 2"
+       },
+       "ts": 1761868805.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868807.25
+      }
+     ],
+     "replay": {
+      "id": "{b}",
+      "meta": {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868803.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868803.25
+      },
+      "system": "s",
+      "messages": [
+       {
+        "role": "user",
+        "content": "question 1"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       {
+        "role": "user",
+        "content": "question 2"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 2"
+       }
+      ],
+      "earlier": [],
+      "title": "question 1 (fork)",
+      "title_auto": true,
+      "title_by_model": true,
+      "updated": 1761868807.25
+     },
+     "sidecar": {
+      "id": "{b}",
+      "title": "question 1 (fork)",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868803.25,
+      "updated": 1761868807.25,
+      "messages": 4,
+      "source": null
+     },
+     "files": [
+      "1"
+     ]
+    },
+    "c": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{c}\", \"created\": 1761868804.25, \"project\": \"$T/proj\", \"model\": \"m\", \"ts\": 1761868804.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 1\"}, \"ts\": 1761868804.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 1\"}, \"ts\": 1761868804.25}\n{\"t\": \"title\", \"text\": \"Plan B\", \"auto\": false, \"by\": \"model\", \"ts\": 1761868804.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868808.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{c}",
+       "created": 1761868804.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868804.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 1"
+       },
+       "ts": 1761868804.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       "ts": 1761868804.25
+      },
+      {
+       "t": "title",
+       "text": "Plan B",
+       "auto": false,
+       "by": "model",
+       "ts": 1761868804.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868808.25
+      }
+     ],
+     "replay": {
+      "id": "{c}",
+      "meta": {
+       "t": "meta",
+       "id": "{c}",
+       "created": 1761868804.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868804.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "question 1"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 1"
+       }
+      ],
+      "earlier": [],
+      "title": "Plan B",
+      "title_auto": false,
+      "title_by_model": false,
+      "updated": 1761868808.25
+     },
+     "sidecar": {
+      "id": "{c}",
+      "title": "Plan B",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868808.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": [
+      "1"
+     ]
+    }
+   },
+   "trash": null,
+   "list": [
+    [
+     {
+      "id": "{c}",
+      "title": "Plan B",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868808.25,
+      "messages": 2,
+      "source": null
+     },
+     {
+      "id": "{b}",
+      "title": "question 1 (fork)",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868803.25,
+      "updated": 1761868807.25,
+      "messages": 4,
+      "source": null
+     },
+     {
+      "id": "{a}",
+      "title": "question 1",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868806.25,
+      "messages": 2,
+      "source": null
+     }
+    ]
+   ],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "fork_of_a_model_titled_chat",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      }
+     ]
+    },
+    {
+     "op": "auto",
+     "log": "a",
+     "title": "Model named"
+    },
+    {
+     "op": "fork",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      }
+     ],
+     "as": "b"
+    },
+    {
+     "op": "auto",
+     "log": "b",
+     "title": "never"
+    },
+    {
+     "op": "close",
+     "log": "b"
+    },
+    {
+     "op": "close",
+     "log": "a"
+    }
+   ],
+   "results": [
+    null,
+    true,
+    true,
+    null,
+    true,
+    null,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"question 1\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"Model named\", \"auto\": true, \"by\": \"model\", \"ts\": 1761868802.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868806.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "question 1",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "Model named",
+       "auto": true,
+       "by": "model",
+       "ts": 1761868802.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868806.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "question 1"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 1"
+       }
+      ],
+      "earlier": [],
+      "title": "Model named",
+      "title_auto": true,
+      "title_by_model": true,
+      "updated": 1761868806.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "Model named",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868806.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": null
+    },
+    "b": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{b}\", \"created\": 1761868803.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868803.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 1\"}, \"ts\": 1761868803.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 1\"}, \"ts\": 1761868803.25}\n{\"t\": \"title\", \"text\": \"Model named (fork)\", \"auto\": true, \"by\": \"model\", \"ts\": 1761868803.25}\n{\"t\": \"title\", \"text\": \"never\", \"auto\": true, \"by\": \"model\", \"ts\": 1761868804.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868805.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868803.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868803.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 1"
+       },
+       "ts": 1761868803.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       "ts": 1761868803.25
+      },
+      {
+       "t": "title",
+       "text": "Model named (fork)",
+       "auto": true,
+       "by": "model",
+       "ts": 1761868803.25
+      },
+      {
+       "t": "title",
+       "text": "never",
+       "auto": true,
+       "by": "model",
+       "ts": 1761868804.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868805.25
+      }
+     ],
+     "replay": {
+      "id": "{b}",
+      "meta": {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868803.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868803.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "question 1"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 1"
+       }
+      ],
+      "earlier": [],
+      "title": "never",
+      "title_auto": true,
+      "title_by_model": true,
+      "updated": 1761868805.25
+     },
+     "sidecar": {
+      "id": "{b}",
+      "title": "never",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868803.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "fork_of_an_untitled_chat_titles_twice",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "fork",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      }
+     ],
+     "as": "b"
+    },
+    {
+     "op": "close",
+     "log": "b"
+    }
+   ],
+   "results": [
+    null,
+    null,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": null,
+     "events": null,
+     "replay": null,
+     "sidecar": null,
+     "files": null
+    },
+    "b": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{b}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"question 1\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"question 1\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868802.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "question 1",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "question 1",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868802.25
+      }
+     ],
+     "replay": {
+      "id": "{b}",
+      "meta": {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "question 1"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 1"
+       }
+      ],
+      "earlier": [],
+      "title": "question 1",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868802.25
+     },
+     "sidecar": {
+      "id": "{b}",
+      "title": "question 1",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "listing_is_project_scoped_and_title_hits_rank_first",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "talk about apples"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a"
+    },
+    {
+     "op": "new",
+     "log": "b",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "b",
+     "messages": [
+      {
+       "role": "user",
+       "content": "unrelated"
+      },
+      {
+       "role": "assistant",
+       "content": "but apples appear here"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "b"
+    },
+    {
+     "op": "new",
+     "log": "c",
+     "project": "/elsewhere"
+    },
+    {
+     "op": "sync",
+     "log": "c",
+     "messages": [
+      {
+       "role": "user",
+       "content": "apples elsewhere"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "c"
+    },
+    {
+     "op": "new",
+     "log": "d"
+    },
+    {
+     "op": "sync",
+     "log": "d",
+     "messages": [
+      {
+       "role": "user",
+       "content": "apples with no project"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "d"
+    }
+   ],
+   "queries": {
+    "list": [
+     "$T/proj",
+     null,
+     "/elsewhere"
+    ],
+    "search": [
+     [
+      "apples",
+      "$T/proj"
+     ],
+     [
+      "apples",
+      null
+     ],
+     [
+      "apples pears",
+      null
+     ],
+     [
+      "APPEAR apples",
+      null
+     ],
+     [
+      "unrelated apples",
+      "$T/proj"
+     ]
+    ],
+    "resolve": [
+     [
+      "",
+      "$T/proj"
+     ],
+     [
+      "@b",
+      null
+     ],
+     [
+      "2",
+      "$T/proj"
+     ],
+     [
+      "apples",
+      "$T/proj"
+     ],
+     [
+      "nothing",
+      null
+     ]
+    ]
+   },
+   "results": [
+    null,
+    true,
+    null,
+    null,
+    true,
+    null,
+    null,
+    true,
+    null,
+    null,
+    true,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"talk about apples\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"talk about apples\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868802.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "talk about apples"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "talk about apples",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868802.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "talk about apples"
+       }
+      ],
+      "earlier": [],
+      "title": "talk about apples",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868802.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "talk about apples",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    },
+    "b": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{b}\", \"created\": 1761868804.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868804.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"unrelated\"}, \"ts\": 1761868804.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"but apples appear here\"}, \"ts\": 1761868804.25}\n{\"t\": \"title\", \"text\": \"unrelated\", \"auto\": true, \"ts\": 1761868804.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868805.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868804.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868804.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "unrelated"
+       },
+       "ts": 1761868804.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "but apples appear here"
+       },
+       "ts": 1761868804.25
+      },
+      {
+       "t": "title",
+       "text": "unrelated",
+       "auto": true,
+       "ts": 1761868804.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868805.25
+      }
+     ],
+     "replay": {
+      "id": "{b}",
+      "meta": {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868804.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868804.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "unrelated"
+       },
+       {
+        "role": "assistant",
+        "content": "but apples appear here"
+       }
+      ],
+      "earlier": [],
+      "title": "unrelated",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868805.25
+     },
+     "sidecar": {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": null
+    },
+    "c": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{c}\", \"created\": 1761868807.25, \"project\": \"/elsewhere\", \"model\": null, \"ts\": 1761868807.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"apples elsewhere\"}, \"ts\": 1761868807.25}\n{\"t\": \"title\", \"text\": \"apples elsewhere\", \"auto\": true, \"ts\": 1761868807.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868808.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{c}",
+       "created": 1761868807.25,
+       "project": "/elsewhere",
+       "model": null,
+       "ts": 1761868807.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "apples elsewhere"
+       },
+       "ts": 1761868807.25
+      },
+      {
+       "t": "title",
+       "text": "apples elsewhere",
+       "auto": true,
+       "ts": 1761868807.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868808.25
+      }
+     ],
+     "replay": {
+      "id": "{c}",
+      "meta": {
+       "t": "meta",
+       "id": "{c}",
+       "created": 1761868807.25,
+       "project": "/elsewhere",
+       "model": null,
+       "ts": 1761868807.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "apples elsewhere"
+       }
+      ],
+      "earlier": [],
+      "title": "apples elsewhere",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868808.25
+     },
+     "sidecar": {
+      "id": "{c}",
+      "title": "apples elsewhere",
+      "title_auto": true,
+      "project": "/elsewhere",
+      "created": 1761868807.25,
+      "updated": 1761868808.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    },
+    "d": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{d}\", \"created\": 1761868810.25, \"project\": null, \"model\": null, \"ts\": 1761868810.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"apples with no project\"}, \"ts\": 1761868810.25}\n{\"t\": \"title\", \"text\": \"apples with no project\", \"auto\": true, \"ts\": 1761868810.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868811.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{d}",
+       "created": 1761868810.25,
+       "project": null,
+       "model": null,
+       "ts": 1761868810.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "apples with no project"
+       },
+       "ts": 1761868810.25
+      },
+      {
+       "t": "title",
+       "text": "apples with no project",
+       "auto": true,
+       "ts": 1761868810.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868811.25
+      }
+     ],
+     "replay": {
+      "id": "{d}",
+      "meta": {
+       "t": "meta",
+       "id": "{d}",
+       "created": 1761868810.25,
+       "project": null,
+       "model": null,
+       "ts": 1761868810.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "apples with no project"
+       }
+      ],
+      "earlier": [],
+      "title": "apples with no project",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868811.25
+     },
+     "sidecar": {
+      "id": "{d}",
+      "title": "apples with no project",
+      "title_auto": true,
+      "project": null,
+      "created": 1761868810.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [
+    [
+     {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null
+     },
+     {
+      "id": "{a}",
+      "title": "talk about apples",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 1,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{d}",
+      "title": "apples with no project",
+      "title_auto": true,
+      "project": null,
+      "created": 1761868810.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{c}",
+      "title": "apples elsewhere",
+      "title_auto": true,
+      "project": "/elsewhere",
+      "created": 1761868807.25,
+      "updated": 1761868808.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null
+     },
+     {
+      "id": "{a}",
+      "title": "talk about apples",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 1,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{c}",
+      "title": "apples elsewhere",
+      "title_auto": true,
+      "project": "/elsewhere",
+      "created": 1761868807.25,
+      "updated": 1761868808.25,
+      "messages": 1,
+      "source": null
+     }
+    ]
+   ],
+   "search": [
+    [
+     {
+      "id": "{a}",
+      "title": "talk about apples",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null,
+      "snippet": "unrelated but apples appear here…"
+     }
+    ],
+    [
+     {
+      "id": "{d}",
+      "title": "apples with no project",
+      "title_auto": true,
+      "project": null,
+      "created": 1761868810.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{c}",
+      "title": "apples elsewhere",
+      "title_auto": true,
+      "project": "/elsewhere",
+      "created": 1761868807.25,
+      "updated": 1761868808.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{a}",
+      "title": "talk about apples",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null,
+      "snippet": "unrelated but apples appear here…"
+     }
+    ],
+    [],
+    [
+     {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null,
+      "snippet": "unrelated but apples appear here…"
+     }
+    ],
+    [
+     {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null,
+      "snippet": "unrelated but apples appear here…"
+     }
+    ]
+   ],
+   "resolve": [
+    [
+     {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null
+     },
+     {
+      "id": "{a}",
+      "title": "talk about apples",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 1,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{d}",
+      "title": "apples with no project",
+      "title_auto": true,
+      "project": null,
+      "created": 1761868810.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{c}",
+      "title": "apples elsewhere",
+      "title_auto": true,
+      "project": "/elsewhere",
+      "created": 1761868807.25,
+      "updated": 1761868808.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null
+     },
+     {
+      "id": "{a}",
+      "title": "talk about apples",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 1,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{a}",
+      "title": "talk about apples",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{b}",
+      "title": "unrelated",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null,
+      "snippet": "unrelated but apples appear here…"
+     }
+    ],
+    []
+   ]
+  },
+  {
+   "name": "scope_follows_the_project_tree",
+   "steps": [
+    {
+     "op": "new",
+     "log": "self",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "self",
+     "messages": [
+      {
+       "role": "user",
+       "content": "self"
+      }
+     ]
+    },
+    {
+     "op": "new",
+     "log": "sub",
+     "project": "$T/proj/sub"
+    },
+    {
+     "op": "sync",
+     "log": "sub",
+     "messages": [
+      {
+       "role": "user",
+       "content": "sub"
+      }
+     ]
+    },
+    {
+     "op": "new",
+     "log": "parent",
+     "project": "$T"
+    },
+    {
+     "op": "sync",
+     "log": "parent",
+     "messages": [
+      {
+       "role": "user",
+       "content": "parent"
+      }
+     ]
+    },
+    {
+     "op": "new",
+     "log": "sib",
+     "project": "$T/other"
+    },
+    {
+     "op": "sync",
+     "log": "sib",
+     "messages": [
+      {
+       "role": "user",
+       "content": "sib"
+      }
+     ]
+    },
+    {
+     "op": "new",
+     "log": "prefix",
+     "project": "$T/proj-two"
+    },
+    {
+     "op": "sync",
+     "log": "prefix",
+     "messages": [
+      {
+       "role": "user",
+       "content": "prefix"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "self"
+    },
+    {
+     "op": "close",
+     "log": "sub"
+    },
+    {
+     "op": "close",
+     "log": "parent"
+    },
+    {
+     "op": "close",
+     "log": "sib"
+    },
+    {
+     "op": "close",
+     "log": "prefix"
+    }
+   ],
+   "queries": {
+    "list": [
+     "$T/proj",
+     "$T/proj/sub",
+     "$T",
+     "$T/proj/",
+     "/"
+    ]
+   },
+   "results": [
+    null,
+    true,
+    null,
+    true,
+    null,
+    true,
+    null,
+    true,
+    null,
+    true,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "files": {
+    "self": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{self}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"self\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"self\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868810.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{self}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "self"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "self",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868810.25
+      }
+     ],
+     "replay": {
+      "id": "{self}",
+      "meta": {
+       "t": "meta",
+       "id": "{self}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "self"
+       }
+      ],
+      "earlier": [],
+      "title": "self",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868810.25
+     },
+     "sidecar": {
+      "id": "{self}",
+      "title": "self",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868810.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    },
+    "sub": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{sub}\", \"created\": 1761868803.25, \"project\": \"$T/proj/sub\", \"model\": null, \"ts\": 1761868803.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"sub\"}, \"ts\": 1761868803.25}\n{\"t\": \"title\", \"text\": \"sub\", \"auto\": true, \"ts\": 1761868803.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868811.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{sub}",
+       "created": 1761868803.25,
+       "project": "$T/proj/sub",
+       "model": null,
+       "ts": 1761868803.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "sub"
+       },
+       "ts": 1761868803.25
+      },
+      {
+       "t": "title",
+       "text": "sub",
+       "auto": true,
+       "ts": 1761868803.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868811.25
+      }
+     ],
+     "replay": {
+      "id": "{sub}",
+      "meta": {
+       "t": "meta",
+       "id": "{sub}",
+       "created": 1761868803.25,
+       "project": "$T/proj/sub",
+       "model": null,
+       "ts": 1761868803.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "sub"
+       }
+      ],
+      "earlier": [],
+      "title": "sub",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868811.25
+     },
+     "sidecar": {
+      "id": "{sub}",
+      "title": "sub",
+      "title_auto": true,
+      "project": "$T/proj/sub",
+      "created": 1761868803.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    },
+    "parent": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{parent}\", \"created\": 1761868805.25, \"project\": \"$T\", \"model\": null, \"ts\": 1761868805.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"parent\"}, \"ts\": 1761868805.25}\n{\"t\": \"title\", \"text\": \"parent\", \"auto\": true, \"ts\": 1761868805.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868812.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{parent}",
+       "created": 1761868805.25,
+       "project": "$T",
+       "model": null,
+       "ts": 1761868805.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "parent"
+       },
+       "ts": 1761868805.25
+      },
+      {
+       "t": "title",
+       "text": "parent",
+       "auto": true,
+       "ts": 1761868805.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868812.25
+      }
+     ],
+     "replay": {
+      "id": "{parent}",
+      "meta": {
+       "t": "meta",
+       "id": "{parent}",
+       "created": 1761868805.25,
+       "project": "$T",
+       "model": null,
+       "ts": 1761868805.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "parent"
+       }
+      ],
+      "earlier": [],
+      "title": "parent",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868812.25
+     },
+     "sidecar": {
+      "id": "{parent}",
+      "title": "parent",
+      "title_auto": true,
+      "project": "$T",
+      "created": 1761868805.25,
+      "updated": 1761868812.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    },
+    "sib": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{sib}\", \"created\": 1761868807.25, \"project\": \"$T/other\", \"model\": null, \"ts\": 1761868807.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"sib\"}, \"ts\": 1761868807.25}\n{\"t\": \"title\", \"text\": \"sib\", \"auto\": true, \"ts\": 1761868807.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868813.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{sib}",
+       "created": 1761868807.25,
+       "project": "$T/other",
+       "model": null,
+       "ts": 1761868807.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "sib"
+       },
+       "ts": 1761868807.25
+      },
+      {
+       "t": "title",
+       "text": "sib",
+       "auto": true,
+       "ts": 1761868807.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868813.25
+      }
+     ],
+     "replay": {
+      "id": "{sib}",
+      "meta": {
+       "t": "meta",
+       "id": "{sib}",
+       "created": 1761868807.25,
+       "project": "$T/other",
+       "model": null,
+       "ts": 1761868807.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "sib"
+       }
+      ],
+      "earlier": [],
+      "title": "sib",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868813.25
+     },
+     "sidecar": {
+      "id": "{sib}",
+      "title": "sib",
+      "title_auto": true,
+      "project": "$T/other",
+      "created": 1761868807.25,
+      "updated": 1761868813.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    },
+    "prefix": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{prefix}\", \"created\": 1761868809.25, \"project\": \"$T/proj-two\", \"model\": null, \"ts\": 1761868809.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"prefix\"}, \"ts\": 1761868809.25}\n{\"t\": \"title\", \"text\": \"prefix\", \"auto\": true, \"ts\": 1761868809.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868814.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{prefix}",
+       "created": 1761868809.25,
+       "project": "$T/proj-two",
+       "model": null,
+       "ts": 1761868809.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "prefix"
+       },
+       "ts": 1761868809.25
+      },
+      {
+       "t": "title",
+       "text": "prefix",
+       "auto": true,
+       "ts": 1761868809.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868814.25
+      }
+     ],
+     "replay": {
+      "id": "{prefix}",
+      "meta": {
+       "t": "meta",
+       "id": "{prefix}",
+       "created": 1761868809.25,
+       "project": "$T/proj-two",
+       "model": null,
+       "ts": 1761868809.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "prefix"
+       }
+      ],
+      "earlier": [],
+      "title": "prefix",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868814.25
+     },
+     "sidecar": {
+      "id": "{prefix}",
+      "title": "prefix",
+      "title_auto": true,
+      "project": "$T/proj-two",
+      "created": 1761868809.25,
+      "updated": 1761868814.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [
+    [
+     {
+      "id": "{parent}",
+      "title": "parent",
+      "title_auto": true,
+      "project": "$T",
+      "created": 1761868805.25,
+      "updated": 1761868812.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{sub}",
+      "title": "sub",
+      "title_auto": true,
+      "project": "$T/proj/sub",
+      "created": 1761868803.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{self}",
+      "title": "self",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868810.25,
+      "messages": 1,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{parent}",
+      "title": "parent",
+      "title_auto": true,
+      "project": "$T",
+      "created": 1761868805.25,
+      "updated": 1761868812.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{sub}",
+      "title": "sub",
+      "title_auto": true,
+      "project": "$T/proj/sub",
+      "created": 1761868803.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{self}",
+      "title": "self",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868810.25,
+      "messages": 1,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{prefix}",
+      "title": "prefix",
+      "title_auto": true,
+      "project": "$T/proj-two",
+      "created": 1761868809.25,
+      "updated": 1761868814.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{sib}",
+      "title": "sib",
+      "title_auto": true,
+      "project": "$T/other",
+      "created": 1761868807.25,
+      "updated": 1761868813.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{parent}",
+      "title": "parent",
+      "title_auto": true,
+      "project": "$T",
+      "created": 1761868805.25,
+      "updated": 1761868812.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{sub}",
+      "title": "sub",
+      "title_auto": true,
+      "project": "$T/proj/sub",
+      "created": 1761868803.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{self}",
+      "title": "self",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868810.25,
+      "messages": 1,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{parent}",
+      "title": "parent",
+      "title_auto": true,
+      "project": "$T",
+      "created": 1761868805.25,
+      "updated": 1761868812.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{sub}",
+      "title": "sub",
+      "title_auto": true,
+      "project": "$T/proj/sub",
+      "created": 1761868803.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{self}",
+      "title": "self",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868810.25,
+      "messages": 1,
+      "source": null
+     }
+    ],
+    [
+     {
+      "id": "{prefix}",
+      "title": "prefix",
+      "title_auto": true,
+      "project": "$T/proj-two",
+      "created": 1761868809.25,
+      "updated": 1761868814.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{sib}",
+      "title": "sib",
+      "title_auto": true,
+      "project": "$T/other",
+      "created": 1761868807.25,
+      "updated": 1761868813.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{parent}",
+      "title": "parent",
+      "title_auto": true,
+      "project": "$T",
+      "created": 1761868805.25,
+      "updated": 1761868812.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{sub}",
+      "title": "sub",
+      "title_auto": true,
+      "project": "$T/proj/sub",
+      "created": 1761868803.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{self}",
+      "title": "self",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868810.25,
+      "messages": 1,
+      "source": null
+     }
+    ]
+   ],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "stale_sidecar_is_rebuilt",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "first"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a"
+    },
+    {
+     "op": "unlink_sidecar",
+     "log": "a"
+    }
+   ],
+   "queries": {
+    "list": [
+     null
+    ]
+   },
+   "results": [
+    null,
+    true,
+    null,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"first\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"first\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868802.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "first"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "first",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868802.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "first"
+       }
+      ],
+      "earlier": [],
+      "title": "first",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868802.25
+     },
+     "sidecar": null,
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [
+    [
+     {
+      "id": "{a}",
+      "title": "first",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 1,
+      "source": null
+     }
+    ]
+   ],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "trash_moves_the_log_and_its_files",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "a"
+      }
+     ]
+    },
+    {
+     "op": "files",
+     "log": "a"
+    },
+    {
+     "op": "close",
+     "log": "a"
+    },
+    {
+     "op": "trash",
+     "log": "a"
+    }
+   ],
+   "queries": {
+    "list": [
+     null
+    ]
+   },
+   "results": [
+    null,
+    true,
+    null,
+    null,
+    "ok"
+   ],
+   "files": {
+    "a": {
+     "raw": null,
+     "events": null,
+     "replay": null,
+     "sidecar": null,
+     "files": null
+    }
+   },
+   "trash": [
+    "{a}.files",
+    "{a}.jsonl"
+   ],
+   "list": [
+    []
+   ],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "import_keeps_the_transcript_date",
+   "steps": [
+    {
+     "op": "import",
+     "name": "old.md",
+     "mtime": 1700000000,
+     "project": "$T/proj",
+     "messages": [
+      {
+       "role": "user",
+       "content": "q"
+      },
+      {
+       "role": "assistant",
+       "content": "r"
+      }
+     ],
+     "system": "sys",
+     "as": "imp"
+    },
+    {
+     "op": "import",
+     "name": "older notes.md",
+     "mtime": 1600000000.5,
+     "messages": [],
+     "as": "empty"
+    }
+   ],
+   "queries": {
+    "list": [
+     "$T/proj",
+     null
+    ]
+   },
+   "results": [
+    null,
+    null
+   ],
+   "files": {
+    "imp": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{imp}\", \"created\": 1700000000.0, \"project\": \"$T/proj\", \"model\": null, \"source\": \"$T/old.md\", \"ts\": 1700000000.0}\n{\"t\": \"system\", \"text\": \"sys\", \"ts\": 1700000000.0}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"q\"}, \"ts\": 1700000000.0}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"r\"}, \"ts\": 1700000000.0}\n{\"t\": \"title\", \"text\": \"q\", \"auto\": true, \"ts\": 1700000000.0}\n{\"t\": \"title\", \"text\": \"old\", \"auto\": false, \"ts\": 1700000000.0}\n{\"t\": \"end\", \"reason\": \"import\", \"ts\": 1700000000.0}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{imp}",
+       "created": 1700000000.0,
+       "project": "$T/proj",
+       "model": null,
+       "source": "$T/old.md",
+       "ts": 1700000000.0
+      },
+      {
+       "t": "system",
+       "text": "sys",
+       "ts": 1700000000.0
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "q"
+       },
+       "ts": 1700000000.0
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "r"
+       },
+       "ts": 1700000000.0
+      },
+      {
+       "t": "title",
+       "text": "q",
+       "auto": true,
+       "ts": 1700000000.0
+      },
+      {
+       "t": "title",
+       "text": "old",
+       "auto": false,
+       "ts": 1700000000.0
+      },
+      {
+       "t": "end",
+       "reason": "import",
+       "ts": 1700000000.0
+      }
+     ],
+     "replay": {
+      "id": "{imp}",
+      "meta": {
+       "t": "meta",
+       "id": "{imp}",
+       "created": 1700000000.0,
+       "project": "$T/proj",
+       "model": null,
+       "source": "$T/old.md",
+       "ts": 1700000000.0
+      },
+      "system": "sys",
+      "messages": [
+       {
+        "role": "user",
+        "content": "q"
+       },
+       {
+        "role": "assistant",
+        "content": "r"
+       }
+      ],
+      "earlier": [],
+      "title": "old",
+      "title_auto": false,
+      "title_by_model": false,
+      "updated": 1700000000.0
+     },
+     "sidecar": {
+      "id": "{imp}",
+      "title": "old",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1700000000.0,
+      "updated": 1700000000.0,
+      "messages": 2,
+      "source": "$T/old.md"
+     },
+     "files": null
+    },
+    "empty": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{empty}\", \"created\": 1600000000.5, \"project\": null, \"model\": null, \"source\": \"$T/older notes.md\", \"ts\": 1600000000.5}\n{\"t\": \"title\", \"text\": \"older notes\", \"auto\": false, \"ts\": 1600000000.5}\n{\"t\": \"end\", \"reason\": \"import\", \"ts\": 1600000000.5}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{empty}",
+       "created": 1600000000.5,
+       "project": null,
+       "model": null,
+       "source": "$T/older notes.md",
+       "ts": 1600000000.5
+      },
+      {
+       "t": "title",
+       "text": "older notes",
+       "auto": false,
+       "ts": 1600000000.5
+      },
+      {
+       "t": "end",
+       "reason": "import",
+       "ts": 1600000000.5
+      }
+     ],
+     "replay": {
+      "id": "{empty}",
+      "meta": {
+       "t": "meta",
+       "id": "{empty}",
+       "created": 1600000000.5,
+       "project": null,
+       "model": null,
+       "source": "$T/older notes.md",
+       "ts": 1600000000.5
+      },
+      "system": null,
+      "messages": [],
+      "earlier": [],
+      "title": "older notes",
+      "title_auto": false,
+      "title_by_model": false,
+      "updated": 1600000000.5
+     },
+     "sidecar": {
+      "id": "{empty}",
+      "title": "older notes",
+      "title_auto": false,
+      "project": null,
+      "created": 1600000000.5,
+      "updated": 1600000000.5,
+      "messages": 0,
+      "source": "$T/older notes.md"
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [
+    [
+     {
+      "id": "{imp}",
+      "title": "old",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1700000000.0,
+      "updated": 1700000000.0,
+      "messages": 2,
+      "source": "$T/old.md"
+     }
+    ],
+    [
+     {
+      "id": "{imp}",
+      "title": "old",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1700000000.0,
+      "updated": 1700000000.0,
+      "messages": 2,
+      "source": "$T/old.md"
+     },
+     {
+      "id": "{empty}",
+      "title": "older notes",
+      "title_auto": false,
+      "project": null,
+      "created": 1600000000.5,
+      "updated": 1600000000.5,
+      "messages": 0,
+      "source": "$T/older notes.md"
+     }
+    ]
+   ],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "redaction_masks_on_disk_only",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "redact",
+     "log": "a",
+     "literals": [
+      "literal-secret-value"
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": "sys Authorization: Bearer fixture-bearer-0123456789abcdef",
+     "messages": [
+      {
+       "role": "user",
+       "content": "use Authorization: Bearer fixture-bearer-0123456789abcdef and literal-secret-value"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": "sys Authorization: Bearer fixture-bearer-0123456789abcdef",
+     "messages": [
+      {
+       "role": "user",
+       "content": "use Authorization: Bearer fixture-bearer-0123456789abcdef and literal-secret-value"
+      },
+      {
+       "role": "assistant",
+       "content": "ok"
+      }
+     ]
+    },
+    {
+     "op": "rename",
+     "log": "a",
+     "title": "about Authorization: Bearer fixture-bearer-0123456789abcdef"
+    },
+    {
+     "op": "fork",
+     "log": "a",
+     "system": null,
+     "messages": [
+      {
+       "role": "user",
+       "content": "again Authorization: Bearer fixture-bearer-0123456789abcdef"
+      }
+     ],
+     "as": "b"
+    },
+    {
+     "op": "close",
+     "log": "a"
+    },
+    {
+     "op": "close",
+     "log": "b"
+    }
+   ],
+   "results": [
+    null,
+    null,
+    true,
+    true,
+    null,
+    null,
+    null,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868802.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868802.25}\n{\"t\": \"system\", \"text\": \"sys Authorization: Bearer [redacted]\", \"ts\": 1761868802.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"use Authorization: Bearer [redacted] and [redacted]\"}, \"ts\": 1761868802.25}\n{\"t\": \"title\", \"text\": \"use Authorization: Bearer [redacted] a…\", \"auto\": true, \"ts\": 1761868802.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"ok\"}, \"ts\": 1761868803.25}\n{\"t\": \"title\", \"text\": \"about Authorization: Bearer [redacted]\", \"auto\": false, \"ts\": 1761868804.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868806.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868802.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868802.25
+      },
+      {
+       "t": "system",
+       "text": "sys Authorization: Bearer [redacted]",
+       "ts": 1761868802.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "use Authorization: Bearer [redacted] and [redacted]"
+       },
+       "ts": 1761868802.25
+      },
+      {
+       "t": "title",
+       "text": "use Authorization: Bearer [redacted] a…",
+       "auto": true,
+       "ts": 1761868802.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "ok"
+       },
+       "ts": 1761868803.25
+      },
+      {
+       "t": "title",
+       "text": "about Authorization: Bearer [redacted]",
+       "auto": false,
+       "ts": 1761868804.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868806.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868802.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868802.25
+      },
+      "system": "sys Authorization: Bearer [redacted]",
+      "messages": [
+       {
+        "role": "user",
+        "content": "use Authorization: Bearer [redacted] and [redacted]"
+       },
+       {
+        "role": "assistant",
+        "content": "ok"
+       }
+      ],
+      "earlier": [],
+      "title": "about Authorization: Bearer [redacted]",
+      "title_auto": false,
+      "title_by_model": false,
+      "updated": 1761868806.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "about Authorization: Bearer [redacted]",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1761868802.25,
+      "updated": 1761868806.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": null
+    },
+    "b": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{b}\", \"created\": 1761868805.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868805.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"again Authorization: Bearer [redacted]\"}, \"ts\": 1761868805.25}\n{\"t\": \"title\", \"text\": \"about Authorization: Bearer [redacted] (fork)\", \"auto\": false, \"by\": \"model\", \"ts\": 1761868805.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868807.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868805.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868805.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "again Authorization: Bearer [redacted]"
+       },
+       "ts": 1761868805.25
+      },
+      {
+       "t": "title",
+       "text": "about Authorization: Bearer [redacted] (fork)",
+       "auto": false,
+       "by": "model",
+       "ts": 1761868805.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868807.25
+      }
+     ],
+     "replay": {
+      "id": "{b}",
+      "meta": {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868805.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868805.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "again Authorization: Bearer [redacted]"
+       }
+      ],
+      "earlier": [],
+      "title": "about Authorization: Bearer [redacted] (fork)",
+      "title_auto": false,
+      "title_by_model": false,
+      "updated": 1761868807.25
+     },
+     "sidecar": {
+      "id": "{b}",
+      "title": "about Authorization: Bearer [redacted] (fork)",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1761868805.25,
+      "updated": 1761868807.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "compactions_leave_earlier_turns",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      },
+      {
+       "role": "user",
+       "content": "question 2"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 2"
+      },
+      {
+       "role": "user",
+       "content": "question 3"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 3"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "[Summary of the conversation so far. Continue from here.]\n\none and two"
+      },
+      {
+       "role": "assistant",
+       "content": "Understood. I'll continue from the summary above."
+      },
+      {
+       "role": "user",
+       "content": "question 3"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 3"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "[Summary of the conversation so far. Continue from here.]\n\none and two"
+      },
+      {
+       "role": "assistant",
+       "content": "Understood. I'll continue from the summary above."
+      },
+      {
+       "role": "user",
+       "content": "question 3"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 3"
+      },
+      {
+       "role": "user",
+       "content": "question 4"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 4"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "[Summary of the conversation so far. Continue from here.]\n\none and two"
+      },
+      {
+       "role": "assistant",
+       "content": "Understood. I'll continue from the summary above."
+      },
+      {
+       "role": "user",
+       "content": "question 3"
+      },
+      {
+       "role": "assistant",
+       "content": "[elided]"
+      },
+      {
+       "role": "user",
+       "content": "question 4"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 4"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "[Summary of the conversation so far. Continue from here.]\n\none and two\n\n---\n[Summary of the next part of the conversation]\n\nthree"
+      },
+      {
+       "role": "assistant",
+       "content": "Understood. I'll continue from the summary above."
+      },
+      {
+       "role": "user",
+       "content": "question 4"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 4"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "[Summary of the conversation so far. Continue from here.]\n\none and two\n\n---\n[Summary of the next part of the conversation]\n\nthree"
+      },
+      {
+       "role": "assistant",
+       "content": "Understood. I'll continue from the summary above."
+      },
+      {
+       "role": "user",
+       "content": "question 4"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 4"
+      },
+      {
+       "role": "user",
+       "content": "question 5"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 5"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a"
+    }
+   ],
+   "results": [
+    null,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 2\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 2\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 3\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 3\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"question 1\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"replace\", \"messages\": [{\"role\": \"user\", \"content\": \"[Summary of the conversation so far. Continue from here.]\\n\\none and two\"}, {\"role\": \"assistant\", \"content\": \"Understood. I'll continue from the summary above.\"}, {\"role\": \"user\", \"content\": \"question 3\"}, {\"role\": \"assistant\", \"content\": \"answer 3\"}], \"ts\": 1761868802.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 4\"}, \"ts\": 1761868803.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 4\"}, \"ts\": 1761868803.25}\n{\"t\": \"replace\", \"messages\": [{\"role\": \"user\", \"content\": \"[Summary of the conversation so far. Continue from here.]\\n\\none and two\"}, {\"role\": \"assistant\", \"content\": \"Understood. I'll continue from the summary above.\"}, {\"role\": \"user\", \"content\": \"question 3\"}, {\"role\": \"assistant\", \"content\": \"[elided]\"}, {\"role\": \"user\", \"content\": \"question 4\"}, {\"role\": \"assistant\", \"content\": \"answer 4\"}], \"ts\": 1761868804.25}\n{\"t\": \"replace\", \"messages\": [{\"role\": \"user\", \"content\": \"[Summary of the conversation so far. Continue from here.]\\n\\none and two\\n\\n---\\n[Summary of the next part of the conversation]\\n\\nthree\"}, {\"role\": \"assistant\", \"content\": \"Understood. I'll continue from the summary above.\"}, {\"role\": \"user\", \"content\": \"question 4\"}, {\"role\": \"assistant\", \"content\": \"answer 4\"}], \"ts\": 1761868805.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 5\"}, \"ts\": 1761868806.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 5\"}, \"ts\": 1761868806.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868807.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 2"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 2"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 3"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 3"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "question 1",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "replace",
+       "messages": [
+        {
+         "role": "user",
+         "content": "[Summary of the conversation so far. Continue from here.]\n\none and two"
+        },
+        {
+         "role": "assistant",
+         "content": "Understood. I'll continue from the summary above."
+        },
+        {
+         "role": "user",
+         "content": "question 3"
+        },
+        {
+         "role": "assistant",
+         "content": "answer 3"
+        }
+       ],
+       "ts": 1761868802.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 4"
+       },
+       "ts": 1761868803.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 4"
+       },
+       "ts": 1761868803.25
+      },
+      {
+       "t": "replace",
+       "messages": [
+        {
+         "role": "user",
+         "content": "[Summary of the conversation so far. Continue from here.]\n\none and two"
+        },
+        {
+         "role": "assistant",
+         "content": "Understood. I'll continue from the summary above."
+        },
+        {
+         "role": "user",
+         "content": "question 3"
+        },
+        {
+         "role": "assistant",
+         "content": "[elided]"
+        },
+        {
+         "role": "user",
+         "content": "question 4"
+        },
+        {
+         "role": "assistant",
+         "content": "answer 4"
+        }
+       ],
+       "ts": 1761868804.25
+      },
+      {
+       "t": "replace",
+       "messages": [
+        {
+         "role": "user",
+         "content": "[Summary of the conversation so far. Continue from here.]\n\none and two\n\n---\n[Summary of the next part of the conversation]\n\nthree"
+        },
+        {
+         "role": "assistant",
+         "content": "Understood. I'll continue from the summary above."
+        },
+        {
+         "role": "user",
+         "content": "question 4"
+        },
+        {
+         "role": "assistant",
+         "content": "answer 4"
+        }
+       ],
+       "ts": 1761868805.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 5"
+       },
+       "ts": 1761868806.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 5"
+       },
+       "ts": 1761868806.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868807.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "[Summary of the conversation so far. Continue from here.]\n\none and two\n\n---\n[Summary of the next part of the conversation]\n\nthree"
+       },
+       {
+        "role": "assistant",
+        "content": "Understood. I'll continue from the summary above."
+       },
+       {
+        "role": "user",
+        "content": "question 4"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 4"
+       },
+       {
+        "role": "user",
+        "content": "question 5"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 5"
+       }
+      ],
+      "earlier": [
+       {
+        "role": "user",
+        "content": "question 1"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       {
+        "role": "user",
+        "content": "question 2"
+       },
+       {
+        "role": "assistant",
+        "content": "answer 2"
+       },
+       {
+        "compacted": true
+       },
+       {
+        "role": "user",
+        "content": "question 3"
+       },
+       {
+        "role": "assistant",
+        "content": "[elided]"
+       },
+       {
+        "compacted": true
+       }
+      ],
+      "title": "question 1",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868807.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "question 1",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868807.25,
+      "messages": 6,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "a_rewind_leaves_nothing_earlier",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      },
+      {
+       "role": "user",
+       "content": "question 2"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 2"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "question 1"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 1"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "[Summary of the conversation so far. Continue from here.]\n\ns"
+      },
+      {
+       "role": "assistant",
+       "content": "Understood. I'll continue from the summary above."
+      },
+      {
+       "role": "user",
+       "content": "question 2"
+      },
+      {
+       "role": "assistant",
+       "content": "answer 2"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "[Summary of the conversation so far. Continue from here.]\n\ns"
+      },
+      {
+       "role": "assistant",
+       "content": "Understood. I'll continue from the summary above."
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a"
+    }
+   ],
+   "results": [
+    null,
+    true,
+    true,
+    true,
+    true,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 1\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"question 2\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"answer 2\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"question 1\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"replace\", \"messages\": [{\"role\": \"user\", \"content\": \"question 1\"}, {\"role\": \"assistant\", \"content\": \"answer 1\"}], \"ts\": 1761868802.25}\n{\"t\": \"replace\", \"messages\": [{\"role\": \"user\", \"content\": \"[Summary of the conversation so far. Continue from here.]\\n\\ns\"}, {\"role\": \"assistant\", \"content\": \"Understood. I'll continue from the summary above.\"}, {\"role\": \"user\", \"content\": \"question 2\"}, {\"role\": \"assistant\", \"content\": \"answer 2\"}], \"ts\": 1761868803.25}\n{\"t\": \"replace\", \"messages\": [{\"role\": \"user\", \"content\": \"[Summary of the conversation so far. Continue from here.]\\n\\ns\"}, {\"role\": \"assistant\", \"content\": \"Understood. I'll continue from the summary above.\"}], \"ts\": 1761868804.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868805.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 1"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "question 2"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "answer 2"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "question 1",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "replace",
+       "messages": [
+        {
+         "role": "user",
+         "content": "question 1"
+        },
+        {
+         "role": "assistant",
+         "content": "answer 1"
+        }
+       ],
+       "ts": 1761868802.25
+      },
+      {
+       "t": "replace",
+       "messages": [
+        {
+         "role": "user",
+         "content": "[Summary of the conversation so far. Continue from here.]\n\ns"
+        },
+        {
+         "role": "assistant",
+         "content": "Understood. I'll continue from the summary above."
+        },
+        {
+         "role": "user",
+         "content": "question 2"
+        },
+        {
+         "role": "assistant",
+         "content": "answer 2"
+        }
+       ],
+       "ts": 1761868803.25
+      },
+      {
+       "t": "replace",
+       "messages": [
+        {
+         "role": "user",
+         "content": "[Summary of the conversation so far. Continue from here.]\n\ns"
+        },
+        {
+         "role": "assistant",
+         "content": "Understood. I'll continue from the summary above."
+        }
+       ],
+       "ts": 1761868804.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868805.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "[Summary of the conversation so far. Continue from here.]\n\ns"
+       },
+       {
+        "role": "assistant",
+        "content": "Understood. I'll continue from the summary above."
+       }
+      ],
+      "earlier": [
+       {
+        "compacted": true
+       }
+      ],
+      "title": "question 1",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868805.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "question 1",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "corrupt_and_odd_lines_are_skipped",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj",
+     "model": "m"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": "s",
+     "messages": [
+      {
+       "role": "user",
+       "content": "a"
+      }
+     ]
+    },
+    {
+     "op": "raw",
+     "log": "a",
+     "text": "not json\n"
+    },
+    {
+     "op": "raw",
+     "log": "a",
+     "text": "[1, 2]\n"
+    },
+    {
+     "op": "raw",
+     "log": "a",
+     "text": "\n"
+    },
+    {
+     "op": "raw",
+     "log": "a",
+     "text": "{\"t\": \"mystery\", \"ts\": 5}\n"
+    },
+    {
+     "op": "raw",
+     "log": "a",
+     "text": "{\"t\": \"msg\", \"message\": \"not a dict\"}\n"
+    },
+    {
+     "op": "raw",
+     "log": "a",
+     "text": "{\"t\": \"title\", \"text\": \"\"}\n"
+    },
+    {
+     "op": "raw",
+     "log": "a",
+     "text": "{\"t\": \"system\", \"text\": null, \"ts\": 0}\n"
+    },
+    {
+     "op": "raw",
+     "log": "a",
+     "text": "{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"raw ünï\"}}\n"
+    },
+    {
+     "op": "close",
+     "log": "a"
+    }
+   ],
+   "results": [
+    null,
+    true,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": \"m\", \"ts\": 1761868801.25}\n{\"t\": \"system\", \"text\": \"s\", \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"a\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"a\", \"auto\": true, \"ts\": 1761868801.25}\nnot json\n[1, 2]\n\n{\"t\": \"mystery\", \"ts\": 5}\n{\"t\": \"msg\", \"message\": \"not a dict\"}\n{\"t\": \"title\", \"text\": \"\"}\n{\"t\": \"system\", \"text\": null, \"ts\": 0}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"raw ünï\"}}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868810.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868801.25
+      },
+      {
+       "t": "system",
+       "text": "s",
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "a"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "a",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "mystery",
+       "ts": 5
+      },
+      {
+       "t": "msg",
+       "message": "not a dict"
+      },
+      {
+       "t": "title",
+       "text": ""
+      },
+      {
+       "t": "system",
+       "text": null,
+       "ts": 0
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "raw ünï"
+       }
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868810.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": "m",
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "a"
+       },
+       {
+        "role": "user",
+        "content": "raw ünï"
+       }
+      ],
+      "earlier": [],
+      "title": "a",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868810.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "a",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868810.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "titles_skip_notes_summaries_and_blanks",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "messages": [
+      {
+       "role": "user",
+       "content": "[Summary of the conversation so far. Continue from here.]\n\nold"
+      },
+      {
+       "role": "assistant",
+       "content": "Understood. I'll continue from the summary above."
+      },
+      {
+       "role": "user",
+       "content": "   \n\t "
+      },
+      {
+       "role": "assistant",
+       "content": "?"
+      },
+      {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "what is  here?\n"
+        },
+        {
+         "type": "image_url",
+         "image_url": {
+          "url": "data:image/png;base64,AA"
+         }
+        },
+        {
+         "type": "text",
+         "text": "[rp chat: mounted /x]"
+        }
+       ]
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "thought": true,
+       "tool_calls": [
+        {
+         "id": "c1",
+         "type": "function",
+         "function": {
+          "name": "run_shell",
+          "arguments": "{\"command\": \"ls\\npwd\"}"
+         }
+        }
+       ]
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "c1",
+       "content": "TOOL OUTPUT ünïcode"
+      },
+      {
+       "role": "assistant",
+       "content": "Two files. Привет 世界 🦀",
+       "thought": true
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a"
+    },
+    {
+     "op": "new",
+     "log": "b",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "b",
+     "messages": [
+      {
+       "role": "user",
+       "content": "🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀 Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет "
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "b"
+    },
+    {
+     "op": "new",
+     "log": "c",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "c",
+     "messages": [
+      {
+       "role": "user",
+       "content": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyz"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "c"
+    },
+    {
+     "op": "new",
+     "log": "d",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "d",
+     "messages": [
+      {
+       "role": "assistant",
+       "content": "only the model spoke"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "d"
+    }
+   ],
+   "queries": {
+    "search": [
+     [
+      "ls",
+      null
+     ],
+     [
+      "пРИВЕТ",
+      null
+     ],
+     [
+      "run_shell",
+      null
+     ],
+     [
+      "tool output",
+      null
+     ]
+    ]
+   },
+   "results": [
+    null,
+    true,
+    null,
+    null,
+    true,
+    null,
+    null,
+    true,
+    null,
+    null,
+    true,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"[Summary of the conversation so far. Continue from here.]\\n\\nold\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"Understood. I'll continue from the summary above.\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"   \\n\\t \"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"?\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"what is  here?\\n\"}, {\"type\": \"image_url\", \"image_url\": {\"url\": \"data:image/png;base64,AA\"}}, {\"type\": \"text\", \"text\": \"[rp chat: mounted /x]\"}]}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": null, \"thought\": true, \"tool_calls\": [{\"id\": \"c1\", \"type\": \"function\", \"function\": {\"name\": \"run_shell\", \"arguments\": \"{\\\"command\\\": \\\"ls\\\\npwd\\\"}\"}}]}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"tool\", \"tool_call_id\": \"c1\", \"content\": \"TOOL OUTPUT ünïcode\"}, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"Two files. Привет 世界 🦀\", \"thought\": true}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"what is here?\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868802.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "[Summary of the conversation so far. Continue from here.]\n\nold"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "Understood. I'll continue from the summary above."
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "   \n\t "
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "?"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": [
+         {
+          "type": "text",
+          "text": "what is  here?\n"
+         },
+         {
+          "type": "image_url",
+          "image_url": {
+           "url": "data:image/png;base64,AA"
+          }
+         },
+         {
+          "type": "text",
+          "text": "[rp chat: mounted /x]"
+         }
+        ]
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": null,
+        "thought": true,
+        "tool_calls": [
+         {
+          "id": "c1",
+          "type": "function",
+          "function": {
+           "name": "run_shell",
+           "arguments": "{\"command\": \"ls\\npwd\"}"
+          }
+         }
+        ]
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "tool",
+        "tool_call_id": "c1",
+        "content": "TOOL OUTPUT ünïcode"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "Two files. Привет 世界 🦀",
+        "thought": true
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "what is here?",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868802.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "[Summary of the conversation so far. Continue from here.]\n\nold"
+       },
+       {
+        "role": "assistant",
+        "content": "Understood. I'll continue from the summary above."
+       },
+       {
+        "role": "user",
+        "content": "   \n\t "
+       },
+       {
+        "role": "assistant",
+        "content": "?"
+       },
+       {
+        "role": "user",
+        "content": [
+         {
+          "type": "text",
+          "text": "what is  here?\n"
+         },
+         {
+          "type": "image_url",
+          "image_url": {
+           "url": "data:image/png;base64,AA"
+          }
+         },
+         {
+          "type": "text",
+          "text": "[rp chat: mounted /x]"
+         }
+        ]
+       },
+       {
+        "role": "assistant",
+        "content": null,
+        "thought": true,
+        "tool_calls": [
+         {
+          "id": "c1",
+          "type": "function",
+          "function": {
+           "name": "run_shell",
+           "arguments": "{\"command\": \"ls\\npwd\"}"
+          }
+         }
+        ]
+       },
+       {
+        "role": "tool",
+        "tool_call_id": "c1",
+        "content": "TOOL OUTPUT ünïcode"
+       },
+       {
+        "role": "assistant",
+        "content": "Two files. Привет 世界 🦀",
+        "thought": true
+       }
+      ],
+      "earlier": [],
+      "title": "what is here?",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868802.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "what is here?",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 8,
+      "source": null
+     },
+     "files": null
+    },
+    "b": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{b}\", \"created\": 1761868804.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868804.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀 Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет \"}, \"ts\": 1761868804.25}\n{\"t\": \"title\", \"text\": \"🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀 Привет Привет Привет Привет …\", \"auto\": true, \"ts\": 1761868804.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868805.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868804.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868804.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀 Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет "
+       },
+       "ts": 1761868804.25
+      },
+      {
+       "t": "title",
+       "text": "🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀 Привет Привет Привет Привет …",
+       "auto": true,
+       "ts": 1761868804.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868805.25
+      }
+     ],
+     "replay": {
+      "id": "{b}",
+      "meta": {
+       "t": "meta",
+       "id": "{b}",
+       "created": 1761868804.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868804.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀 Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет  Привет "
+       }
+      ],
+      "earlier": [],
+      "title": "🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀 Привет Привет Привет Привет …",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868805.25
+     },
+     "sidecar": {
+      "id": "{b}",
+      "title": "🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀 Привет Привет Привет Привет …",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    },
+    "c": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{c}\", \"created\": 1761868807.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868807.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyz\"}, \"ts\": 1761868807.25}\n{\"t\": \"title\", \"text\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyz\", \"auto\": true, \"ts\": 1761868807.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868808.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{c}",
+       "created": 1761868807.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868807.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyz"
+       },
+       "ts": 1761868807.25
+      },
+      {
+       "t": "title",
+       "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyz",
+       "auto": true,
+       "ts": 1761868807.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868808.25
+      }
+     ],
+     "replay": {
+      "id": "{c}",
+      "meta": {
+       "t": "meta",
+       "id": "{c}",
+       "created": 1761868807.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868807.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyz"
+       }
+      ],
+      "earlier": [],
+      "title": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyz",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868808.25
+     },
+     "sidecar": {
+      "id": "{c}",
+      "title": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyz",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868807.25,
+      "updated": 1761868808.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    },
+    "d": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{d}\", \"created\": 1761868810.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868810.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"only the model spoke\"}, \"ts\": 1761868810.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868811.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{d}",
+       "created": 1761868810.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868810.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "only the model spoke"
+       },
+       "ts": 1761868810.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868811.25
+      }
+     ],
+     "replay": {
+      "id": "{d}",
+      "meta": {
+       "t": "meta",
+       "id": "{d}",
+       "created": 1761868810.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868810.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "assistant",
+        "content": "only the model spoke"
+       }
+      ],
+      "earlier": [],
+      "title": null,
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868811.25
+     },
+     "sidecar": {
+      "id": "{d}",
+      "title": "(empty)",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868810.25,
+      "updated": 1761868811.25,
+      "messages": 1,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [
+    [
+     {
+      "id": "{a}",
+      "title": "what is here?",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 8,
+      "source": null,
+      "snippet": "…ed /x] run_shell({\"command\": \"ls\\npwd\"}) TOOL OUTPUT ünïcode Two files. Привет 世界 🦀…"
+     }
+    ],
+    [
+     {
+      "id": "{b}",
+      "title": "🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀 Привет Привет Привет Привет …",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868804.25,
+      "updated": 1761868805.25,
+      "messages": 1,
+      "source": null
+     },
+     {
+      "id": "{a}",
+      "title": "what is here?",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 8,
+      "source": null,
+      "snippet": "…OOL OUTPUT ünïcode Two files. Привет 世界 🦀…"
+     }
+    ],
+    [
+     {
+      "id": "{a}",
+      "title": "what is here?",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 8,
+      "source": null,
+      "snippet": "…here? [rp chat: mounted /x] run_shell({\"command\": \"ls\\npwd\"}) TOOL OUTPUT ünïcode Two fi…"
+     }
+    ],
+    [
+     {
+      "id": "{a}",
+      "title": "what is here?",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 8,
+      "source": null,
+      "snippet": "…shell({\"command\": \"ls\\npwd\"}) TOOL OUTPUT ünïcode Two files. Привет 世界 🦀…"
+     }
+    ]
+   ],
+   "resolve": []
+  },
+  {
+   "name": "system_prompt_changes_are_events",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": null,
+     "messages": [
+      {
+       "role": "user",
+       "content": "a"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": "first",
+     "messages": [
+      {
+       "role": "user",
+       "content": "a"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": "second",
+     "messages": [
+      {
+       "role": "user",
+       "content": "a"
+      },
+      {
+       "role": "assistant",
+       "content": "b"
+      }
+     ]
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": null,
+     "messages": [
+      {
+       "role": "user",
+       "content": "a"
+      },
+      {
+       "role": "assistant",
+       "content": "b"
+      }
+     ]
+    },
+    {
+     "op": "close",
+     "log": "a"
+    }
+   ],
+   "queries": {
+    "search": [
+     [
+      "second",
+      null
+     ]
+    ]
+   },
+   "results": [
+    null,
+    true,
+    true,
+    true,
+    true,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"user\", \"content\": \"a\"}, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"a\", \"auto\": true, \"ts\": 1761868801.25}\n{\"t\": \"system\", \"text\": \"first\", \"ts\": 1761868802.25}\n{\"t\": \"system\", \"text\": \"second\", \"ts\": 1761868803.25}\n{\"t\": \"msg\", \"message\": {\"role\": \"assistant\", \"content\": \"b\"}, \"ts\": 1761868803.25}\n{\"t\": \"system\", \"text\": null, \"ts\": 1761868804.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868805.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "user",
+        "content": "a"
+       },
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "a",
+       "auto": true,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "system",
+       "text": "first",
+       "ts": 1761868802.25
+      },
+      {
+       "t": "system",
+       "text": "second",
+       "ts": 1761868803.25
+      },
+      {
+       "t": "msg",
+       "message": {
+        "role": "assistant",
+        "content": "b"
+       },
+       "ts": 1761868803.25
+      },
+      {
+       "t": "system",
+       "text": null,
+       "ts": 1761868804.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868805.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [
+       {
+        "role": "user",
+        "content": "a"
+       },
+       {
+        "role": "assistant",
+        "content": "b"
+       }
+      ],
+      "earlier": [],
+      "title": "a",
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868805.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "a",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [
+    [
+     {
+      "id": "{a}",
+      "title": "a",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868805.25,
+      "messages": 2,
+      "source": null,
+      "snippet": "a first second b…"
+     }
+    ]
+   ],
+   "resolve": []
+  },
+  {
+   "name": "rename_creates_the_file",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "rename",
+     "log": "a",
+     "title": "Design notes"
+    },
+    {
+     "op": "close",
+     "log": "a"
+    }
+   ],
+   "queries": {
+    "list": [
+     null
+    ]
+   },
+   "results": [
+    null,
+    null,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"title\", \"text\": \"Design notes\", \"auto\": false, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868802.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "title",
+       "text": "Design notes",
+       "auto": false,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868802.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [],
+      "earlier": [],
+      "title": "Design notes",
+      "title_auto": false,
+      "title_by_model": false,
+      "updated": 1761868802.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "Design notes",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 0,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [
+    [
+     {
+      "id": "{a}",
+      "title": "Design notes",
+      "title_auto": false,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 0,
+      "source": null
+     }
+    ]
+   ],
+   "search": [],
+   "resolve": []
+  },
+  {
+   "name": "forced_sync_of_nothing",
+   "steps": [
+    {
+     "op": "new",
+     "log": "a",
+     "project": "$T/proj"
+    },
+    {
+     "op": "sync",
+     "log": "a",
+     "system": null,
+     "messages": [],
+     "force": true
+    },
+    {
+     "op": "close",
+     "log": "a"
+    }
+   ],
+   "results": [
+    null,
+    false,
+    null
+   ],
+   "files": {
+    "a": {
+     "raw": "{\"t\": \"meta\", \"id\": \"{a}\", \"created\": 1761868801.25, \"project\": \"$T/proj\", \"model\": null, \"ts\": 1761868801.25}\n{\"t\": \"end\", \"reason\": \"exit\", \"ts\": 1761868802.25}\n",
+     "events": [
+      {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      {
+       "t": "end",
+       "reason": "exit",
+       "ts": 1761868802.25
+      }
+     ],
+     "replay": {
+      "id": "{a}",
+      "meta": {
+       "t": "meta",
+       "id": "{a}",
+       "created": 1761868801.25,
+       "project": "$T/proj",
+       "model": null,
+       "ts": 1761868801.25
+      },
+      "system": null,
+      "messages": [],
+      "earlier": [],
+      "title": null,
+      "title_auto": true,
+      "title_by_model": false,
+      "updated": 1761868802.25
+     },
+     "sidecar": {
+      "id": "{a}",
+      "title": "(empty)",
+      "title_auto": true,
+      "project": "$T/proj",
+      "created": 1761868801.25,
+      "updated": 1761868802.25,
+      "messages": 0,
+      "source": null
+     },
+     "files": null
+    }
+   },
+   "trash": null,
+   "list": [],
+   "search": [],
+   "resolve": []
+  }
+ ]
+}

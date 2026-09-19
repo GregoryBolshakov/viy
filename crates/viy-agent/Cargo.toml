@@ -13,8 +13,13 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+# The oracle tests need python3 and the rpctl checkout; off in the pre-commit hook.
+oracle = ["viy-testkit/oracle"]
+
 [dependencies]
 chrono = { workspace = true }
+rand = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -22,6 +27,7 @@ tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 viy-config = { workspace = true }
 viy-http = { workspace = true }
 viy-protocol = { workspace = true }
+viy-time = { workspace = true }
 viy-tools = { workspace = true }
 
 [dev-dependencies]

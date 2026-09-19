@@ -52,6 +52,17 @@ pub trait Turns: Send + Sync + 'static {
     /// Runs a slash command; the engine says when it is done
     /// ([`EventMsg::CommandComplete`]).
     fn command(self: Arc<Self>, ctx: TurnContext, text: String) -> BoxFuture<'static, ()>;
+
+    /// The chat is being closed: a turn cancelled from now on was cut short
+    /// by that, not by Ctrl-C.
+    fn closing(&self) {}
+
+    /// The last thing before [`EventMsg::ShutdownComplete`], once no turn
+    /// runs: the chat saves and releases what it holds.
+    fn shutdown(self: Arc<Self>, ctx: TurnContext) -> BoxFuture<'static, ()> {
+        let _ = ctx;
+        Box::pin(async {})
+    }
 }
 
 /// The engine's end of the channels: where a turn's events go and how it
@@ -84,6 +95,26 @@ impl TurnContext {
     /// (`viy_pod::notice::Asker`): there is always someone to ask.
     pub fn asker(&self) -> impl Fn(&Question) -> Option<Asking> + Send + Sync + '_ {
         |question| Some(self.ask(question))
+    }
+}
+
+#[cfg(test)]
+impl TurnContext {
+    /// A context outside any engine, for a test that calls the chat
+    /// directly: its events come out of the receiver; its questions are
+    /// answered with [`TurnContext::answer`].
+    pub(crate) fn detached() -> (Self, mpsc::UnboundedReceiver<Event>) {
+        let (events, rx) = mpsc::unbounded_channel();
+        let ctx = Self {
+            sub_id: "test".into(),
+            events,
+            questions: Questions::default(),
+        };
+        (ctx, rx)
+    }
+
+    pub(crate) fn answer(&self, id: &str, answer: Answer) {
+        self.questions.answer(id, answer);
     }
 }
 
@@ -260,9 +291,16 @@ async fn submission_loop(
                         }
                     }
                     Op::Shutdown => {
+                        turns.closing();
                         if let Some(task) = running.take() {
                             task.cancel(&questions, &events).await;
                         }
+                        let ctx = TurnContext {
+                            sub_id: sub.id.clone(),
+                            events: events.clone(),
+                            questions: questions.clone(),
+                        };
+                        Arc::clone(&turns).shutdown(ctx).await;
                         emit(&events, &sub.id, EventMsg::ShutdownComplete);
                         return;
                     }

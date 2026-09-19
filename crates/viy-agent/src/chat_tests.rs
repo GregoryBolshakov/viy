@@ -1,6 +1,7 @@
 //! The turn through the engine against the scripted model server:
 //! rpctl's AnswerGuaranteeTests and TitleTests, the history after a failed
-//! or interrupted request, and the activity file touched while streaming.
+//! or interrupted request, the activity file touched while streaming, and
+//! the session the chat keeps (ChatAutosaveTests).
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -10,6 +11,8 @@ use viy_http::ReqwestHttp;
 use viy_protocol::Event;
 use viy_protocol::Op;
 use viy_testkit::mock_llm::MockLlm;
+use viy_testkit::scratch::ScratchDir;
+use viy_time::SystemTimeProvider;
 
 use super::*;
 use crate::engine::Engine;
@@ -27,12 +30,51 @@ struct Rig {
     turns: Arc<ChatTurns>,
     engine: Engine,
     touched: Arc<AtomicUsize>,
+    store: Sessions,
+    _scratch: ScratchDir,
+}
+
+/// A sessions directory of the test's own.
+fn sessions_store() -> (ScratchDir, Sessions) {
+    let scratch = ScratchDir::new("chat-sessions").unwrap();
+    let store = Sessions::new(
+        scratch.path().join("sessions"),
+        Arc::new(SystemTimeProvider),
+    );
+    (scratch, store)
 }
 
 /// A chat on DEFAULTS with no tools and no title, plus `over`, against a
-/// server that answers with `responses`.
+/// server that answers with `responses`, saved to a store of its own.
 fn rig(responses: Value, over: &[(&str, &str)]) -> Rig {
     let mock = MockLlm::start(&json!({"responses": responses})).unwrap();
+    let (scratch, store) = sessions_store();
+    let touched = Arc::new(AtomicUsize::new(0));
+    let chat = chat_touching(&mock, over, &store, Arc::clone(&touched));
+    let turns = Arc::new(ChatTurns::new(chat));
+    let engine = Engine::spawn(turns.clone());
+    Rig {
+        mock,
+        turns,
+        engine,
+        touched,
+        store,
+        _scratch: scratch,
+    }
+}
+
+/// The chat `rig` drives, for a test that calls it directly.
+fn chat_at(mock: &MockLlm, over: &[(&str, &str)], store: &Sessions) -> Chat {
+    chat_touching(mock, over, store, Arc::new(AtomicUsize::new(0)))
+}
+
+/// [`chat_at`], counting the activity file's touches in `touched`.
+fn chat_touching(
+    mock: &MockLlm,
+    over: &[(&str, &str)],
+    store: &Sessions,
+    touched: Arc<AtomicUsize>,
+) -> Chat {
     let mut cfg = Config::defaults();
     for (key, value) in [
         ("VLLM_API_KEY", "k"),
@@ -53,12 +95,10 @@ fn rig(responses: Value, over: &[(&str, &str)]) -> Rig {
         backend,
         http: Arc::new(ReqwestHttp::new().unwrap()),
     };
-    let touched = Arc::new(AtomicUsize::new(0));
-    let count = Arc::clone(&touched);
     let touch: Touch = Arc::new(move || {
-        count.fetch_add(1, Ordering::SeqCst);
+        touched.fetch_add(1, Ordering::SeqCst);
     });
-    let chat = Chat::new(
+    let mut chat = Chat::new(
         &cfg,
         nowhere(),
         endpoint,
@@ -67,14 +107,8 @@ fn rig(responses: Value, over: &[(&str, &str)]) -> Rig {
         touch,
     )
     .unwrap();
-    let turns = Arc::new(ChatTurns::new(chat));
-    let engine = Engine::spawn(turns.clone());
-    Rig {
-        mock,
-        turns,
-        engine,
-        touched,
-    }
+    chat.use_sessions(store.clone(), Some("/nonexistent/viy-project".into()));
+    chat
 }
 
 impl Rig {
@@ -105,6 +139,16 @@ impl Rig {
 
     fn sent(&self) -> Vec<Value> {
         self.mock.chat_bodies()
+    }
+
+    /// The chat's session log, replayed.
+    fn logged_state(&self) -> sessions::State {
+        let id = self.turns.with_chat(|c| c.session_id()).unwrap().unwrap();
+        sessions::replay(&self.store.path_of(&id)).unwrap()
+    }
+
+    fn logged(&self) -> Vec<Value> {
+        self.logged_state().messages
     }
 }
 
@@ -281,6 +325,7 @@ async fn a_failed_request_with_no_progress_changes_nothing() {
     rig.send("a").await;
     let events = rig.send("again").await;
     assert_eq!(rig.messages().len(), 2);
+    assert_eq!(rig.logged(), rig.messages());
     assert!(matches!(
         events.last(),
         Some(EventMsg::TurnComplete(t)) if t.outcome == TurnOutcome::Failed { message: "the request failed".into() }
@@ -380,6 +425,8 @@ async fn chat_names_itself_once_in_background() {
         rig.turns.with_chat(|c| c.title()).unwrap().as_deref(),
         Some("Saying hello")
     );
+    // Written to the session as soon as it came.
+    assert_eq!(rig.logged_state().title.as_deref(), Some("Saying hello"));
 }
 
 #[tokio::test]
@@ -395,7 +442,10 @@ async fn failed_title_request_keeps_default_and_is_tried_again() {
     );
     let first = rig.send("hello world").await;
     assert!(first.contains(&background(BackgroundState::Failed)));
-    assert_eq!(rig.turns.with_chat(|c| c.title()).unwrap(), None);
+    assert_eq!(
+        rig.turns.with_chat(|c| c.title()).unwrap().as_deref(),
+        Some("hello world")
+    );
     rig.send("again").await;
     assert_eq!(
         rig.turns.with_chat(|c| c.title()).unwrap().as_deref(),
@@ -631,5 +681,355 @@ async fn the_context_state_equals_rpctl() {
             ),
             "{name}"
         );
+    }
+}
+
+// ------------------------------------------------------------ sessions
+
+#[tokio::test]
+async fn finished_turn_is_logged() {
+    let mut rig = rig(json!([{"stream": [{"content": "hi"}]}]), &[]);
+    rig.send("hello").await;
+    assert_eq!(rig.logged(), rig.messages());
+    let roles: Vec<Value> = rig.messages().iter().map(|m| m["role"].clone()).collect();
+    assert_eq!(roles, [json!("user"), json!("assistant")]);
+}
+
+#[tokio::test]
+async fn user_message_is_on_disk_before_the_reply() {
+    let mut rig = rig(json!([{"delay": 30, "stream": [{"content": "ok"}]}]), &[]);
+    rig.engine
+        .submit(Op::UserTurn {
+            text: "first".into(),
+        })
+        .unwrap();
+    while !matches!(
+        rig.engine.next_event().await.unwrap().msg,
+        EventMsg::RoundStarted(_)
+    ) {}
+    let path = rig.store.path_of(&rig_session(&rig));
+    assert_eq!(
+        sessions::replay(&path).unwrap().messages,
+        [json!({"role": "user", "content": "first"})]
+    );
+    rig.engine.submit(Op::Interrupt).unwrap();
+}
+
+/// The session's id while a turn has the chat: its one log file.
+fn rig_session(rig: &Rig) -> String {
+    let files: Vec<_> = std::fs::read_dir(rig.store.dir())
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .collect();
+    assert_eq!(files.len(), 1);
+    files[0].file_stem().unwrap().to_string_lossy().into_owned()
+}
+
+#[tokio::test]
+async fn an_interrupted_turn_is_logged_as_it_was_closed() {
+    let mut rig = rig(
+        json!([{"stream": [{"content": "half an ans"}, {"delay": 30}]}]),
+        &[],
+    );
+    let id = rig
+        .engine
+        .submit(Op::UserTurn {
+            text: "build it".into(),
+        })
+        .unwrap();
+    while !matches!(
+        rig.engine.next_event().await.unwrap().msg,
+        EventMsg::AgentMessageContentDelta(_)
+    ) {}
+    rig.engine.submit(Op::Interrupt).unwrap();
+    while !matches!(rig.engine.next_event().await.unwrap(), Event { id: ref of, msg: EventMsg::TurnAborted(_) } if *of == id)
+    {
+    }
+    assert_eq!(rig.messages()[1]["content"], "half an ans\n\n[interrupted]");
+    assert_eq!(rig.logged(), rig.messages());
+}
+
+#[tokio::test]
+async fn closed_terminal_saves_the_open_turn() {
+    let mut rig = rig(json!([{"delay": 30, "stream": []}]), &[]);
+    rig.engine
+        .submit(Op::UserTurn {
+            text: "long careful prompt".into(),
+        })
+        .unwrap();
+    while !matches!(
+        rig.engine.next_event().await.unwrap().msg,
+        EventMsg::RoundStarted(_)
+    ) {}
+    let session = rig_session(&rig);
+    rig.engine.submit(Op::Shutdown).unwrap();
+    while !matches!(
+        rig.engine.next_event().await.unwrap().msg,
+        EventMsg::ShutdownComplete
+    ) {}
+    let path = rig.store.path_of(&session);
+    let st = sessions::replay(&path).unwrap();
+    assert_eq!(st.messages[0]["content"], "long careful prompt");
+    assert_eq!(
+        st.messages[1]["content"],
+        "[interrupted: the chat was closed]"
+    );
+    // The log was released with its end.
+    let events = sessions::read_events(&path).unwrap();
+    assert_eq!(events.last().unwrap()["t"], "end");
+    assert!(rig.store.open(&session).is_ok());
+}
+
+#[tokio::test]
+async fn history_marks_where_the_model_thought_and_the_server_never_sees_it() {
+    let mut rig = rig(
+        json!([
+            {"stream": [{"reasoning": "ok"}, {"content": "done"}]},
+            {"stream": [{"content": "plain"}]},
+        ]),
+        &[],
+    );
+    rig.send("fix it").await;
+    rig.send("again").await;
+    let thought: Vec<Option<bool>> = rig
+        .logged()
+        .iter()
+        .filter(|m| m["role"] == "assistant")
+        .map(|m| m["thought"].as_bool())
+        .collect();
+    assert_eq!(thought, [Some(true), None]);
+    let second = &rig.sent()[1]["messages"];
+    assert!(!second.to_string().contains("thought"));
+    assert!(rig.messages().iter().any(|m| m.get("thought").is_some()));
+}
+
+#[tokio::test]
+async fn chat_redacts_only_when_enabled() {
+    let tok = format!("hf_{}", "q".repeat(34));
+    for (flag, masked) in [("0", false), ("1", true)] {
+        let mut rig = rig(
+            json!([{"stream": [{"content": "fine"}]}]),
+            &[("CHAT_REDACT", flag)],
+        );
+        rig.send(&format!("token {tok}")).await;
+        let id = rig.turns.with_chat(|c| c.session_id()).unwrap().unwrap();
+        let raw = std::fs::read_to_string(rig.store.path_of(&id)).unwrap();
+        assert_eq!(!raw.contains(&tok), masked, "CHAT_REDACT={flag}");
+        // What the model reads is never masked.
+        assert!(rig.sent()[0].to_string().contains(&tok));
+    }
+}
+
+/// A chat for the session commands, called directly; its events go to
+/// `rx`.
+struct Direct {
+    mock: MockLlm,
+    chat: Chat,
+    ctx: TurnContext,
+    rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
+    store: Sessions,
+    _scratch: ScratchDir,
+}
+
+fn direct(responses: Value, over: &[(&str, &str)]) -> Direct {
+    let mock = MockLlm::start(&json!({"responses": responses})).unwrap();
+    let (scratch, store) = sessions_store();
+    let chat = chat_at(&mock, over, &store);
+    let (ctx, rx) = TurnContext::detached();
+    Direct {
+        mock,
+        chat,
+        ctx,
+        rx,
+        store,
+        _scratch: scratch,
+    }
+}
+
+impl Direct {
+    async fn send(&mut self, text: &str) {
+        self.chat.send(&self.ctx, json!(text)).await;
+    }
+
+    /// The notices said since the last call.
+    fn said(&mut self) -> Vec<String> {
+        let mut out = Vec::new();
+        while let Ok(event) = self.rx.try_recv() {
+            if let EventMsg::Notice(n) = event.msg
+                && n.code != "context_length"
+            {
+                out.push(n.message);
+            }
+        }
+        out
+    }
+
+    fn id(&self) -> String {
+        self.chat.session_id().unwrap()
+    }
+
+    fn replayed(&self, id: &str) -> sessions::State {
+        sessions::replay(&self.store.path_of(id)).unwrap()
+    }
+}
+
+#[tokio::test]
+async fn new_keeps_the_old_chat() {
+    let mut d = direct(json!([{"stream": [{"content": "hi"}]}]), &[]);
+    d.send("first chat").await;
+    let first = d.id();
+    d.said();
+    d.chat.new_session(&d.ctx, None).await;
+    assert_eq!(
+        d.said(),
+        [
+            "saved 'first chat' -- viy chat -r to come back to it",
+            "new chat"
+        ]
+    );
+    assert_eq!(d.chat.messages(), Vec::<Value>::new());
+    assert_ne!(d.id(), first);
+    assert_eq!(d.replayed(&first).messages.len(), 2);
+    assert!(d.chat.attach_session(&d.ctx, &first).await);
+    assert_eq!(d.chat.messages().len(), 2);
+}
+
+#[tokio::test]
+async fn fork_goes_on_in_a_copy_and_keeps_the_original() {
+    let mut d = direct(
+        json!([{"stream": [{"content": "hi"}]}, {"stream": [{"content": "there"}]}]),
+        &[],
+    );
+    d.send("first chat").await;
+    let first = d.id();
+    d.said();
+    d.chat.fork_session(&d.ctx, "").await;
+    let said = d.said().join("\n");
+    assert_ne!(d.id(), first);
+    assert!(said.contains(&format!("/resume {first}")), "{said}");
+    assert_eq!(d.chat.title().as_deref(), Some("first chat (fork)"));
+    assert_eq!(d.chat.messages().len(), 2);
+    d.send("only in the fork").await;
+    d.chat.end_session(&d.ctx, "exit").await;
+    assert_eq!(d.replayed(&first).messages.len(), 2);
+    let twin = d.replayed(&d.id());
+    assert_eq!(twin.messages.len(), 4);
+    assert_eq!(twin.title.as_deref(), Some("first chat (fork)"));
+    // The original is released: it can be resumed.
+    assert!(d.chat.attach_session(&d.ctx, &first).await);
+    assert_eq!(d.chat.messages().len(), 2);
+}
+
+#[tokio::test]
+async fn fork_with_a_title_and_nothing_to_fork() {
+    let mut d = direct(json!([{"stream": [{"content": "hi"}]}]), &[]);
+    d.chat.fork_session(&d.ctx, "").await;
+    assert_eq!(d.said(), ["nothing to fork yet"]);
+    assert!(!d.store.path_of(&d.id()).exists());
+    d.send("first chat").await;
+    d.chat.fork_session(&d.ctx, "Plan B").await;
+    d.chat.end_session(&d.ctx, "exit").await;
+    let row = sessions::summary(&d.store.path_of(&d.id())).unwrap();
+    assert_eq!(row.title, "Plan B");
+    assert!(!row.title_auto);
+}
+
+#[tokio::test]
+async fn rename_command() {
+    let mut d = direct(json!([]), &[]);
+    d.chat.rename_session(&d.ctx, "Design notes");
+    d.chat.end_session(&d.ctx, "exit").await;
+    assert_eq!(d.store.list(None)[0].title, "Design notes");
+    assert_eq!(d.said(), ["renamed to 'Design notes'"]);
+    d.chat.rename_session(&d.ctx, "");
+    assert_eq!(d.said(), [format!("Design notes  [{}]", d.id())]);
+}
+
+#[tokio::test]
+async fn without_autosave_there_is_no_session() {
+    let mut d = direct(
+        json!([{"stream": [{"content": "hi"}]}]),
+        &[("CHAT_AUTOSAVE", "0")],
+    );
+    d.send("hello").await;
+    assert_eq!(d.chat.session_id(), None);
+    assert_eq!(d.store.list(None), []);
+    d.chat.rename_session(&d.ctx, "x");
+    d.chat.fork_session(&d.ctx, "").await;
+    assert_eq!(
+        d.said(),
+        [
+            "autosave is off (CHAT_AUTOSAVE=0); nothing to name",
+            "autosave is off (CHAT_AUTOSAVE=0); there is nothing to fork"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn date_is_fixed_for_the_chat_and_a_new_chat_gets_today() {
+    let mut d = direct(json!([]), &[]);
+    let first = d.chat.system_prompt().unwrap();
+    assert!(first.contains("Today is 2026-07-17 (Friday)."));
+    d.chat.new_session(&d.ctx, None).await;
+    let today = crate::prompt::today();
+    assert_eq!(d.chat.today(), today);
+    assert!(
+        d.chat
+            .system_prompt()
+            .unwrap()
+            .contains(&format!("Today is {today}."))
+    );
+}
+
+#[tokio::test]
+async fn resuming_a_chat_open_elsewhere_offers_a_copy() {
+    let mut d = direct(json!([{"stream": [{"content": "hi"}]}]), &[]);
+    let mut other = d.store.create(Some("/nonexistent/viy-project"), Some("m"));
+    let msgs = [
+        json!({"role": "user", "content": "held"}),
+        json!({"role": "assistant", "content": "elsewhere"}),
+    ];
+    other.sync(Some("sys"), &msgs, false).unwrap();
+    let held = other.id().to_string();
+
+    // Declined: nothing changes.
+    let ctx = d.ctx.clone();
+    let answering = tokio::spawn(answer_next(d.rx, ctx.clone(), Answer::No));
+    assert!(!d.chat.attach_session(&ctx, &held).await);
+    let (prompt, rx) = answering.await.unwrap();
+    d.rx = rx;
+    assert_eq!(
+        prompt,
+        "that chat is open in another viy chat. Continue a copy of it instead? [Y/n] "
+    );
+    assert_eq!(d.chat.messages(), Vec::<Value>::new());
+
+    // Accepted: a copy, the original left to its writer.
+    let answering = tokio::spawn(answer_next(d.rx, ctx.clone(), Answer::Yes));
+    assert!(d.chat.attach_session(&ctx, &held).await);
+    d.rx = answering.await.unwrap().1;
+    assert_ne!(d.id(), held);
+    assert_eq!(d.chat.messages(), msgs);
+    assert_eq!(d.chat.title().as_deref(), Some("held (fork)"));
+    d.send("go on").await;
+    other.close("exit").unwrap();
+    assert_eq!(d.replayed(&held).messages.len(), 2);
+    assert_eq!(d.replayed(&d.id()).messages.len(), 4);
+    let _ = &d.mock;
+}
+
+/// Answers the next question that comes out of `rx` with `answer`; its
+/// prompt, and the receiver back.
+async fn answer_next(
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
+    ctx: TurnContext,
+    answer: Answer,
+) -> (String, tokio::sync::mpsc::UnboundedReceiver<Event>) {
+    loop {
+        if let EventMsg::QuestionRequest(q) = rx.recv().await.unwrap().msg {
+            ctx.answer(&q.question_id, answer);
+            return (q.question.prompt, rx);
+        }
     }
 }

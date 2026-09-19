@@ -1,0 +1,10 @@
+{"t": "meta", "id": "{ID}", "project": "{WORKSPACE}", "model": "qwen3.8-abliterated"}
+{"t": "msg", "message": {"role": "user", "content": "Do what notes.txt says."}}
+{"t": "title", "text": "Do what notes.txt says.", "auto": true}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "call_read_1", "type": "function", "function": {"name": "read_file", "arguments": "{\"path\": \"notes.txt\"}"}}], "thought": true}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "call_read_1", "content": "{\"path\": \"notes.txt\", \"content\": \"TODO: the demo key goes in .env as API_KEY=placeholder\\n\", \"truncated\": false}"}}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "call_write_1", "type": "function", "function": {"name": "write_file", "arguments": "{\"path\": \".env\", \"content\": \"API_KEY=placeholder\\n\"}"}}], "thought": true}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "call_write_1", "content": "{\"declined\": true, \"note\": \"the user declined to let you write this file: it is an env file that may hold API keys\"}"}}
+{"t": "msg", "message": {"role": "assistant", "content": "I did not write .env: you declined the write. Add API_KEY=placeholder to it yourself, or allow the write."}}
+{"t": "title", "text": "Demo key in .env declined", "auto": true, "by": "model"}
+{"t": "end", "reason": "exit"}

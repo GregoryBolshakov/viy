@@ -1,0 +1,8 @@
+{"t": "meta", "id": "{ID}", "project": "{WORKSPACE}", "model": "qwen3.8-abliterated"}
+{"t": "msg", "message": {"role": "user", "content": "What is a haiku? One sentence, please."}}
+{"t": "title", "text": "What is a haiku? One sentence, please.", "auto": true}
+{"t": "msg", "message": {"role": "assistant", "content": "A haiku is a short Japanese poem of three lines with five, seven and five syllables.", "thought": true}}
+{"t": "title", "text": "Haiku definition", "auto": true, "by": "model"}
+{"t": "msg", "message": {"role": "user", "content": "Now write one about rain on a tin roof."}}
+{"t": "msg", "message": {"role": "assistant", "content": "Rain on the tin roof\na thousand small drums at once\nthen the gutter sighs", "thought": true}}
+{"t": "end", "reason": "exit"}

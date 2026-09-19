@@ -27,9 +27,13 @@ requests; --check then compares viy's requests with rp's recording.
 Writes into DIR (default target/scenario-runs/<scenario>/<client>/): raw.jsonl
 (what fakellm logged), requests.jsonl (normalized, meta header first, the
 format tools/parity/compare_requests.py reads), meta.json and output.txt
-(what the client printed). --record copies rp's requests.jsonl to
-tests/scenarios/<scenario>.rp.jsonl; --check compares with that recording.
-Scenario format: tests/scenarios/README.md. Implementation plan 3.4.
+(what the client printed), and session.jsonl: the chat's session log, one
+event per line, without times, the session's id as {ID} and the run's paths
+and date as placeholders (nothing when CHAT_AUTOSAVE is off). --record
+copies rp's requests.jsonl to tests/scenarios/<scenario>.rp.jsonl and its
+session.jsonl to <scenario>.rp.session.jsonl; --check compares with those
+recordings, the session's events with their keys in order. Scenario format:
+tests/scenarios/README.md. Implementation plan 3.4, WP 3.5.
 """
 import argparse
 import importlib.util
@@ -187,6 +191,7 @@ def run(scenario_path, out, viy=None):
         meta = {"client": "viy" if viy else "rp", "rpctl_commit": commit, "scenario": name,
                 "base": str(base), "workspace": str(ws), "today": result["today"],
                 "asked": result["asked"]}
+        session = session_lines(base / "data" / ("viy" if viy else "rpctl") / "sessions", meta)
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
@@ -204,8 +209,29 @@ def run(scenario_path, out, viy=None):
     header = {k: v for k, v in cmp.normalize(meta, meta).items()
               if k not in ("base", "workspace", "today")}
     cmp.write(out / "requests.jsonl", header, norm)
+    (out / "session.jsonl").unlink(missing_ok=True)
+    if session is not None:
+        (out / "session.jsonl").write_text(session, encoding="utf-8")
     (out / "meta.json").write_text(json.dumps(meta, indent=1, ensure_ascii=False) + "\n")
     return name, out / "requests.jsonl"
+
+
+def session_lines(sessions, meta):
+    """The run's one session log, normalized: no `ts` or `created`, the id as
+    {ID}, the run's paths and date as placeholders; None without a log."""
+    logs = sorted(sessions.glob("*.jsonl")) if sessions.is_dir() else []
+    if not logs:
+        return None
+    if len(logs) > 1:
+        raise SystemExit(f"{len(logs)} session logs in {sessions}; a scenario keeps one")
+    cmp = _compare_module()
+    lines = []
+    for raw in logs[0].read_text(encoding="utf-8").splitlines():
+        ev = cmp.normalize(json.loads(raw), meta)
+        ev.pop("ts", None)
+        ev.pop("created", None)
+        lines.append(json.dumps(ev, ensure_ascii=False).replace(logs[0].stem, "{ID}"))
+    return "".join(line + "\n" for line in lines)
 
 
 def main(argv):
@@ -235,16 +261,29 @@ def main(argv):
     n = len(log.read_text(encoding="utf-8").splitlines()) - 1
     print(f"{name}: {n} requests logged in {log.relative_to(ROOT) if log.is_relative_to(ROOT) else log}")
     recorded = SCENARIOS / f"{name}.rp.jsonl"
+    session = log.with_name("session.jsonl")
+    recorded_session = SCENARIOS / f"{name}.rp.session.jsonl"
     if a.record:
         shutil.copyfile(log, recorded)
         print(f"recorded {recorded.relative_to(ROOT)}")
+        recorded_session.unlink(missing_ok=True)
+        if session.exists():
+            shutil.copyfile(session, recorded_session)
+            print(f"recorded {recorded_session.relative_to(ROOT)}")
     elif a.check:
         cmp = _compare_module()
         d = cmp.compare(cmp.load(recorded)[1], cmp.load(log)[1])
         if d:
             print(f"differs from {recorded.relative_to(ROOT)}: {d}")
             return 1
-        print(f"same content as {recorded.relative_to(ROOT)}")
+        want = recorded_session.read_text(encoding="utf-8") if recorded_session.exists() else None
+        got = session.read_text(encoding="utf-8") if session.exists() else None
+        if want != got:
+            print(f"the session log differs from {recorded_session.relative_to(ROOT)}:\n"
+                  f"--- recorded\n{want}--- this run\n{got}")
+            return 1
+        print(f"same content as {recorded.relative_to(ROOT)}"
+              + (f" and {recorded_session.name}" if want is not None else ""))
     return 0
 
 

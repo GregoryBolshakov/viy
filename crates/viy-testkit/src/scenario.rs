@@ -1,7 +1,8 @@
 //! The scenarios in `tests/scenarios/` (format: its README), the request
 //! logs recorded from rp for them by `tools/drive_rp.py --record`
 //! (implementation plan 3.4), and [`compare`], the Rust twin of
-//! `tools/parity/compare_requests.py` (kb d031).
+//! `tools/parity/compare_requests.py` (kb d031), and the session logs rp
+//! kept for them (`<name>.rp.session.jsonl`, WP 3.5).
 
 use std::io;
 use std::path::PathBuf;
@@ -51,6 +52,42 @@ pub fn rp_log(name: &str) -> io::Result<RequestLog> {
         .ok_or_else(|| io::Error::other(format!("{name}.rp.jsonl: no meta header")))?;
     let entries = lines.map(parse).collect::<io::Result<_>>()?;
     Ok(RequestLog { meta, entries })
+}
+
+/// Loads `tests/scenarios/<name>.rp.session.jsonl`, rp's session log for
+/// that scenario as drive_rp normalizes it; `None` when rp kept none.
+pub fn rp_session(name: &str) -> io::Result<Option<Vec<Value>>> {
+    let path = dir().join(format!("{name}.rp.session.jsonl"));
+    if !path.exists() {
+        return Ok(None);
+    }
+    std::fs::read_to_string(path)?
+        .lines()
+        .map(|l| serde_json::from_str(l).map_err(io::Error::other))
+        .collect::<io::Result<_>>()
+        .map(Some)
+}
+
+/// A session log normalized as drive_rp's `session_lines`: no `ts` or
+/// `created`, the session's id as `{ID}`, `subs` replaced.
+pub fn session_events(path: &std::path::Path, subs: &[(&str, &str)]) -> io::Result<Vec<Value>> {
+    let id = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut subs = subs.to_vec();
+    subs.push((&id, "{ID}"));
+    std::fs::read_to_string(path)?
+        .lines()
+        .map(|l| {
+            let mut ev = normalize(&serde_json::from_str(l).map_err(io::Error::other)?, &subs);
+            if let Some(map) = ev.as_object_mut() {
+                map.shift_remove("ts");
+                map.shift_remove("created");
+            }
+            Ok(ev)
+        })
+        .collect()
 }
 
 /// The names of the scenarios that have an rp recording.

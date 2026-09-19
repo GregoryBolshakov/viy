@@ -12,6 +12,10 @@ Per scenario `<name>`:
 - `<name>.rp.jsonl`: rp's requests for it at the rpctl pin, normalized
   (`python3 -I tools/drive_rp.py tests/scenarios/<name>.json --record`). The
   pre-commit hook re-runs rp and fails if they changed (`--check`).
+- `<name>.rp.session.jsonl`: rp's session log for the same run (written by
+  `--record` too, absent when the scenario turns CHAT_AUTOSAVE off): one
+  event per line, without times, the session's id as `{ID}`, the run's
+  paths and date as placeholders. `--check` compares it, keys in order.
 - `<name>.rp.context.txt`: the same requests as a readable model-context
   snapshot (`viy_testkit::context_snapshot`; rewrite with
   `UPDATE_SNAPSHOTS=1 cargo test -p viy-testkit`).
@@ -19,8 +23,8 @@ Per scenario `<name>`:
 Compare two logs with `python3 -I tools/parity/compare_requests.py A B`
 (content, not bytes: kb d031). `python3 -I tools/drive_rp.py <name>.json
 --client viy --check` runs the same scenario through `viy dev drive` (build
-`target/debug/viy` first) and compares viy's requests with rp's recording;
-`cargo test -p viy` does the same against `viy_testkit::mock_llm` for every
+`target/debug/viy` first) and compares viy's requests and session log with
+rp's recordings; `cargo test -p viy` does the same against `viy_testkit::mock_llm` for every
 scenario with build tools off. Keep stream text ASCII: fakellm's
 `text/event-stream` names no charset, so rp decodes it as ISO-8859-1.
 

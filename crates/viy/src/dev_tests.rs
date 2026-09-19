@@ -30,8 +30,9 @@ fn run_capture(args: &[&str]) -> (i32, Vec<Value>, String) {
 
 /// Drives scenario `name` through viy against the scripted server, from a
 /// workspace laid out as the scenario says (as drive_rp does): its events,
-/// and its requests normalized as drive_rp writes them.
-fn drive(name: &str) -> (Vec<Value>, Vec<Value>) {
+/// its requests normalized as drive_rp writes them, and its session log
+/// normalized as drive_rp normalizes rp's.
+fn drive(name: &str) -> (Vec<Value>, Vec<Value>, Option<Vec<Value>>) {
     let file = scenario::dir().join(format!("{name}.json"));
     let script = scenario::load(name).unwrap();
     let mock = MockLlm::start(&script).unwrap();
@@ -69,7 +70,10 @@ fn drive(name: &str) -> (Vec<Value>, Vec<Value>) {
         .iter()
         .map(|r| scenario::normalize(&r.log_entry(), &subs))
         .collect();
-    (events, log)
+    let session = result["session"]
+        .as_str()
+        .map(|path| scenario::session_events(path.as_ref(), &subs).unwrap());
+    (events, log, session)
 }
 
 fn tools_off(name: &str) -> bool {
@@ -85,15 +89,23 @@ fn every_scenario_without_build_tools_sends_what_rp_sent() {
         .collect();
     assert!(names.len() >= 4, "{names:?}");
     for name in names {
-        let (_, viy) = drive(&name);
+        let (_, viy, session) = drive(&name);
         let rp = scenario::rp_log(&name).unwrap().entries;
         assert_eq!(scenario::compare(&rp, &viy), None, "{name}");
+        // And keeps the session rp kept: the same events, keys in order.
+        let rp_session = scenario::rp_session(&name).unwrap();
+        assert_eq!(session, rp_session, "{name}: the session log");
+        assert_eq!(
+            serde_json::to_string(&session).unwrap(),
+            serde_json::to_string(&rp_session).unwrap(),
+            "{name}: the session log's key order"
+        );
     }
 }
 
 #[test]
 fn drive_shows_scenario_one_as_events() {
-    let (events, _) = drive("plain-two-turns");
+    let (events, _, _) = drive("plain-two-turns");
     let types: Vec<&str> = events
         .iter()
         .map(|e| e["msg"]["type"].as_str().unwrap())

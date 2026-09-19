@@ -1,0 +1,10 @@
+{"t": "meta", "id": "{ID}", "project": "{WORKSPACE}", "model": "qwen3.8-abliterated"}
+{"t": "msg", "message": {"role": "user", "content": "Hello?"}}
+{"t": "title", "text": "Hello?", "auto": true}
+{"t": "replace", "messages": []}
+{"t": "msg", "message": {"role": "user", "content": "Hello again."}}
+{"t": "msg", "message": {"role": "assistant", "content": "Hi! I am here and ready to", "thought": true}}
+{"t": "title", "text": "Greeting the assistant", "auto": true, "by": "model"}
+{"t": "msg", "message": {"role": "user", "content": "Are you still there?"}}
+{"t": "msg", "message": {"role": "assistant", "content": "Yes, still here.", "thought": true}}
+{"t": "end", "reason": "exit"}

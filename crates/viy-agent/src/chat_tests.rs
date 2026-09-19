@@ -16,6 +16,7 @@ use viy_time::SystemTimeProvider;
 
 use super::*;
 use crate::engine::Engine;
+use crate::sessions;
 
 /// Places with no instruction files in them.
 fn nowhere() -> Places {
@@ -1012,6 +1013,9 @@ async fn resuming_a_chat_open_elsewhere_offers_a_copy() {
     assert_ne!(d.id(), held);
     assert_eq!(d.chat.messages(), msgs);
     assert_eq!(d.chat.title().as_deref(), Some("held (fork)"));
+    let copied = d.replayed(&d.id());
+    assert_eq!(copied.meta["project"], "/nonexistent/viy-project");
+    assert_eq!(copied.meta["model"], "m");
     d.send("go on").await;
     other.close("exit").unwrap();
     assert_eq!(d.replayed(&held).messages.len(), 2);

@@ -70,7 +70,6 @@ use crate::payload::title_pair;
 use crate::payload::with_notice;
 use crate::payload::without_reasoning;
 use crate::prompt::SystemPrompt;
-use crate::sessions;
 use crate::sessions::SessionError;
 use crate::sessions::SessionLog;
 use crate::sessions::Sessions;
@@ -242,7 +241,7 @@ impl Chat {
     }
 
     /// What compactions summarised away of a resumed chat, each run
-    /// followed by [`sessions::compacted`].
+    /// followed by [`crate::sessions::compacted`].
     pub fn earlier(&self) -> &[Value] {
         &self.earlier
     }
@@ -358,12 +357,7 @@ impl Chat {
                 if ctx.ask(&question).await != Answer::Yes {
                     return false;
                 }
-                sessions::replay(&store.path_of(id)).and_then(|st| {
-                    let mut source = SessionLog::source(&store, id, &st);
-                    source.set_redactor(self.redactor.clone());
-                    let twin = source.fork(st.system.as_deref(), &st.messages, None)?;
-                    Ok((twin, st))
-                })
+                store.copy(id, self.redactor.clone())
             }
             Err(SessionError::Io(e)) => Err(e),
             Ok(opened) => Ok(opened),

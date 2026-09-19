@@ -225,6 +225,39 @@ fn fork_copies_history_into_a_new_session() {
 }
 
 #[test]
+fn a_copy_of_a_held_chat_keeps_its_project_and_model() {
+    let s = store();
+    let mut log = s.sessions.create(Some(&s.project()), Some("m"));
+    let msgs = [user("held"), assistant("elsewhere")];
+    log.sync(Some("sys"), &msgs, false).unwrap();
+    let (mut twin, st) = s.sessions.copy(log.id(), None).unwrap();
+    twin.close("exit").unwrap();
+    assert_eq!(st.messages, msgs);
+    let copied = replay(twin.path()).unwrap();
+    assert_eq!(copied.messages, msgs);
+    assert_eq!(copied.system.as_deref(), Some("sys"));
+    assert_eq!(copied.meta_str("project"), Some(s.project()));
+    assert_eq!(copied.meta_str("model").as_deref(), Some("m"));
+    assert_eq!(copied.title.as_deref(), Some("held (fork)"));
+    // The copy lists with the project's chats, not only under `-a`.
+    assert!(
+        s.sessions
+            .list(Some(&s.project()))
+            .iter()
+            .any(|r| r.id == twin.id())
+    );
+    // The original was only read: its writer goes on.
+    log.sync(
+        Some("sys"),
+        &[user("held"), assistant("elsewhere"), user("more")],
+        false,
+    )
+    .unwrap();
+    log.close("exit").unwrap();
+    assert_eq!(replay(log.path()).unwrap().messages.len(), 3);
+}
+
+#[test]
 fn listing_is_project_scoped_and_title_hits_rank_first() {
     let s = store();
     let project = s.project();
@@ -805,6 +838,15 @@ mod rp_and_back {
         // One writer: rp is refused while viy has it.
         assert_eq!(rp("open", json!({"dir": dir, "id": id})), "busy");
         assert_eq!(rp("trash", json!({"dir": dir, "id": id})), "busy");
+        // rp's copy of the chat viy holds is one of the project's chats.
+        let copy = rp("copy", json!({"dir": dir, "id": id}));
+        let copy = copy.as_str().unwrap();
+        let copied = replay(&s.sessions.path_of(copy)).unwrap();
+        assert_eq!(copied.messages, turn(1));
+        assert_eq!(copied.meta["project"], json!(project));
+        assert_eq!(copied.meta["model"], "m");
+        assert_eq!(copied.title.as_deref(), Some("Plan (fork)"));
+        assert!(s.sessions.list(Some(&project)).iter().any(|r| r.id == copy));
         let two: Vec<Value> = turn(1).into_iter().chain(turn(2)).collect();
         log.sync(Some("be brief"), &two, false).unwrap();
         assert!(!log.set_auto_title("Model title").unwrap());
@@ -829,6 +871,7 @@ mod rp_and_back {
         assert_eq!(st.messages, three);
         log.close("exit").unwrap();
         s.sessions.trash(id).unwrap();
+        s.sessions.trash(copy).unwrap();
         assert_eq!(rp("list", json!({"dir": dir, "scope": null})), json!([]));
     }
 

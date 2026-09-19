@@ -478,12 +478,7 @@ impl Sessions {
     /// chat has it.
     pub fn open(&self, id: &str) -> Result<(SessionLog, State), SessionError> {
         let st = replay(&self.path_of(id))?;
-        let mut log = SessionLog::bare(
-            self,
-            id.to_string(),
-            st.meta_str("project").as_deref(),
-            st.meta_str("model").as_deref(),
-        );
+        let mut log = SessionLog::from_state(self, id, &st);
         log.acquire()?;
         // Trim a torn final line, or the next event would be glued onto it.
         let data = fs::read(&log.path)?;
@@ -494,14 +489,18 @@ impl Sessions {
             let keep = data.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
             file.set_len(keep as u64)?;
         }
-        log.created = st.meta.get("created").and_then(Value::as_f64);
-        log.source = st.meta_str("source");
-        log.persisted = st.messages.clone();
-        log.system = st.system.clone();
-        log.title = st.title.clone();
-        log.title_auto = st.title_auto;
-        log.title_by_model = st.title_by_model;
         Ok((log, st))
+    }
+
+    /// A copy of session `id` to go on in when another chat has it open:
+    /// its history, project and model, named after it. The original is
+    /// only read.
+    pub fn copy(&self, id: &str, redact: Option<Redactor>) -> io::Result<(SessionLog, State)> {
+        let st = replay(&self.path_of(id))?;
+        let mut source = SessionLog::from_state(self, id, &st);
+        source.redact = redact;
+        let twin = source.fork(st.system.as_deref(), &st.messages, None)?;
+        Ok((twin, st))
     }
 
     /// Listing rows, newest first; only those in `scope`'s tree when given.
@@ -731,6 +730,24 @@ impl SessionLog {
         }
     }
 
+    /// Session `id` as `st` replayed it, not yet open for appending.
+    fn from_state(store: &Sessions, id: &str, st: &State) -> Self {
+        let mut log = Self::bare(
+            store,
+            id.to_string(),
+            st.meta_str("project").as_deref(),
+            st.meta_str("model").as_deref(),
+        );
+        log.created = st.meta.get("created").and_then(Value::as_f64);
+        log.source = st.meta_str("source");
+        log.persisted = st.messages.clone();
+        log.system = st.system.clone();
+        log.title = st.title.clone();
+        log.title_auto = st.title_auto;
+        log.title_by_model = st.title_by_model;
+        log
+    }
+
     pub fn id(&self) -> &str {
         &self.id
     }
@@ -768,16 +785,6 @@ impl SessionLog {
 
     pub fn files_dir(&self) -> PathBuf {
         files_dir(&self.path)
-    }
-
-    /// The session `id` read as it is, for a fork when another chat holds
-    /// it: rp's bare `SessionLog(sid, path)`, with no project or model.
-    pub fn source(store: &Sessions, id: &str, st: &State) -> Self {
-        let mut log = Self::bare(store, id.to_string(), None, None);
-        log.title = st.title.clone();
-        log.title_auto = st.title_auto;
-        log.title_by_model = st.title_by_model;
-        log
     }
 
     /// A new session that starts with this history, named `title` or after

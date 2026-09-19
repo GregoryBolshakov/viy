@@ -12,6 +12,8 @@ prints one JSON value. Actions:
     replay    {dir, id}                             replay()
     list      {dir, scope}                          list_sessions(scope)
     search    {dir, query, scope}                   search(query, scope)
+    copy      {dir, id}                             SessionLog.copy, closed; the
+                                                    copy's id
     trash     {dir, id}                             "ok" or "busy"
     open      {dir, id}                             "ok" (and closed) or "busy"
 
@@ -48,6 +50,10 @@ def main(action, args):
             log.set_auto_title(args["title"])
         log.close("exit")
         return sessions.replay(log.path)
+    if action == "copy":
+        twin, _ = sessions.SessionLog.copy(args["id"])
+        twin.close("exit")
+        return twin.id
     if action == "replay":
         return sessions.replay(sessions.path_of(args["id"]))
     if action == "list":

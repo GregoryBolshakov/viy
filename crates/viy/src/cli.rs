@@ -184,6 +184,21 @@ pub enum DevCommand {
         #[arg(long)]
         live: bool,
     },
+    /// Opens the chat in viy's terminal UI against a model server, with
+    /// viy's own config and build tools off (they come with phase 4); the
+    /// plain renderer, one message per line of stdin, when stdin or stdout
+    /// is not a terminal or with --plain.
+    Chat {
+        /// The model server's base URL.
+        #[arg(long)]
+        url: String,
+        /// Where the chat runs, in place of the working directory.
+        #[arg(long)]
+        dir: Option<std::path::PathBuf>,
+        /// Line output, as for a pipe.
+        #[arg(long)]
+        plain: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

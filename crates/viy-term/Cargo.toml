@@ -14,12 +14,18 @@ doctest = false
 workspace = true
 
 [dependencies]
-crossterm = { workspace = true, features = ["bracketed-paste"] }
+crossterm = { workspace = true, features = ["bracketed-paste", "event-stream"] }
+futures-core = { workspace = true }
 ratatui = { workspace = true }
+signal-hook = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "signal", "sync", "time"] }
 unicode-width = { workspace = true }
+viy-protocol = { workspace = true }
 
 [dev-dependencies]
+libc = { workspace = true }
 pretty_assertions = { workspace = true }
 # The backend's writer, for the vt100 test backend (as Codex's tui).
 ratatui = { workspace = true, features = ["unstable-backend-writer"] }
+tokio = { workspace = true, features = ["macros", "rt", "signal", "sync", "test-util", "time"] }
 vt100 = { workspace = true }

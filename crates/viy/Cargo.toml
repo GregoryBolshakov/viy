@@ -21,13 +21,14 @@ workspace = true
 clap = { workspace = true }
 libc = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt", "signal", "time"] }
+tokio = { workspace = true, features = ["macros", "rt", "signal", "sync", "time"] }
 viy-agent = { workspace = true }
 viy-config = { workspace = true }
 viy-exec = { workspace = true }
 viy-http = { workspace = true }
 viy-pod = { workspace = true }
 viy-protocol = { workspace = true }
+viy-term = { workspace = true }
 viy-time = { workspace = true }
 
 [dev-dependencies]

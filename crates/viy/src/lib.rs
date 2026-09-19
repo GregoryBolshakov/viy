@@ -175,7 +175,7 @@ fn dispatch(
             } else {
                 dev::scripted_base()
             };
-            dev::run(args, &paths, base, out)
+            dev::run(args, &paths, base, out, terminal)
         }
         Command::Chat(_) | Command::Chats(_) | Command::Ask(_) => not_ported(3),
         Command::Trace(_) | Command::Toolbox(_) => not_ported(7),

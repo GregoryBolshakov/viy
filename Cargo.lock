@@ -336,6 +336,7 @@ dependencies = [
  "crossterm_winapi",
  "derive_more",
  "document-features",
+ "futures-core",
  "mio",
  "parking_lot",
  "rustix",
@@ -2485,6 +2486,7 @@ dependencies = [
  "viy-http",
  "viy-pod",
  "viy-protocol",
+ "viy-term",
  "viy-testkit",
  "viy-time",
 ]
@@ -2574,9 +2576,14 @@ name = "viy-term"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "futures-core",
+ "libc",
  "pretty_assertions",
  "ratatui",
+ "signal-hook",
+ "tokio",
  "unicode-width",
+ "viy-protocol",
  "vt100",
 ]
 

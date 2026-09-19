@@ -45,6 +45,9 @@ base64 = "0.22.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.6.6", features = ["derive"] }
 crossterm = "0.29.0"
+# crossterm's EventStream is a futures-core Stream (Codex takes the futures
+# facade; the trait alone is enough here).
+futures-core = { version = "0.3.34", default-features = false }
 indexmap = "2.14.0"
 libc = "0.2.191"
 pretty_assertions = "1.4.1"
@@ -64,6 +67,8 @@ reqwest = { version = "0.12.28", default-features = false, features = [
 ] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["float_roundtrip", "preserve_order"] }
+# A safe SIGTSTP for Ctrl-Z (Codex's version, codex-rs/Cargo.toml).
+signal-hook = { version = "0.3.18", default-features = false }
 thiserror = "2.0.21"
 tokio = "1.53.1"
 unicode-width = "0.2"

@@ -20,6 +20,13 @@
 //! The server, the workspace (the working directory) and HOME and the XDG
 //! directories are the caller's: `tools/drive_rp.py --client viy` sets them
 //! up as for rp (implementation plan 3.4).
+//!
+//! `viy dev chat --url URL` opens the chat in viy's terminal UI (the shell
+//! of WP 3.6) against the model server at URL, with viy's own config and
+//! TOOLS_ENABLED off until phase 4 brings the tools; `viy chat` itself
+//! waits for the chat without a pod (WP 3.13). Without a terminal, or with
+//! `--plain`, it is the plain renderer: one message per line of stdin, and
+//! the chat closes once the last has been answered.
 
 use std::io::Write;
 use std::path::Path;
@@ -27,6 +34,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use serde_json::json;
+use tokio::sync::mpsc;
 use viy_agent::Engine;
 use viy_agent::chat::Chat;
 use viy_agent::chat::ChatTurns;
@@ -43,17 +51,25 @@ use viy_http::ReqwestHttp;
 use viy_pod::backend::Backend;
 use viy_pod::idle;
 use viy_protocol::Answer;
+use viy_protocol::EventMsg;
+use viy_protocol::Op;
+use viy_term::app::App;
+use viy_term::plain::Plain;
+use viy_term::tui::Tui;
 use viy_time::SystemTimeProvider;
 
 use crate::Failure;
+use crate::Terminal;
 use crate::cli::DevArgs;
 use crate::cli::DevCommand;
 
 impl DevArgs {
     /// Whether the run takes viy's own config.
     pub fn live(&self) -> bool {
-        let DevCommand::Drive { live, .. } = &self.command;
-        *live
+        match &self.command {
+            DevCommand::Drive { live, .. } => *live,
+            DevCommand::Chat { .. } => true,
+        }
     }
 }
 
@@ -65,20 +81,50 @@ pub fn scripted_base() -> Config {
     cfg
 }
 
-/// Runs the scenario with `base` under its `config`.
+/// Runs the dev command with `base` as its config.
 pub fn run(
     args: &DevArgs,
     paths: &Paths,
     base: Config,
     out: &mut (dyn Write + Send),
+    terminal: Terminal,
 ) -> Result<(), Failure> {
-    let DevCommand::Drive {
-        scenario,
-        url,
-        result,
-        dir,
-        live,
-    } = &args.command;
+    match &args.command {
+        DevCommand::Drive {
+            scenario,
+            url,
+            result,
+            dir,
+            live,
+        } => drive_scenario(
+            scenario,
+            url,
+            result.as_deref(),
+            dir.as_deref(),
+            *live,
+            paths,
+            base,
+            out,
+        ),
+        DevCommand::Chat { url, dir, plain } => {
+            let plain = *plain || !terminal.tty || !terminal.stdin_tty;
+            chat_ui(url, dir.as_deref(), plain, paths, base, out)
+        }
+    }
+}
+
+/// Runs the scenario with `base` under its `config`.
+#[allow(clippy::too_many_arguments)]
+fn drive_scenario(
+    scenario: &Path,
+    url: &str,
+    result: Option<&Path>,
+    dir: Option<&Path>,
+    live: bool,
+    paths: &Paths,
+    base: Config,
+    out: &mut (dyn Write + Send),
+) -> Result<(), Failure> {
     let shown = scenario.display();
     let text = std::fs::read_to_string(scenario).map_err(|e| format!("{shown}: {e}"))?;
     let value: Value = serde_json::from_str(&text).map_err(|e| format!("{shown}: {e}"))?;
@@ -91,10 +137,7 @@ pub fn run(
         .build()
         .map_err(|e| Failure::from(e.to_string()))?;
     let (run, today, session) = runtime.block_on(async {
-        let start = match dir {
-            Some(dir) => dir.clone(),
-            None => std::env::current_dir().map_err(|e| format!("the working directory: {e}"))?,
-        };
+        let start = start_dir(dir)?;
         let mut chat = chat(&cfg, url, http, paths, &start)?;
         if !live {
             outside_files(&chat, &start)?;
@@ -121,6 +164,149 @@ pub fn run(
         Ok(())
     } else {
         Err(Failure::from(run.problems.join("\n")))
+    }
+}
+
+/// `viy dev chat`: the chat on `url` in the terminal UI, or in the plain
+/// renderer with stdin's lines.
+fn chat_ui(
+    url: &str,
+    dir: Option<&Path>,
+    plain: bool,
+    paths: &Paths,
+    mut cfg: Config,
+    out: &mut (dyn Write + Send),
+) -> Result<(), Failure> {
+    cfg.set("TOOLS_ENABLED", "0");
+    let http: Arc<dyn HttpClient> =
+        Arc::new(ReqwestHttp::new().map_err(|e| Failure::from(e.to_string()))?);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| Failure::from(e.to_string()))?;
+    let session = runtime.block_on(async {
+        let start = start_dir(dir)?;
+        let mut chat = chat(&cfg, url, http, paths, &start)?;
+        chat.discover_max_model_len().await;
+        let turns = Arc::new(ChatTurns::new(chat));
+        let mut engine = Engine::spawn(turns.clone());
+        if plain {
+            plain_chat(&mut engine, stdin_lines(), &mut *out).await?;
+        } else {
+            tui_chat(engine).await?;
+        }
+        Ok::<_, Failure>(turns.with_chat(|c| c.session_id()).flatten())
+    })?;
+    if let Some(id) = session {
+        writeln!(out, "chat saved: {id}").map_err(|e| Failure::from(e.to_string()))?;
+    }
+    Ok(())
+}
+
+/// The chat in the terminal UI, the engine's events and the UI's ops
+/// passed between them by a task.
+async fn tui_chat(mut engine: Engine) -> Result<(), Failure> {
+    let mut tui = Tui::init().map_err(|e| Failure::from(format!("the terminal: {e}")))?;
+    let (ops, mut ops_rx) = mpsc::unbounded_channel();
+    let (events_tx, mut events) = mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                op = ops_rx.recv() => {
+                    let Some(op) = op else { return };
+                    if engine.submit(op).is_err() {
+                        return;
+                    }
+                }
+                event = engine.next_event() => {
+                    let Some(event) = event else { return };
+                    if events_tx.send(event).is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+    });
+    let mut app = App::new(ops);
+    let result = viy_term::app::run(&mut tui, &mut app, &mut events).await;
+    drop(tui);
+    result.map_err(|e| Failure::from(format!("the terminal: {e}")))
+}
+
+/// The chat in the plain renderer: each of `lines` is sent (a slash command
+/// as one), and once they have run and `lines` has ended, the chat closes.
+pub(crate) async fn plain_chat(
+    engine: &mut Engine,
+    mut lines: mpsc::UnboundedReceiver<String>,
+    out: &mut (dyn Write + Send),
+) -> Result<(), Failure> {
+    let failed = |e: std::io::Error| Failure::from(e.to_string());
+    let mut plain = Plain::new(out);
+    let mut reading = true;
+    // Lines and commands sent that have not finished.
+    let mut running = 0usize;
+    let mut closing = false;
+    loop {
+        if !reading && running == 0 && !closing {
+            closing = true;
+            let _ = engine.submit(Op::Shutdown);
+        }
+        tokio::select! {
+            line = lines.recv(), if reading => match line {
+                Some(text) if text.trim().is_empty() => {}
+                Some(text) => {
+                    let op = if text.starts_with('/') {
+                        Op::Command { text }
+                    } else {
+                        Op::UserTurn { text }
+                    };
+                    if engine.submit(op).is_ok() {
+                        running += 1;
+                    }
+                }
+                None => reading = false,
+            },
+            event = engine.next_event() => {
+                let Some(event) = event else {
+                    return Ok(());
+                };
+                match &event.msg {
+                    EventMsg::ShutdownComplete => return Ok(()),
+                    EventMsg::TurnComplete(_)
+                    | EventMsg::TurnAborted(_)
+                    | EventMsg::CommandComplete(_) => running = running.saturating_sub(1),
+                    _ => {}
+                }
+                if let Some(op) = plain.event(&event.msg).map_err(failed)? {
+                    let _ = engine.submit(op);
+                }
+            }
+        }
+    }
+}
+
+/// Stdin's lines, read by a thread.
+fn stdin_lines() -> mpsc::UnboundedReceiver<String> {
+    let (tx, rx) = mpsc::unbounded_channel();
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lines() {
+            let Ok(line) = line else {
+                return;
+            };
+            if tx.send(line).is_err() {
+                return;
+            }
+        }
+    });
+    rx
+}
+
+/// `dir`, or the working directory.
+fn start_dir(dir: Option<&Path>) -> Result<std::path::PathBuf, Failure> {
+    match dir {
+        Some(dir) => Ok(dir.to_path_buf()),
+        None => std::env::current_dir()
+            .map_err(|e| Failure::from(format!("the working directory: {e}"))),
     }
 }
 

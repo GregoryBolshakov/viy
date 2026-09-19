@@ -278,3 +278,46 @@ fn a_scripted_run_in_a_project_refuses_the_projects_own_files() {
         "{err}"
     );
 }
+
+/// `viy dev chat`'s plain renderer: each line is answered in turn, the
+/// answers stream as text, and the chat closes once the last is answered.
+#[test]
+fn dev_chat_in_plain_answers_each_line_then_closes() {
+    let script = scenario::load("plain-two-turns").unwrap();
+    let mock = MockLlm::start(&script).unwrap();
+    let scratch = ScratchDir::new("dev-chat").unwrap();
+    let workspace = std::fs::canonicalize(scratch.path()).unwrap();
+    let mut cfg = super::scripted_base();
+    for (key, value) in script["config"].as_object().unwrap() {
+        cfg.set(key, value.as_str().unwrap());
+    }
+    let paths = viy_config::Paths::from_env().unwrap();
+    let http: std::sync::Arc<dyn viy_http::HttpClient> =
+        std::sync::Arc::new(viy_http::ReqwestHttp::new().unwrap());
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let mut out = Vec::new();
+    runtime.block_on(async {
+        let mut chat = super::chat(&cfg, &mock.uri(), http, &paths, &workspace).unwrap();
+        chat.discover_max_model_len().await;
+        let mut engine =
+            viy_agent::Engine::spawn(std::sync::Arc::new(viy_agent::chat::ChatTurns::new(chat)));
+        let (lines, rx) = tokio::sync::mpsc::unbounded_channel();
+        for step in script["steps"].as_array().unwrap() {
+            lines
+                .send(step["user"].as_str().unwrap().to_string())
+                .unwrap();
+        }
+        drop(lines);
+        super::plain_chat(&mut engine, rx, &mut out).await.unwrap();
+    });
+    assert_eq!(
+        String::from_utf8(out).unwrap(),
+        "A haiku is a short Japanese poem of three lines with five, seven and five syllables.\n\
+         Rain on the tin roof\na thousand small drums at once\nthen the gutter sighs\n"
+    );
+    // Both turns and the title were asked, in rp's order.
+    assert_eq!(mock.requests().len(), 4);
+}

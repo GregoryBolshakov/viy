@@ -113,3 +113,53 @@ fn escape_sequences_in_the_text_are_written_visible() {
     let (text, _) = render(&[delta("a\x1b]52;c;aGk=\x07b\tc\r\n")]);
     assert_eq!(text, "a␛]52;c;aGk=␇b\tc␍\n");
 }
+
+/// The hostile-string corpus through every event the plain renderer writes
+/// (ui-plan 7): it writes no escape and no control but newline and tab,
+/// whatever the text, so a terminal on stdout shows it and does nothing.
+#[test]
+fn hostile_strings_write_no_escape_and_reach_no_terminal_feature() {
+    use viy_protocol::Choices;
+    use viy_protocol::ToolCallBeginEvent;
+    use viy_testkit::hostile::CORPUS;
+
+    let mut events = Vec::new();
+    for text in CORPUS {
+        events.extend([
+            delta(text),
+            complete(TurnOutcome::Answered),
+            notice(text),
+            complete(TurnOutcome::Failed {
+                message: (*text).into(),
+            }),
+            EventMsg::ToolCallBegin(ToolCallBeginEvent {
+                call_id: "c1".into(),
+                tool: (*text).into(),
+                summary: (*text).into(),
+            }),
+            EventMsg::QuestionRequest(QuestionRequestEvent {
+                question_id: "q1".into(),
+                question: Question {
+                    kind: Some(QuestionKind::Destructive),
+                    prompt: (*text).into(),
+                    choices: Choices::YesNo,
+                    default: Answer::No,
+                    unattended: Answer::No,
+                },
+            }),
+        ]);
+    }
+    // The whole corpus as one stream too: an escape cut between two pieces.
+    events.extend(CORPUS.iter().map(|t| delta(t)));
+    let (text, _) = render(&events);
+    let stray: Vec<char> = text
+        .chars()
+        .filter(|&c| c != '\n' && c != '\t' && crate::sanitize::unsafe_in_cell(&c.to_string()))
+        .collect();
+    assert_eq!(stray, Vec::<char>::new());
+    let mut parser = viy_testkit::screen::parser(50, 80);
+    viy_testkit::screen::feed(&mut parser, text.replace('\n', "\r\n").as_bytes());
+    assert_eq!(parser.callbacks().foreign(), Vec::<String>::new());
+    assert!(text.contains("␛]52;c;cm0gLXJmIH4K␇"), "{text}");
+    assert!(text.contains("invoice_<U+202E>fdp.exe"), "{text}");
+}

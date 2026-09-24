@@ -7,6 +7,7 @@
 pub mod app;
 pub mod frame;
 pub mod plain;
+pub mod sanitize;
 pub mod terminal;
 pub mod textarea;
 pub mod tmux;

@@ -12,6 +12,8 @@ use ratatui::backend::WindowSize;
 use ratatui::buffer::Cell;
 use ratatui::layout::Position;
 use ratatui::layout::Size;
+use viy_testkit::screen::Feed;
+use viy_testkit::screen::Recorder;
 
 pub struct VT100Backend {
     inner: CrosstermBackend<Screen>,
@@ -19,7 +21,8 @@ pub struct VT100Backend {
 
 /// The emulator, every byte it was sent, and how often it was flushed.
 pub struct Screen {
-    pub parser: vt100::Parser,
+    pub parser: vt100::Parser<Recorder>,
+    feed: Feed,
     pub written: Vec<u8>,
     pub flushes: usize,
 }
@@ -27,12 +30,13 @@ pub struct Screen {
 impl Write for Screen {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.written.extend_from_slice(buf);
-        self.parser.write(buf)
+        self.feed.process(&mut self.parser, buf);
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
         self.flushes += 1;
-        self.parser.flush()
+        Ok(())
     }
 }
 
@@ -41,14 +45,15 @@ impl VT100Backend {
         crossterm::style::force_color_output(true);
         Self {
             inner: CrosstermBackend::new(Screen {
-                parser: vt100::Parser::new(height, width, 0),
+                parser: viy_testkit::screen::parser(height, width),
+                feed: Feed::default(),
                 written: Vec::new(),
                 flushes: 0,
             }),
         }
     }
 
-    pub fn vt100(&self) -> &vt100::Parser {
+    pub fn vt100(&self) -> &vt100::Parser<Recorder> {
         &self.inner.writer().parser
     }
 
@@ -80,26 +85,7 @@ impl VT100Backend {
     /// The screen's rows without trailing blanks, `▮` at the cursor when it
     /// is shown.
     pub fn screen_rows(&self) -> Vec<String> {
-        let screen = self.vt100().screen();
-        let (rows, cols) = screen.size();
-        let (cursor_row, cursor_col) = screen.cursor_position();
-        (0..rows)
-            .map(|row| {
-                let mut text = String::new();
-                for col in 0..cols {
-                    if row == cursor_row && col == cursor_col && !screen.hide_cursor() {
-                        text.push('▮');
-                        continue;
-                    }
-                    match screen.cell(row, col) {
-                        Some(cell) if cell.is_wide_continuation() => {}
-                        Some(cell) if cell.has_contents() => text.push_str(cell.contents()),
-                        _ => text.push(' '),
-                    }
-                }
-                text.trim_end_matches(' ').to_string()
-            })
-            .collect()
+        viy_testkit::screen::rows(self.vt100().screen())
     }
 }
 

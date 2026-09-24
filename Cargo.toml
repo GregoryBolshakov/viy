@@ -49,6 +49,8 @@ crossterm = "0.29.0"
 # facade; the trait alone is enough here).
 futures-core = { version = "0.3.34", default-features = false }
 indexmap = "2.14.0"
+# Frame snapshots, as Codex's TUI tests (codex-rs/Cargo.toml); no colours.
+insta = { version = "1.46.3", default-features = false }
 libc = "0.2.191"
 pretty_assertions = "1.4.1"
 rand = { version = "0.9.5", default-features = false, features = ["os_rng", "std"] }
@@ -71,6 +73,8 @@ serde_json = { version = "1.0.151", features = ["float_roundtrip", "preserve_ord
 signal-hook = { version = "0.3.18", default-features = false }
 thiserror = "2.0.21"
 tokio = "1.53.1"
+# Graphemes, measured as ratatui measures them (Codex has it too).
+unicode-segmentation = "1.12.0"
 unicode-width = "0.2"
 vt100 = "0.16.2"
 

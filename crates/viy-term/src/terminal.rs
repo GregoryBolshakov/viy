@@ -45,6 +45,8 @@ use ratatui::layout::Rect;
 use ratatui::layout::Size;
 use ratatui::widgets::Widget;
 
+use crate::sanitize::unsafe_in_cell;
+
 /// One frame, handed to [`Terminal::draw`]'s callback.
 pub struct Frame<'a> {
     area: Rect,
@@ -124,6 +126,12 @@ where
         &mut self.backend
     }
 
+    /// The frame drawn last, and where it put the cursor.
+    #[cfg(test)]
+    pub(crate) fn last_frame(&self) -> (&Buffer, Option<Position>) {
+        (&self.buffers[1 - self.current], self.cursor_shown)
+    }
+
     pub fn size(&self) -> Size {
         self.buffers[self.current].area.as_size()
     }
@@ -176,6 +184,7 @@ where
         };
         render(&mut frame);
         let cursor = frame.cursor;
+        scrub(&mut self.buffers[self.current]);
 
         let updates = self.buffers[1 - self.current].diff(&self.buffers[self.current]);
         // An empty diff writes nothing: the backend's draw resets the
@@ -204,6 +213,20 @@ where
         self.current = 1 - self.current;
         self.buffers[self.current].reset();
         Backend::flush(&mut self.backend)
+    }
+}
+
+/// The last check before cells reach the terminal (ui-plan 7): a cell whose
+/// symbol holds a control or a bidi control is written as U+FFFD. Widgets
+/// sanitize their text, so this only catches one that did not. It runs on
+/// the whole frame before the diff, which measures each symbol's width to
+/// skip the cells a wide one covers: scrubbing only the cells the diff
+/// writes would leave its neighbours unwritten.
+fn scrub(buffer: &mut Buffer) {
+    for cell in &mut buffer.content {
+        if unsafe_in_cell(cell.symbol()) {
+            cell.set_symbol("\u{fffd}");
+        }
     }
 }
 

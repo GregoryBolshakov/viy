@@ -9,7 +9,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::Line;
 
-use crate::wrap::wrap_line;
+use crate::wrap::wrap_rows;
 
 /// One entry of the transcript: a user message, an answer, a notice.
 pub type Cell = Vec<Line<'static>>;
@@ -45,13 +45,9 @@ impl Layout {
         let mut layout = Self::default();
         for (line, source) in cell.iter().enumerate() {
             let mut offset = 0;
-            for row in wrap_line(source, width) {
+            for (row, chars) in wrap_rows(source, width) {
                 layout.starts.push((line, offset));
-                offset += row
-                    .spans
-                    .iter()
-                    .map(|s| s.content.chars().count())
-                    .sum::<usize>();
+                offset += chars;
                 layout.rows.push(row);
             }
         }

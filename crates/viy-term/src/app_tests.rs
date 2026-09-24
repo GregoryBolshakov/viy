@@ -508,3 +508,6 @@ async fn the_loop_ends_when_the_engine_stops() {
     let flow = f.app.run(&mut f.term, &mut input, &mut events).await;
     assert_eq!(flow.unwrap(), Flow::Exit);
 }
+
+#[path = "app_hostile_tests.rs"]
+mod hostile;

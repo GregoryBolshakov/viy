@@ -3,7 +3,9 @@
 //! Codex's `bottom_pane/textarea.rs` and `chat_composer.rs` (flags F33).
 
 use ratatui::layout::Position;
-use unicode_width::UnicodeWidthChar;
+
+use crate::sanitize::glyphs;
+use crate::wrap::Rows;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct TextArea {
@@ -85,40 +87,45 @@ impl TextArea {
     }
 
     /// The text in rows at most `width` cells wide, and the cursor's column
-    /// and row in them.
+    /// and row in them. What could act on the terminal is shown, not
+    /// applied (ui-plan 7), and tabs are spaces to the next stop: the
+    /// glyphs and rows of the transcript's wrapping.
     pub fn layout(&self, width: u16) -> (Vec<String>, Position) {
         let width = usize::from(width.max(1));
         let mut rows = vec![String::new()];
-        let mut used = 0;
-        let mut cursor = Position::ORIGIN;
-        for (i, c) in self.text.char_indices() {
-            if i == self.cursor {
-                cursor = position(rows.len() - 1, used);
+        let mut cursor = None;
+        let mut start = 0;
+        let mut lines = self.text.split('\n').peekable();
+        while let Some(line) = lines.next() {
+            let mut place = Rows::new(width);
+            for glyph in glyphs(line, None) {
+                let placed = place.place(&glyph);
+                if placed.wrap {
+                    rows.push(String::new());
+                }
+                if cursor.is_none() && glyph.chars > 0 && start + glyph.at >= self.cursor {
+                    cursor = Some(position(rows.len() - 1, placed.column));
+                }
+                if let Some(row) = rows.last_mut() {
+                    row.push_str(&placed.text);
+                }
             }
-            if c == '\n' {
+            let end = start + line.len();
+            if cursor.is_none() && self.cursor <= end {
+                let mut column = place.used();
+                // A cursor after a full last row goes to the start of the next.
+                if lines.peek().is_none() && column >= width {
+                    rows.push(String::new());
+                    column = 0;
+                }
+                cursor = Some(position(rows.len() - 1, column));
+            }
+            if lines.peek().is_some() {
                 rows.push(String::new());
-                used = 0;
-                continue;
             }
-            let w = c.width().unwrap_or(0);
-            if used + w > width {
-                rows.push(String::new());
-                used = 0;
-            }
-            if let Some(row) = rows.last_mut() {
-                row.push(c);
-            }
-            used += w;
+            start = end + 1;
         }
-        if self.cursor == self.text.len() {
-            // A cursor after a full row goes to the start of the next.
-            if used >= width {
-                rows.push(String::new());
-                used = 0;
-            }
-            cursor = position(rows.len() - 1, used);
-        }
-        (rows, cursor)
+        (rows, cursor.unwrap_or(Position::ORIGIN))
     }
 }
 

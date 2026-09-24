@@ -1,8 +1,10 @@
 //! The plain renderer (ui-plan 10): line output for pipes, scripts and
 //! `viy ask`, with no live region, no colour and no escape sequence of its
-//! own. The answer is written as it streams, everything else on lines of
-//! its own; a question has nobody to ask and takes its unattended answer
-//! (no for every approval, as rp's `_confirm` without a TTY).
+//! own: every string goes through the sanitizer (ui-plan 7) as on the
+//! screen, since stdout may still be a terminal. The answer is written as
+//! it streams, everything else on lines of its own; a question has nobody
+//! to ask and takes its unattended answer (no for every approval, as rp's
+//! `_confirm` without a TTY).
 
 use std::io;
 use std::io::Write;
@@ -13,11 +15,14 @@ use viy_protocol::TurnOutcome;
 
 use crate::app::answer_word;
 use crate::app::choices;
+use crate::sanitize::sanitize_after;
 
 pub struct Plain<W: Write> {
     out: W,
     /// The last thing written did not end its line.
     mid_line: bool,
+    /// The last char written, for the sanitizer's joiners.
+    last: Option<char>,
 }
 
 impl<W: Write> Plain<W> {
@@ -25,6 +30,7 @@ impl<W: Write> Plain<W> {
         Self {
             out,
             mid_line: false,
+            last: None,
         }
     }
 
@@ -72,7 +78,9 @@ impl<W: Write> Plain<W> {
         if text.is_empty() {
             return Ok(());
         }
-        self.out.write_all(visible(text).as_bytes())?;
+        let shown = sanitize_after(self.last, text);
+        self.out.write_all(shown.as_bytes())?;
+        self.last = shown.chars().next_back();
         self.mid_line = !text.ends_with('\n');
         Ok(())
     }
@@ -87,23 +95,10 @@ impl<W: Write> Plain<W> {
     fn end_line(&mut self) -> io::Result<()> {
         if std::mem::take(&mut self.mid_line) {
             self.out.write_all(b"\n")?;
+            self.last = Some('\n');
         }
         Ok(())
     }
-}
-
-/// Controls other than newline and tab as visible symbols: only viy writes
-/// escape sequences, and the plain renderer writes none (ui-plan 7).
-fn visible(text: &str) -> String {
-    text.chars()
-        .map(|c| match c {
-            '\n' | '\t' => c,
-            '\0'..='\x1f' => char::from_u32(0x2400 + u32::from(c)).unwrap_or('\u{fffd}'),
-            '\x7f' => '\u{2421}',
-            '\u{80}'..='\u{9f}' => '\u{fffd}',
-            _ => c,
-        })
-        .collect()
 }
 
 #[cfg(test)]

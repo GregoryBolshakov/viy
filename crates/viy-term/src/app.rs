@@ -11,6 +11,7 @@
 //! statuses are WP 3.10), and a question is answered as with nobody to ask,
 //! its unattended answer, until the question boxes of WP 3.11.
 
+use std::borrow::Cow;
 use std::future::poll_fn;
 use std::io;
 use std::io::Write;
@@ -51,6 +52,7 @@ use viy_protocol::StatusPhase;
 use viy_protocol::TurnOutcome;
 
 use crate::frame::FrameLimiter;
+use crate::sanitize::sanitize_line_after;
 use crate::terminal::Terminal;
 use crate::textarea::TextArea;
 use crate::transcript::Cell;
@@ -454,6 +456,7 @@ impl App {
         let top_height = size.height - bottom_height;
         self.view.prepare(&self.cells, size.width, top_height);
         bottom.push(self.footer());
+        let bottom: Vec<Line<'static>> = bottom.into_iter().map(clean_row).collect();
         let top = Rect::new(0, 0, size.width, top_height);
         let live_area = Rect::new(0, top_height, size.width, bottom_height);
         let cursor = Position::new(
@@ -524,6 +527,20 @@ impl App {
         }
         Line::from(spans)
     }
+}
+
+/// `line` as one row with every char that could act on the terminal shown,
+/// not applied: the live region's last check (ui-plan 7). The transcript's
+/// rows come from [`wrap_line`], which does the same.
+fn clean_row(mut line: Line<'static>) -> Line<'static> {
+    let mut prev = None;
+    for span in &mut line.spans {
+        if let Cow::Owned(text) = sanitize_line_after(prev, &span.content) {
+            span.content = text.into();
+        }
+        prev = span.content.chars().next_back().or(prev);
+    }
+    line
 }
 
 /// Sleeps until `at`; never, without one.

@@ -1,0 +1,34 @@
+---
+source: crates/viy-term/src/app_hostile_tests.rs
+expression: "f.screen().join(\"\\n\")"
+---
+
+
+
+
+
+
+
+
+
+you › show me
+
+␛[2J␛[Hcleared␛[3Jscrollback gone␛cfull reset␛#8DECALN␛[5;10rscroll regi
+on␛[r␛[?1049lleft the alternate screen␛[1;31mred␛[0m and ␛[7minverse␛[10
+;10Hallow? [y/N] y␛[1A␛[2Kerased the line above␛7␛[1;1Hover the top␛8lin
+e␍OVERWRITTENabc␈␈␈xyz␛[?25lhidden cursor␛[?1000l␛[?1006l␛[?2004lno mous
+e, no paste␛[?1h␛=application keys␛]0;pwned title␇␛]2;pwned title␛\␛]1;i
+con name␇␛]52;c;cm0gLXJmIH4K␇␛]52;c;?␇␛]8;;https://evil.example/␛\click
+me␛]8;;␛\␛]777;notify;viy;pwned␇␛]9;pwned␇␛]1337;SetUserVar=x=eQ==␇␛[6n␛
+[21t␛[>c␛Z␛]10;?␇␛P+q544e␛\␛_Gf=100;AAAA␛\␛^privacy␛\␛Xsos␛\␛[9999999999
+99;999999999999H␛[99999999999999999999m␛[?99999999999999h␎shift out␏␛(0l
+qqk␛(B␇␇bells␀nul␡del<U+009B>2J<U+009D>0;c1 title<U+009C><U+0090>dcs<U+0
+09C>invoice_<U+202E>fdp.exe<U+2066>isolate<U+2069> <U+2067>rtl<U+2069> <
+U+200E><U+200F><U+061C>pa<U+200B>ss<U+200C>wo<U+200D>rd<U+2060><U+FEFF><
+U+00AD>line<U+2028>separator<U+2029>paragraphsmuggled<U+E0049><U+E0067><
+U+E006E><U+E006F><U+E0072><U+E0065><U+3164><U+115F><U+FFA0>hangul filler
+strailing escape ␛[2Jafter a split escape��␛[2J�        tabs    and text
+
+the end
+› ▮
+viy

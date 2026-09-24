@@ -34,3 +34,4 @@ viy-time = { workspace = true }
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 viy-testkit = { workspace = true }
+vt100 = { workspace = true }

@@ -66,3 +66,22 @@ fn prefill_puts_the_cursor_at_the_end_and_take_empties() {
     assert_eq!(area.take(), "cut message!");
     assert!(area.is_empty());
 }
+
+/// The cursor after an emoji sequence is two cells on, and hostile text is
+/// laid out as drawn.
+#[test]
+fn the_cursor_counts_cells_as_drawn() {
+    let mut area = TextArea::default();
+    area.insert_str("❤\u{fe0f}x");
+    area.move_left();
+    assert_eq!(
+        area.layout(10),
+        (vec!["❤\u{fe0f}x".to_string()], Position::new(2, 0))
+    );
+    let mut area = TextArea::default();
+    area.insert_str("a\x1b[2J\u{202e}b");
+    assert_eq!(
+        area.layout(40),
+        (vec!["a␛[2J<U+202E>b".to_string()], Position::new(14, 0))
+    );
+}

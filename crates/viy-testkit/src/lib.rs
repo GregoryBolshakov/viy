@@ -3,7 +3,10 @@
 //! temp-XDG guard that keeps tests away from real state, config fixture
 //! cases laid out on disk, scripted HTTP and process backends and a clock,
 //! an sshd of the tests' own, the scripted model server and the scenarios
-//! it serves, and readable snapshots of the model context (docs/implementation-plan.md 3.2-3.6). Never a
+//! it serves, readable snapshots of the model context
+//! (docs/implementation-plan.md 3.2-3.6), and the UI harness: the
+//! hostile-string corpus, a recording terminal emulator and programs under
+//! a pty (ui-plan 13). Never a
 //! dependency of non-test code.
 
 pub mod config_tree;
@@ -12,12 +15,15 @@ pub mod exec;
 pub mod fixtures;
 pub mod fuzz;
 pub mod home;
+pub mod hostile;
 pub mod http;
 pub mod mock_llm;
 #[cfg(feature = "oracle")]
 pub mod oracle;
+pub mod pty;
 pub mod scenario;
 pub mod scratch;
+pub mod screen;
 pub mod sshd;
 pub mod time;
 

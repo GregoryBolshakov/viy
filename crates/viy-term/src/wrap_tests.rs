@@ -93,3 +93,67 @@ fn a_tab_is_never_split_across_rows() {
         ["abcdef", "    g"]
     );
 }
+
+fn drawn(rows: &[TextRow]) -> Vec<String> {
+    rows.iter().map(TextRow::drawn).collect()
+}
+
+#[test]
+fn word_wrap_breaks_after_spaces_and_keeps_byte_ranges() {
+    let text = "the quick brown fox";
+    let rows = word_wrap(text, 10);
+    assert_eq!(drawn(&rows), ["the quick ", "brown fox"]);
+    let ranges: Vec<_> = rows.iter().map(|r| r.range.clone()).collect();
+    assert_eq!(ranges, [0..10, 10..19]);
+    assert_eq!(&text[rows[1].range.clone()], "brown fox");
+    assert_eq!(
+        rows.iter().map(|r| r.ends_line).collect::<Vec<_>>(),
+        [false, true]
+    );
+}
+
+/// A word longer than the row is cut between graphemes; spaces past the
+/// width hang at the end of their row, so the next starts with a word.
+#[test]
+fn long_words_are_cut_and_spaces_hang() {
+    assert_eq!(drawn(&word_wrap("abcdefghij", 4)), ["abcd", "efgh", "ij"]);
+    assert_eq!(drawn(&word_wrap("abcd    efg", 6)), ["abcd    ", "efg"]);
+    assert_eq!(drawn(&word_wrap("日本語の文", 5)), ["日本", "語の", "文"]);
+}
+
+#[test]
+fn lines_and_empty_lines_each_give_rows() {
+    let text = "one\n\nthree";
+    let rows = word_wrap(text, 10);
+    assert_eq!(drawn(&rows), ["one", "", "three"]);
+    let ranges: Vec<_> = rows.iter().map(|r| r.range.clone()).collect();
+    assert_eq!(ranges, [0..3, 4..4, 5..10]);
+}
+
+/// What is drawn is sanitized, and measured as drawn: an escape is `␛`, a
+/// bidi override eight cells, and neither is ever split.
+#[test]
+fn word_wrap_measures_what_is_drawn() {
+    let text = "a\u{1b}[2J \u{202e}b";
+    let rows = word_wrap(text, 10);
+    assert_eq!(drawn(&rows), ["a␛[2J ", "<U+202E>b"]);
+    assert_eq!(rows[1].cells[0].range, 6..9);
+    assert_eq!(rows[1].cells[1].column, 8);
+    // Wider than the row: on a row of its own, whole.
+    assert_eq!(drawn(&word_wrap(text, 6)), ["a␛[2J ", "<U+202E>", "b"]);
+}
+
+#[test]
+fn columns_and_positions_map_both_ways() {
+    let rows = word_wrap("ab\tcd ef", 6);
+    assert_eq!(drawn(&rows), ["ab  cd ", "ef"]);
+    let row = &rows[0];
+    assert_eq!(row.column_of(3), 4, "after the tab");
+    assert_eq!(row.pos_at(3), 2, "inside the tab: the tab");
+    assert_eq!(row.pos_at(4), 3);
+    // A row that wraps never gives its end, which shows on the next row.
+    assert_eq!(row.pos_at(40), 5);
+    assert_eq!(rows[1].pos_at(40), 8);
+    assert_eq!(row_of(&rows, 5), 0);
+    assert_eq!(row_of(&rows, 6), 1);
+}

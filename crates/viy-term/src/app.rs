@@ -12,6 +12,7 @@
 //! its unattended answer, until the question boxes of WP 3.11.
 
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::future::poll_fn;
 use std::io;
 use std::io::Write;
@@ -51,10 +52,13 @@ use viy_protocol::Question;
 use viy_protocol::StatusPhase;
 use viy_protocol::TurnOutcome;
 
+use crate::composer::Action;
+use crate::composer::Composer;
+use crate::composer::POPUP_ROWS;
 use crate::frame::FrameLimiter;
+use crate::history::History;
 use crate::sanitize::sanitize_line_after;
 use crate::terminal::Terminal;
-use crate::textarea::TextArea;
 use crate::transcript::Cell;
 use crate::transcript::TranscriptView;
 use crate::tui::Tui;
@@ -65,6 +69,8 @@ const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 const SPINNER_FRAME: Duration = Duration::from_millis(80);
 /// Rows one wheel notch scrolls.
 const WHEEL_ROWS: usize = 3;
+/// Queued messages shown above the input at most.
+const QUEUED_ROWS: usize = 3;
 
 /// What reaches the app from the terminal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,11 +108,13 @@ pub struct App {
     ops: mpsc::UnboundedSender<Op>,
     cells: Vec<Cell>,
     view: TranscriptView,
-    input: TextArea,
+    composer: Composer,
     turn: Option<Turn>,
-    /// Lines sent that have not started yet.
-    queued: usize,
+    /// Messages sent that have not started yet, oldest first.
+    queued: VecDeque<String>,
     title: Option<String>,
+    /// The chat mode, once the engine has named one.
+    mode: Option<String>,
     /// Shutdown was sent; the chat closes when the engine says it has.
     closing: bool,
     /// The engine has stopped.
@@ -122,15 +130,17 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(ops: mpsc::UnboundedSender<Op>) -> Self {
+    /// The chat's screen; what is sent goes into `history`.
+    pub fn new(ops: mpsc::UnboundedSender<Op>, history: History) -> Self {
         Self {
             ops,
             cells: Vec::new(),
             view: TranscriptView::default(),
-            input: TextArea::default(),
+            composer: Composer::new(history),
             turn: None,
-            queued: 0,
+            queued: VecDeque::new(),
             title: None,
+            mode: None,
             closing: false,
             stopped: false,
             blind: None,
@@ -206,7 +216,7 @@ impl App {
         self.dirty = true;
         match msg {
             EventMsg::TurnStarted(e) => {
-                self.queued = self.queued.saturating_sub(1);
+                self.queued.pop_front();
                 self.push(user_cell(&e.user_text));
                 self.turn = Some(Turn {
                     started: Instant::now(),
@@ -251,6 +261,7 @@ impl App {
                 )]);
             }
             EventMsg::TitleChanged(e) => self.title = Some(e.title),
+            EventMsg::ModeChanged(e) => self.mode = Some(e.mode),
             EventMsg::QuestionRequest(e) => {
                 let answer = e.question.unattended;
                 let _ = self.ops.send(Op::QuestionAnswer {
@@ -275,9 +286,11 @@ impl App {
     {
         self.dirty = true;
         match input {
-            Input::Key(key) if key.kind != KeyEventKind::Release => return self.key(key),
+            Input::Key(key) if key.kind != KeyEventKind::Release => {
+                return self.key(key, Instant::now());
+            }
             Input::Key(_) => {}
-            Input::Paste(text) => self.input.insert_str(&text),
+            Input::Paste(text) => self.composer.paste(&text),
             Input::Mouse(mouse) => match mouse.kind {
                 MouseEventKind::ScrollUp => self.view.scroll_up(WHEEL_ROWS),
                 MouseEventKind::ScrollDown => self.view.scroll_down(WHEEL_ROWS),
@@ -293,7 +306,9 @@ impl App {
         None
     }
 
-    fn key(&mut self, key: KeyEvent) -> Option<Flow> {
+    /// Takes a key pressed at `now` (the input box tells a keystroke paste
+    /// from typing by the time between keys).
+    fn key(&mut self, key: KeyEvent, now: Instant) -> Option<Flow> {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let page = self.view.page().saturating_sub(1).max(1);
         match key.code {
@@ -303,50 +318,43 @@ impl App {
                     return Some(Flow::Exit);
                 } else if self.turn.is_some() {
                     let _ = self.ops.send(Op::Interrupt);
-                } else if !self.input.is_empty() {
-                    self.input.take();
+                } else if !self.composer.is_empty() {
+                    self.composer.clear();
                 } else {
                     self.close();
                 }
             }
-            KeyCode::Char('d') if ctrl && self.input.is_empty() && self.turn.is_none() => {
+            KeyCode::Char('d') if ctrl && self.composer.is_empty() && self.turn.is_none() => {
                 self.close();
             }
             KeyCode::Char('z') if ctrl => return Some(Flow::Suspend),
             KeyCode::Char('l') if ctrl => self.repaint = true,
-            KeyCode::Char('j') if ctrl => self.input.insert_char('\n'),
-            KeyCode::Enter if self.input.text().ends_with('\\') => {
-                self.input.backspace();
-                self.input.insert_char('\n');
-            }
-            KeyCode::Enter => self.submit(),
-            KeyCode::Backspace => self.input.backspace(),
-            KeyCode::Delete => self.input.delete(),
-            KeyCode::Left => self.input.move_left(),
-            KeyCode::Right => self.input.move_right(),
             KeyCode::Home if ctrl => self.view.home(),
-            KeyCode::Home => self.input.move_home(),
             KeyCode::End if !self.view.is_following() => self.view.end(),
-            KeyCode::End => self.input.move_end(),
             KeyCode::PageUp => self.view.scroll_up(page),
             KeyCode::PageDown => self.view.scroll_down(page),
-            KeyCode::Char(c) if !ctrl => self.input.insert_char(c),
-            _ => {}
+            _ => match self.composer.key(key, now) {
+                Action::Submit(text) => self.submit(text),
+                Action::CycleMode => {
+                    let _ = self.ops.send(Op::CycleMode);
+                }
+                Action::None => {}
+            },
         }
         None
     }
 
-    /// Sends the input's line: a slash command, or a message, which the
-    /// engine starts when the turn running ends.
-    fn submit(&mut self) {
-        if self.closing || self.input.text().trim().is_empty() {
+    /// Sends what the input box gave: a slash command, or a message, which
+    /// the engine starts when the turn running ends.
+    fn submit(&mut self, text: String) {
+        if self.closing {
+            self.composer.set_text(&text);
             return;
         }
-        let text = self.input.take();
         let op = if text.starts_with('/') {
             Op::Command { text }
         } else {
-            self.queued += 1;
+            self.queued.push_back(text.clone());
             Op::UserTurn { text }
         };
         let _ = self.ops.send(op);
@@ -432,8 +440,10 @@ impl App {
     {
         let size = term.size();
         let width = size.width.max(4);
-        let (input_rows, input_cursor) = self.input.layout(width - 2);
+        let (input_rows, input_cursor) = self.composer.layout(width - 2);
         let mut live = self.live_lines(usize::from(width));
+        live.extend(self.queued_lines(usize::from(width)));
+        live.extend(self.popup_lines(usize::from(width)));
         // The live region may take all but two rows; the transcript the
         // rest. The answer's oldest rows give way first, then the
         // activity line above them.
@@ -511,6 +521,57 @@ impl App {
         lines
     }
 
+    /// Messages waiting for the turn running to end, as Codex's
+    /// `pending_input_preview.rs` shows them: the first line of each.
+    fn queued_lines(&self, width: usize) -> Vec<Line<'static>> {
+        if self.turn.is_none() {
+            return Vec::new();
+        }
+        let mut lines: Vec<Line<'static>> = self
+            .queued
+            .iter()
+            .take(QUEUED_ROWS)
+            .map(|text| {
+                let first = text.lines().next().unwrap_or_default();
+                let more = if text.contains('\n') { " …" } else { "" };
+                let row = format!("↳ {first}{more}");
+                Line::from(row.chars().take(width).collect::<String>().dim())
+            })
+            .collect();
+        if self.queued.len() > QUEUED_ROWS {
+            let rest = self.queued.len() - QUEUED_ROWS;
+            lines.push(Line::from(format!("  … {rest} more").dim()));
+        }
+        lines
+    }
+
+    /// The slash popup: the offers for the input, the choice reversed.
+    fn popup_lines(&self, width: usize) -> Vec<Line<'static>> {
+        let offers = self.composer.popup();
+        let selected = self.composer.selected().min(offers.len().saturating_sub(1));
+        let first = selected.saturating_sub(POPUP_ROWS - 1);
+        let label_width = offers
+            .iter()
+            .map(|o| o.label.chars().count())
+            .max()
+            .unwrap_or(0);
+        offers
+            .iter()
+            .enumerate()
+            .skip(first)
+            .take(POPUP_ROWS)
+            .map(|(i, offer)| {
+                let row = format!("  {:label_width$}  {}", offer.label, offer.about);
+                let row: String = row.chars().take(width).collect();
+                Line::from(if i == selected {
+                    row.cyan().reversed()
+                } else {
+                    row.dim()
+                })
+            })
+            .collect()
+    }
+
     fn footer(&self) -> Line<'static> {
         let mut spans: Vec<Span<'static>> = vec![
             self.title
@@ -518,8 +579,11 @@ impl App {
                 .unwrap_or_else(|| "viy".to_string())
                 .dim(),
         ];
-        if self.queued > 0 && self.turn.is_some() {
-            spans.push(format!(" │ {} queued", self.queued).cyan());
+        if let Some(mode) = self.mode.as_ref().filter(|m| *m != "normal") {
+            spans.push(format!(" │ {mode}").yellow());
+        }
+        if !self.queued.is_empty() && self.turn.is_some() {
+            spans.push(format!(" │ {} queued", self.queued.len()).cyan());
         }
         let below = self.view.rows_below();
         if below > 0 {

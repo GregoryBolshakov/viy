@@ -270,3 +270,20 @@ async fn an_interrupt_with_nothing_running_changes_nothing() {
     let events = until(&mut engine, turn_done(&id)).await;
     assert!(matches!(events[0].msg, EventMsg::TurnStarted(_)));
 }
+
+/// Shift+Tab's op is answered at once, between turns or during one; until
+/// phase 4 brings the modes, with a notice saying so.
+#[tokio::test]
+async fn shift_tab_is_answered_until_the_modes_come() {
+    let mut engine = engine();
+    engine.submit(Op::CycleMode).unwrap();
+    let events = until(&mut engine, |e| matches!(e.msg, EventMsg::Notice(_))).await;
+    let Some(EventMsg::Notice(notice)) = events.last().map(|e| &e.msg) else {
+        panic!("{events:?}");
+    };
+    assert_eq!(notice.code, "not_ported");
+    assert_eq!(
+        notice.message,
+        "Shift+Tab: the chat modes come with phase 4"
+    );
+}

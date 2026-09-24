@@ -54,6 +54,7 @@ use viy_protocol::Answer;
 use viy_protocol::EventMsg;
 use viy_protocol::Op;
 use viy_term::app::App;
+use viy_term::history::History;
 use viy_term::plain::Plain;
 use viy_term::tui::Tui;
 use viy_time::SystemTimeProvider;
@@ -193,7 +194,8 @@ fn chat_ui(
         if plain {
             plain_chat(&mut engine, stdin_lines(), &mut *out).await?;
         } else {
-            tui_chat(engine).await?;
+            let project = Project::find(&start).map_err(|e| Failure::from(e.to_string()))?;
+            tui_chat(engine, History::load(project.history_file())).await?;
         }
         Ok::<_, Failure>(turns.with_chat(|c| c.session_id()).flatten())
     })?;
@@ -205,7 +207,7 @@ fn chat_ui(
 
 /// The chat in the terminal UI, the engine's events and the UI's ops
 /// passed between them by a task.
-async fn tui_chat(mut engine: Engine) -> Result<(), Failure> {
+async fn tui_chat(mut engine: Engine, history: History) -> Result<(), Failure> {
     let mut tui = Tui::init().map_err(|e| Failure::from(format!("the terminal: {e}")))?;
     let (ops, mut ops_rx) = mpsc::unbounded_channel();
     let (events_tx, mut events) = mpsc::unbounded_channel();
@@ -227,7 +229,7 @@ async fn tui_chat(mut engine: Engine) -> Result<(), Failure> {
             }
         }
     });
-    let mut app = App::new(ops);
+    let mut app = App::new(ops, history);
     let result = viy_term::app::run(&mut tui, &mut app, &mut events).await;
     drop(tui);
     result.map_err(|e| Failure::from(format!("the terminal: {e}")))

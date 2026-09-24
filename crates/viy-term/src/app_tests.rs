@@ -16,14 +16,18 @@ struct Fixture {
     app: App,
     term: Terminal<VT100Backend>,
     ops: mpsc::UnboundedReceiver<Op>,
+    /// When the next key is pressed: keys come at a typist's pace, not as
+    /// a keystroke paste.
+    clock: Instant,
 }
 
 fn fixture(width: u16, height: u16) -> Fixture {
     let (tx, ops) = mpsc::unbounded_channel();
     Fixture {
-        app: App::new(tx),
+        app: App::new(tx, History::default()),
         term: Terminal::new(VT100Backend::new(width, height)).unwrap(),
         ops,
+        clock: Instant::now(),
     }
 }
 
@@ -38,14 +42,18 @@ impl Fixture {
     }
 
     fn key(&mut self, code: KeyCode) -> Option<Flow> {
-        self.input(Input::Key(KeyEvent::new(code, KeyModifiers::NONE)))
+        self.press(KeyEvent::new(code, KeyModifiers::NONE))
     }
 
     fn ctrl(&mut self, c: char) -> Option<Flow> {
-        self.input(Input::Key(KeyEvent::new(
-            KeyCode::Char(c),
-            KeyModifiers::CONTROL,
-        )))
+        self.press(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL))
+    }
+
+    /// A key pressed 50 ms after the last.
+    fn press(&mut self, key: KeyEvent) -> Option<Flow> {
+        self.clock += Duration::from_millis(50);
+        self.app.dirty = true;
+        self.app.key(key, self.clock)
     }
 
     fn input(&mut self, input: Input) -> Option<Flow> {
@@ -296,10 +304,14 @@ fn lines_sent_during_a_turn_are_shown_queued() {
     f.app.event(started("one"));
     f.type_text("two");
     f.key(KeyCode::Enter);
-    assert_eq!(f.screen()[5], "viy │ 1 queued");
+    let screen = f.screen();
+    assert_eq!(screen[3], "↳ two", "{screen:?}");
+    assert_eq!(screen[5], "viy │ 1 queued");
     f.app.event(complete());
     f.app.event(started("two"));
-    assert_eq!(f.screen()[5], "viy");
+    let screen = f.screen();
+    assert_eq!(screen[5], "viy");
+    assert!(!screen.iter().any(|r| r.starts_with('↳')), "{screen:?}");
 }
 
 #[test]
@@ -511,3 +523,59 @@ async fn the_loop_ends_when_the_engine_stops() {
 
 #[path = "app_hostile_tests.rs"]
 mod hostile;
+
+/// Typing `/` opens the popup of commands above the input; Tab takes the
+/// choice, and its values follow.
+#[test]
+fn the_slash_popup_is_drawn_above_the_input() {
+    let mut f = fixture(60, 8);
+    f.type_text("/ef");
+    let screen = f.screen();
+    assert_eq!(
+        screen[5], "  /effort [xhigh|medium|low]  how hard the model thinks",
+        "{screen:?}"
+    );
+    assert_eq!(screen[6], "› /ef▮");
+    f.key(KeyCode::Tab);
+    let screen = f.screen();
+    assert_eq!(
+        screen[3..6],
+        [
+            "  xhigh   how hard the model thinks",
+            "  medium  how hard the model thinks",
+            "  low     how hard the model thinks",
+        ],
+        "{screen:?}"
+    );
+    assert_eq!(screen[6], "› /effort ▮");
+}
+
+/// Shift+Tab asks the engine for the next mode; the mode it names shows
+/// in the footer unless it is the normal one.
+#[test]
+fn shift_tab_asks_for_the_next_mode_and_the_footer_shows_it() {
+    let mut f = fixture(40, 4);
+    f.key(KeyCode::BackTab);
+    assert_eq!(f.ops(), [Op::CycleMode]);
+    f.app
+        .event(EventMsg::ModeChanged(viy_protocol::ModeChangedEvent {
+            mode: "auto-yes".into(),
+        }));
+    assert_eq!(f.screen()[3], "viy │ auto-yes");
+    f.app
+        .event(EventMsg::ModeChanged(viy_protocol::ModeChangedEvent {
+            mode: "normal".into(),
+        }));
+    assert_eq!(f.screen()[3], "viy");
+}
+
+/// A message sent goes into the history; Up brings it back.
+#[test]
+fn up_brings_back_what_was_sent() {
+    let mut f = fixture(40, 4);
+    f.type_text("first message");
+    f.key(KeyCode::Enter);
+    f.ops();
+    f.key(KeyCode::Up);
+    assert_eq!(f.screen()[2], "› first message▮");
+}

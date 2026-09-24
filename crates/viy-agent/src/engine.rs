@@ -29,6 +29,8 @@ use viy_protocol::Asking;
 use viy_protocol::CommandCompleteEvent;
 use viy_protocol::Event;
 use viy_protocol::EventMsg;
+use viy_protocol::NoticeEvent;
+use viy_protocol::NoticeLevel;
 use viy_protocol::Op;
 use viy_protocol::Question;
 use viy_protocol::QuestionRequestEvent;
@@ -285,6 +287,17 @@ async fn submission_loop(
                 match sub.op {
                     Op::UserTurn { .. } | Op::Command { .. } => queued.push_back(sub),
                     Op::QuestionAnswer { id, answer } => questions.answer(&id, answer),
+                    // The modes are phase 4's (modes.py, kb d024); until then
+                    // Shift+Tab says so.
+                    Op::CycleMode => emit(
+                        &events,
+                        &sub.id,
+                        EventMsg::Notice(NoticeEvent {
+                            level: NoticeLevel::Info,
+                            code: "not_ported".into(),
+                            message: "Shift+Tab: the chat modes come with phase 4".into(),
+                        }),
+                    ),
                     Op::Interrupt => {
                         if let Some(task) = running.take() {
                             task.cancel(&questions, &events).await;

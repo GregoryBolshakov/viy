@@ -85,3 +85,92 @@ fn the_cursor_counts_cells_as_drawn() {
         (vec!["a␛[2J<U+202E>b".to_string()], Position::new(14, 0))
     );
 }
+
+#[test]
+fn layout_wraps_words() {
+    let (rows, cursor) = area("hello big world").layout(10);
+    assert_eq!(rows, ["hello big ", "world"]);
+    assert_eq!(cursor, Position::new(5, 1));
+}
+
+/// Left and Right step over a whole grapheme: an emoji with its selector,
+/// a letter with its combining accent.
+#[test]
+fn moves_step_over_graphemes() {
+    let mut area = area("a❤\u{fe0f}e\u{301}");
+    area.move_left();
+    assert_eq!(area.cursor(), 7);
+    area.move_left();
+    assert_eq!(area.cursor(), 1);
+    area.backspace();
+    assert_eq!(area.text(), "❤\u{fe0f}e\u{301}");
+    area.delete();
+    assert_eq!(area.text(), "e\u{301}");
+}
+
+#[test]
+fn word_moves_and_deletions() {
+    let mut area = area("cargo test --workspace  ");
+    area.move_word_left();
+    assert_eq!(&area.text()[area.cursor()..], "workspace  ");
+    area.move_word_left();
+    assert_eq!(&area.text()[area.cursor()..], "--workspace  ");
+    area.move_word_right();
+    assert_eq!(&area.text()[area.cursor()..], "workspace  ");
+    area.move_end();
+    area.delete_word_left();
+    assert_eq!(area.text(), "cargo test --");
+    area.move_home();
+    area.delete_word_right();
+    assert_eq!(area.text(), " test --");
+}
+
+/// Ctrl-K and Ctrl-U kill to the line's end or start, or the newline when
+/// there is nothing else; Ctrl-Y yanks the last kill back.
+#[test]
+fn kill_and_yank() {
+    let mut area = area("first\nsecond");
+    area.move_home();
+    area.kill_to_line_end();
+    assert_eq!(area.text(), "first\n");
+    area.kill_to_line_start();
+    assert_eq!(area.text(), "first");
+    area.kill_to_line_start();
+    assert_eq!(area.text(), "");
+    area.yank();
+    assert_eq!(area.text(), "first");
+    area.insert_str("!");
+    area.delete_word_left();
+    area.yank();
+    assert_eq!(area.text(), "first!");
+}
+
+/// Up and Down move between screen rows, wrapped ones too, keeping the
+/// column; at the first or last row they go to the start or end and say
+/// so.
+#[test]
+fn up_and_down_move_by_screen_row_keeping_the_column() {
+    // Rows at 9: "abcdefgh ", "ij", "xy", "longer ", "line".
+    let mut area = area("abcdefgh ij\nxy\nlonger line");
+    area.layout(9);
+    let rest = |a: &TextArea| a.text()[a.cursor()..].to_string();
+    assert!(area.move_up(9));
+    assert_eq!(rest(&area), "er line", "column 4 of `longer `");
+    assert!(area.move_up(9));
+    assert_eq!(rest(&area), "\nlonger line", "`xy` is shorter: its end");
+    assert!(area.move_up(9));
+    assert_eq!(
+        rest(&area),
+        "\nxy\nlonger line",
+        "back to column 4 is past `ij`"
+    );
+    assert!(area.move_up(9));
+    assert_eq!(rest(&area), "efgh ij\nxy\nlonger line", "column 4 kept");
+    assert!(!area.move_up(9));
+    assert_eq!(area.cursor(), 0);
+    for _ in 0..4 {
+        assert!(area.move_down(9));
+    }
+    assert!(!area.move_down(9));
+    assert_eq!(area.cursor(), area.text().len());
+}

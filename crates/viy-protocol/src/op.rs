@@ -27,6 +27,9 @@ pub enum Op {
     /// The user's answer to the [`crate::EventMsg::QuestionRequest`] with
     /// this `id`.
     QuestionAnswer { id: String, answer: Answer },
+    /// Shift+Tab: the next chat mode (rpctl `modes.after`); the engine
+    /// answers with [`crate::EventMsg::ModeChanged`].
+    CycleMode,
     /// Leave the chat; the engine answers with
     /// [`crate::EventMsg::ShutdownComplete`].
     Shutdown,

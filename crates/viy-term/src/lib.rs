@@ -5,9 +5,12 @@
 //! plus the plain renderer for pipes and `viy ask` (ROADMAP phase 3).
 
 pub mod app;
+pub mod composer;
 pub mod frame;
+pub mod history;
 pub mod plain;
 pub mod sanitize;
+pub mod slash;
 pub mod terminal;
 pub mod textarea;
 pub mod tmux;

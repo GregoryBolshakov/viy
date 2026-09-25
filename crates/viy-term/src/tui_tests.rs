@@ -72,6 +72,24 @@ fn assert_given_back(screen: &vt100::Screen) {
     assert_eq!(screen.mouse_protocol_mode(), vt100::MouseProtocolMode::None);
 }
 
+/// The shell's title saved as often as given back, the giving back last
+/// (rp's `test_spins_while_busy_and_restores_on_close`, on every restore
+/// path).
+fn assert_title_given_back(bytes: &[u8]) {
+    let count = |seq: &str| {
+        bytes
+            .windows(seq.len())
+            .filter(|w| *w == seq.as_bytes())
+            .count()
+    };
+    let pushes = count(tabtitle::PUSH);
+    assert!(pushes > 0, "never saved");
+    assert_eq!(pushes, count(tabtitle::POP));
+    let last = |seq: &str| bytes.windows(seq.len()).rposition(|w| w == seq.as_bytes());
+    assert!(last(tabtitle::POP) > last(tabtitle::PUSH));
+    assert!(last(tabtitle::POP) > last("\x1b]0;"));
+}
+
 /// The panic hook alone gives the terminal back (the child never drops its
 /// `Tui`), and before the message, which lands on the shell's screen.
 #[test]
@@ -86,6 +104,7 @@ fn a_panic_gives_the_terminal_back_before_its_message() {
     assert!(contains(&bytes, b"viy frame"));
     let parser = emulate(&bytes);
     assert_given_back(parser.screen());
+    assert_title_given_back(&bytes);
     assert!(parser.screen().contents().contains("forced panic"));
     assert!(pty.cooked());
 }
@@ -99,6 +118,7 @@ fn a_normal_exit_gives_the_terminal_back() {
     let bytes = pty.bytes();
     let parser = emulate(&bytes);
     assert_given_back(parser.screen());
+    assert_title_given_back(&bytes);
     // The exit line is the one thing written to the shell's screen.
     assert!(parser.screen().contents().contains("the exit line"));
     assert!(pty.cooked());
@@ -125,6 +145,7 @@ fn ctrl_z_gives_the_terminal_back_while_stopped_and_takes_it_again() {
         let bytes = pty.bytes();
         assert!(contains(&bytes, b"viy frame"));
         assert_given_back(emulate(&bytes).screen());
+        assert_title_given_back(&bytes);
         assert!(pty.cooked());
     }
     // SAFETY: a plain signal to the child this test started.
@@ -136,7 +157,9 @@ fn ctrl_z_gives_the_terminal_back_while_stopped_and_takes_it_again() {
     let resumed = &bytes[stopped..];
     assert!(contains(resumed, b"\x1b[?1049h"), "{resumed:?}");
     assert!(contains(resumed, b"after resume"), "{resumed:?}");
+    assert!(contains(resumed, tabtitle::PUSH.as_bytes()), "{resumed:?}");
     assert_given_back(emulate(&bytes).screen());
+    assert_title_given_back(&bytes);
     assert!(pty.cooked());
 }
 
@@ -148,6 +171,11 @@ fn pty_child() {
         return;
     };
     let mut tui = Tui::init().unwrap();
+    tui.save_title().unwrap();
+    tui.terminal()
+        .backend_mut()
+        .write_all(tabtitle::osc("✳ viy chat").as_bytes())
+        .unwrap();
     let draw = |tui: &mut Tui, text: &'static str| {
         tui.terminal()
             .draw(|frame| {

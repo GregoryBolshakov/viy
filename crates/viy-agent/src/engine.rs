@@ -55,6 +55,13 @@ pub trait Turns: Send + Sync + 'static {
     /// ([`EventMsg::CommandComplete`]).
     fn command(self: Arc<Self>, ctx: TurnContext, text: String) -> BoxFuture<'static, ()>;
 
+    /// Once, when the engine starts, before any submission: what the
+    /// frontend shows from the start (the footer's statuses), tagged with
+    /// submission id `0`.
+    fn opened(&self, ctx: &TurnContext) {
+        let _ = ctx;
+    }
+
     /// The chat is being closed: a turn cancelled from now on was cut short
     /// by that, not by Ctrl-C.
     fn closing(&self) {}
@@ -265,6 +272,11 @@ async fn submission_loop(
     events: mpsc::UnboundedSender<Event>,
 ) {
     let questions = Questions::default();
+    turns.opened(&TurnContext {
+        sub_id: "0".into(),
+        events: events.clone(),
+        questions: questions.clone(),
+    });
     let (done_tx, mut done) = mpsc::unbounded_channel::<String>();
     let mut queued: VecDeque<Submission> = VecDeque::new();
     let mut running: Option<Running> = None;

@@ -1,7 +1,9 @@
 //! The real terminal for the chat (docs/ui-plan.md 11, Codex's `tui.rs`):
 //! raw mode, so Ctrl-C and Ctrl-Z are keys; the alternate screen, so the
 //! shell's screen and history come back untouched (kb d038); bracketed
-//! paste; mouse capture for the wheel unless tmux has `mouse off`.
+//! paste; mouse capture for the wheel unless tmux has `mouse off`; and,
+//! when the chat sets the tab title, the shell's title saved on xterm's
+//! title stack (rpctl `termtitle.py`).
 //!
 //! Every exit path gives the terminal back: [`restore`] runs from
 //! [`Tui`]'s drop (a normal exit and an error), from the panic hook (before
@@ -28,6 +30,7 @@ use crossterm::terminal::LeaveAlternateScreen;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Size;
 
+use crate::tabtitle;
 use crate::terminal::Terminal;
 use crate::tmux;
 
@@ -40,6 +43,7 @@ static RAW: AtomicBool = AtomicBool::new(false);
 static SCREEN: AtomicBool = AtomicBool::new(false);
 static PASTE: AtomicBool = AtomicBool::new(false);
 static MOUSE: AtomicBool = AtomicBool::new(false);
+static TITLE: AtomicBool = AtomicBool::new(false);
 
 /// Enough for a whole frame of a large window, so each frame reaches the
 /// terminal in one write: GNOME Terminal (VTE) may show a frame cut over
@@ -50,6 +54,8 @@ const FRAME_BUFFER: usize = 1 << 20;
 pub struct Tui {
     terminal: Terminal<Backend>,
     mouse: bool,
+    /// The shell's title is saved, to be given back.
+    title: bool,
 }
 
 impl Tui {
@@ -66,7 +72,11 @@ impl Tui {
             return Err(e);
         }
         match Terminal::new(CrosstermBackend::new(ScreenWriter::default())) {
-            Ok(terminal) => Ok(Self { terminal, mouse }),
+            Ok(terminal) => Ok(Self {
+                terminal,
+                mouse,
+                title: false,
+            }),
             Err(e) => {
                 let _ = restore();
                 Err(e)
@@ -78,6 +88,13 @@ impl Tui {
         &mut self.terminal
     }
 
+    /// Saves the shell's title, before the chat sets its own; every
+    /// restore gives it back.
+    pub fn save_title(&mut self) -> io::Result<()> {
+        self.title = true;
+        push_title()
+    }
+
     /// Ctrl-Z: gives the shell its terminal, stops (SIGTSTP, as the
     /// terminal itself sends without raw mode), and takes it back on
     /// SIGCONT. The next draw rewrites every cell at the size the window
@@ -86,6 +103,9 @@ impl Tui {
         restore()?;
         signal_hook::low_level::raise(signal_hook::consts::SIGTSTP)?;
         set_modes(self.mouse)?;
+        if self.title {
+            push_title()?;
+        }
         let (width, height) = crossterm::terminal::size()?;
         self.terminal.resize(Size::new(width, height));
         Ok(())
@@ -113,8 +133,15 @@ fn set_modes(mouse: bool) -> io::Result<()> {
     Ok(())
 }
 
-/// Gives the shell its terminal back: mouse and paste modes off, the main
-/// screen with the cursor shown, raw mode off. Each mode is undone only if
+fn push_title() -> io::Result<()> {
+    TITLE.store(true, Ordering::SeqCst);
+    let mut out = io::stdout();
+    out.write_all(tabtitle::PUSH.as_bytes())?;
+    out.flush()
+}
+
+/// Gives the shell its terminal back: its title, mouse and paste modes
+/// off, the main screen with the cursor shown, raw mode off. Each mode is undone only if
 /// it is on, so this may run twice (the panic hook, then the drop). The
 /// first error is returned after every step has been tried.
 pub fn restore() -> io::Result<()> {
@@ -125,6 +152,12 @@ pub fn restore() -> io::Result<()> {
             result = r;
         }
     };
+    if TITLE.swap(false, Ordering::SeqCst) {
+        step(
+            out.write_all(tabtitle::POP.as_bytes())
+                .and_then(|()| out.flush()),
+        );
+    }
     if MOUSE.swap(false, Ordering::SeqCst) {
         step(execute!(out, DisableMouseCapture));
     }

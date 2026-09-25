@@ -114,7 +114,12 @@ fn drive_shows_scenario_one_as_events() {
     assert_eq!(
         types,
         [
+            // What the footer shows from the start.
+            "effort_changed",
+            "token_count",
             "turn_started",
+            // The chat's name: its first message, then its title.
+            "title_changed",
             "round_started",
             "token_count",
             "background",
@@ -137,11 +142,15 @@ fn drive_shows_scenario_one_as_events() {
         answer,
         "Rain on the tin roof\na thousand small drums at once\nthen the gutter sighs"
     );
-    let title = events
+    let titles: Vec<&Value> = events
         .iter()
-        .find(|e| e["msg"]["type"] == "title_changed")
-        .unwrap();
-    assert_eq!(title["msg"]["title"], "Haiku definition");
+        .filter(|e| e["msg"]["type"] == "title_changed")
+        .map(|e| &e["msg"]["title"])
+        .collect();
+    assert_eq!(
+        titles,
+        ["What is a haiku? One sentence, please.", "Haiku definition"]
+    );
 }
 
 #[test]
@@ -320,4 +329,18 @@ fn dev_chat_in_plain_answers_each_line_then_closes() {
     );
     // Both turns and the title were asked, in rp's order.
     assert_eq!(mock.requests().len(), 4);
+}
+
+/// rp's `TabTitleTests.test_off_in_config`: on by default, off for `0`,
+/// and on only for `1`, as rp reads it.
+#[test]
+fn the_tab_title_follows_the_config() {
+    let mut cfg = viy_config::Config::defaults();
+    assert!(super::tab_title(&cfg));
+    cfg.set("CHAT_TAB_TITLE", "0");
+    assert!(!super::tab_title(&cfg));
+    cfg.set("CHAT_TAB_TITLE", "yes");
+    assert!(!super::tab_title(&cfg));
+    cfg.set("CHAT_TAB_TITLE", "1");
+    assert!(super::tab_title(&cfg));
 }

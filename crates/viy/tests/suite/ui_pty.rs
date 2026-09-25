@@ -21,8 +21,9 @@ const COLS: u16 = 100;
 /// A paste holding OSC 52 and a bidi override, sent; an answer and its
 /// reasoning holding the whole corpus, and a hostile title: all of it is on
 /// the screen as visible symbols, the terminal saw only viy's own
-/// sequences, nothing set the title or touched the clipboard, the model got
-/// the paste unchanged, and the terminal is given back at the end.
+/// sequences, the tab title only ever the chat's name cleaned, nothing
+/// touched the clipboard, the model got the paste unchanged, and the
+/// terminal, its title too, is given back at the end.
 #[test]
 fn hostile_text_from_the_paste_and_the_model_is_shown_and_does_nothing() {
     let answer = format!("{}\n\nend of the answer", CORPUS.concat());
@@ -64,14 +65,14 @@ fn hostile_text_from_the_paste_and_the_model_is_shown_and_does_nothing() {
         let text = s.contents();
         text.contains("end of the answer") && text.contains("Hostile ␛]0;retitled␇ chat")
     });
+    pty.wait_for("the title in the tab", |_| {
+        own_titles(&pty.bytes()).0.last().map(String::as_str)
+            == Some("✳ Hostile ]0;retitled chat txt.exe")
+    });
     pty.with_screen(|parser| {
         let screen = parser.screen();
         let shown = dump(screen);
-        assert_eq!(
-            parser.callbacks().foreign(),
-            Vec::<String>::new(),
-            "{shown}"
-        );
+        assert_eq!(foreign(parser), Vec::<String>::new(), "{shown}");
         let text = screen.contents();
         assert!(
             text.contains("you › look ␛]52;c;aGk=␇ at invoice_<U+202E>fdp.exe"),
@@ -82,7 +83,19 @@ fn hostile_text_from_the_paste_and_the_model_is_shown_and_does_nothing() {
             "{shown}"
         );
     });
-    assert_eq!(foreign_controls(&pty.bytes()), Vec::<String>::new());
+    let (titles, rest) = own_titles(&pty.bytes());
+    assert_eq!(foreign_controls(&rest), Vec::<String>::new());
+    // The titles between (the first message as the name, the spinner)
+    // may fall between two frames: the mock answers at once.
+    assert_eq!(titles[0], "✳ viy chat");
+    for title in &titles {
+        assert!(
+            !title
+                .chars()
+                .any(|c| c.is_control() || ('\u{202a}'..='\u{202e}').contains(&c)),
+            "{title:?}"
+        );
+    }
     // The engine sent what was pasted, not what the screen shows.
     let asked = mock.requests();
     let last_user = asked
@@ -106,9 +119,54 @@ fn hostile_text_from_the_paste_and_the_model_is_shown_and_does_nothing() {
             && s.mouse_protocol_mode() == vt100::MouseProtocolMode::None
     });
     pty.with_screen(|parser| {
-        assert_eq!(parser.callbacks().foreign(), Vec::<String>::new());
+        assert_eq!(foreign(parser), Vec::<String>::new());
     });
+    // The shell's title saved once and given back, last.
+    let bytes = pty.bytes();
+    let at = |seq: &[u8]| bytes.windows(seq.len()).rposition(|w| w == seq);
+    let count = |seq: &[u8]| bytes.windows(seq.len()).filter(|w| *w == seq).count();
+    assert_eq!((count(PUSH), count(POP)), (1, 1));
+    assert!(at(POP) > at(b"\x1b]0;"));
     assert!(pty.cooked());
+}
+
+/// Saves and gives back the shell's title (rpctl `termtitle.py`).
+const PUSH: &[u8] = b"\x1b[22;0t";
+const POP: &[u8] = b"\x1b[23;0t";
+
+/// What the emulator noted beyond the cells, but the tab title viy set:
+/// OSC 0 sets the icon name and the title, and the title stack is xterm's
+/// window manipulation, which vt100 does not handle.
+fn foreign(parser: &vt100::Parser<viy_testkit::screen::Recorder>) -> Vec<String> {
+    parser
+        .callbacks()
+        .foreign()
+        .into_iter()
+        .filter(|e| {
+            !(e.starts_with("title ")
+                || e.starts_with("icon name ")
+                || e.starts_with("osc [\"0\",")
+                || e == "csi [[22], [0]] t"
+                || e == "csi [[23], [0]] t")
+        })
+        .collect()
+}
+
+/// The tab titles viy wrote, in order, and the bytes without them and
+/// without the title stack.
+fn own_titles(bytes: &[u8]) -> (Vec<String>, Vec<u8>) {
+    let text = String::from_utf8_lossy(bytes).into_owned();
+    let mut titles = Vec::new();
+    let mut rest = String::new();
+    let mut parts = text.split("\x1b]0;");
+    rest.push_str(parts.next().unwrap_or_default());
+    for part in parts {
+        let (title, after) = part.split_once('\x07').unwrap_or((part, ""));
+        titles.push(title.to_string());
+        rest.push_str(after);
+    }
+    let rest = rest.replace("\x1b[22;0t", "").replace("\x1b[23;0t", "");
+    (titles, rest.into_bytes())
 }
 
 /// `viy dev chat` on `mock`'s server in `dir`, under `pty`, with the input

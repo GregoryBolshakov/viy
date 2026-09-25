@@ -1,0 +1,10 @@
+---
+source: crates/viy-term/src/app_status_tests.rs
+expression: "f.screen().join(\"\\n\")"
+---
+
+
+
+
+› ▮
+⏵⏵ auto-yes │ effort medium │ ctx 41% 107K/262K │ A100 1.79$/h · 0.61$ │ idle 52m │ tunnel ok │ ⟳ naming the chat │ Pod costs

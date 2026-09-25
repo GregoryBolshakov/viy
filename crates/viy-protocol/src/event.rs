@@ -213,17 +213,46 @@ pub struct EffortChangedEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TitleChangedEvent {
+    /// The chat's name (rp's `_tab_label`): its title, else its first
+    /// message; empty while it has neither (a new chat).
     pub title: String,
 }
 
+/// The model server as the footer shows it (ui-plan 3); each field the
+/// sender does not know is `None`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PodStatusEvent {
     /// `runpod`, `openai` or `local`.
     pub backend: String,
+    /// The model's name, for a backend that is not the pod's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub state: PodState,
     pub gpu: Option<String>,
     pub price_usd_per_hour: Option<f64>,
+    /// What the pod has cost while this chat was open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spent_usd: Option<f64>,
+    /// Until the reaper takes an idle pod down, counted when sent.
     pub idle_seconds_left: Option<u64>,
     pub tunnel_up: Option<bool>,
+}
+
+/// Where the model server is (kb d041): the chat opens in any of these.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum PodState {
+    /// No pod, or a backend that needs none.
+    #[default]
+    Absent,
+    /// `/up` is running; `stage` is the boot stage it reports.
+    Booting {
+        stage: String,
+    },
+    Ready,
+    Stopping,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

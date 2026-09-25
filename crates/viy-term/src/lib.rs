@@ -7,6 +7,7 @@
 pub mod app;
 pub mod cells;
 pub mod composer;
+pub mod footer;
 pub mod frame;
 pub mod history;
 pub mod latex;
@@ -14,6 +15,7 @@ pub mod markdown;
 pub mod plain;
 pub mod sanitize;
 pub mod slash;
+pub mod tabtitle;
 pub mod terminal;
 pub mod textarea;
 pub mod tmux;

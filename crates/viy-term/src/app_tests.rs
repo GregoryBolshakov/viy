@@ -111,7 +111,7 @@ fn numbered(f: &mut Fixture, n: usize) {
 #[test]
 fn an_idle_chat_is_the_input_and_the_footer() {
     let mut f = fixture(30, 5);
-    assert_eq!(f.screen(), ["", "", "", "› ▮", "viy"]);
+    assert_eq!(f.screen(), ["", "", "", "› ▮", ""]);
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn enter_sends_the_line_and_the_turn_shows_it() {
     let screen = f.screen();
     assert_eq!(screen[..3], ["", "", "you › hello"]);
     assert!(screen[3].starts_with("⠋ waiting · 0 s"), "{screen:?}");
-    assert_eq!(screen[4..], ["› ▮", "viy"]);
+    assert_eq!(screen[4..], ["› ▮", ""]);
 }
 
 #[test]
@@ -158,7 +158,7 @@ fn ctrl_j_and_a_trailing_backslash_add_a_line() {
     f.type_text("two\\");
     f.key(KeyCode::Enter);
     f.type_text("three");
-    assert_eq!(f.screen()[2..], ["› one", "  two", "  three▮", "viy"]);
+    assert_eq!(f.screen()[2..], ["› one", "  two", "  three▮", ""]);
     f.key(KeyCode::Enter);
     assert_eq!(
         f.ops(),
@@ -173,7 +173,7 @@ fn a_paste_is_inserted_and_never_sends() {
     let mut f = fixture(30, 5);
     f.input(Input::Paste("a\r\nb".into()));
     assert_eq!(f.ops(), []);
-    assert_eq!(f.screen()[2..], ["› a", "  b▮", "viy"]);
+    assert_eq!(f.screen()[2..], ["› a", "  b▮", ""]);
 }
 
 #[test]
@@ -186,10 +186,7 @@ fn finished_blocks_move_up_and_the_open_one_streams_below() {
     // One block so far: all of it live, under the activity line.
     assert_eq!(screen[..5], ["", "", "", "", "you › explain"]);
     assert!(screen[5].contains("writing ·"), "{screen:?}");
-    assert_eq!(
-        screen[6..],
-        ["First paragraph.", "", "Second", "› ▮", "viy"]
-    );
+    assert_eq!(screen[6..], ["First paragraph.", "", "Second", "› ▮", ""]);
     f.app.event(delta("one.\nmore"));
     let screen = f.screen();
     assert_eq!(
@@ -197,7 +194,7 @@ fn finished_blocks_move_up_and_the_open_one_streams_below() {
         ["", "", "", "you › explain", "", "First paragraph."]
     );
     assert!(screen[6].contains("writing ·"), "{screen:?}");
-    assert_eq!(screen[7..], ["Second one.", "more", "› ▮", "viy"]);
+    assert_eq!(screen[7..], ["Second one.", "more", "› ▮", ""]);
     f.app.event(complete());
     assert_eq!(
         f.screen(),
@@ -212,7 +209,7 @@ fn finished_blocks_move_up_and_the_open_one_streams_below() {
             "Second one.",
             "more",
             "› ▮",
-            "viy"
+            ""
         ]
     );
 }
@@ -262,7 +259,7 @@ fn notices_and_failures_go_to_the_transcript() {
             "[context: 3% of 262k]",
             "✗ the request failed",
             "› ▮",
-            "viy"
+            ""
         ]
     );
 }
@@ -285,7 +282,7 @@ fn ctrl_c_interrupts_a_turn_then_clears_the_input_then_closes() {
     assert_eq!(f.screen()[4], "› ▮");
     f.ctrl('c');
     assert_eq!(f.ops(), [Op::Shutdown]);
-    assert_eq!(f.screen()[3..], ["closing the chat…", "› ▮", "viy"]);
+    assert_eq!(f.screen()[3..], ["closing the chat…", "› ▮", ""]);
     // A second Ctrl-C while closing leaves at once.
     assert_eq!(f.ctrl('c'), Some(Flow::Exit));
 }
@@ -317,11 +314,11 @@ fn lines_sent_during_a_turn_are_shown_queued() {
     f.key(KeyCode::Enter);
     let screen = f.screen();
     assert_eq!(screen[3], "↳ two", "{screen:?}");
-    assert_eq!(screen[5], "viy │ 1 queued");
+    assert_eq!(screen[5], "1 queued");
     f.app.event(complete());
     f.app.event(started("two"));
     let screen = f.screen();
-    assert_eq!(screen[5], "viy");
+    assert_eq!(screen[5], "");
     assert!(!screen.iter().any(|r| r.starts_with('↳')), "{screen:?}");
 }
 
@@ -331,7 +328,7 @@ fn page_keys_and_the_wheel_scroll_the_transcript() {
     numbered(&mut f, 20);
     assert_eq!(
         f.screen(),
-        ["line 17", "line 18", "line 19", "line 20", "› ▮", "viy"]
+        ["line 17", "line 18", "line 19", "line 20", "› ▮", ""]
     );
     f.key(KeyCode::PageUp);
     assert_eq!(
@@ -342,7 +339,7 @@ fn page_keys_and_the_wheel_scroll_the_transcript() {
             "line 16",
             "line 17",
             "› ▮",
-            "viy │ ↓ 3 rows (End)"
+            "↓ 3 rows (End)"
         ]
     );
     f.input(Input::Mouse(MouseEvent {
@@ -354,11 +351,11 @@ fn page_keys_and_the_wheel_scroll_the_transcript() {
     assert_eq!(f.screen()[0], "line 11");
     // Rows arriving while scrolled back leave the view where it is.
     f.app.event(notice("line 21"));
-    assert_eq!(f.screen()[5], "viy │ ↓ 7 rows (End)");
+    assert_eq!(f.screen()[5], "↓ 7 rows (End)");
     f.key(KeyCode::End);
     assert_eq!(
         f.screen(),
-        ["line 18", "line 19", "line 20", "line 21", "› ▮", "viy"]
+        ["line 18", "line 19", "line 20", "line 21", "› ▮", ""]
     );
 }
 
@@ -404,7 +401,7 @@ fn a_rewritten_history_is_drawn_from_its_items() {
             "",
             "a",
             "› ▮",
-            "viy"
+            ""
         ]
     );
 }
@@ -418,7 +415,7 @@ fn the_live_region_leaves_the_transcript_two_rows() {
     let screen = f.screen();
     assert_eq!(screen[..2], ["", "you › long"]);
     assert!(screen[2].contains("writing ·"), "{screen:?}");
-    assert_eq!(screen[3..], ["f", "› ▮", "viy"]);
+    assert_eq!(screen[3..], ["f", "› ▮", ""]);
 }
 
 #[test]
@@ -485,7 +482,7 @@ async fn a_resize_reflows_in_one_frame_without_clearing() {
     assert_eq!(flow.unwrap(), Flow::Exit);
     assert_eq!(
         f.term.backend().screen_rows(),
-        ["", "aaaa bbbb", "cccc dddd", "› ▮", "viy"]
+        ["", "aaaa bbbb", "cccc dddd", "› ▮", ""]
     );
     let written = &f.term.backend().written()[before..];
     assert_eq!(
@@ -529,7 +526,7 @@ async fn sigterm_closes_the_chat_once_the_engine_has_saved_it() {
     assert_eq!(f.ops(), [Op::Shutdown]);
     assert_eq!(
         f.term.backend().screen_rows(),
-        ["", "", "closing the chat…", "› ▮", "viy"]
+        ["", "", "closing the chat…", "› ▮", ""]
     );
 }
 
@@ -545,6 +542,9 @@ async fn the_loop_ends_when_the_engine_stops() {
 
 #[path = "app_hostile_tests.rs"]
 mod hostile;
+
+#[path = "app_status_tests.rs"]
+mod status;
 
 /// Typing `/` opens the popup of commands above the input; Tab takes the
 /// choice, and its values follow.
@@ -583,12 +583,12 @@ fn shift_tab_asks_for_the_next_mode_and_the_footer_shows_it() {
         .event(EventMsg::ModeChanged(viy_protocol::ModeChangedEvent {
             mode: "auto-yes".into(),
         }));
-    assert_eq!(f.screen()[3], "viy │ auto-yes");
+    assert_eq!(f.screen()[3], "⏵⏵ auto-yes");
     f.app
         .event(EventMsg::ModeChanged(viy_protocol::ModeChangedEvent {
             mode: "normal".into(),
         }));
-    assert_eq!(f.screen()[3], "viy");
+    assert_eq!(f.screen()[3], "");
 }
 
 /// A message sent goes into the history; Up brings it back.

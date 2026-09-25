@@ -123,6 +123,10 @@ impl Rig {
         let mut seen = Vec::new();
         while !ended || naming {
             let Event { id: of, msg } = self.engine.next_event().await.unwrap();
+            // What the chat says when the engine starts (`Turns::opened`).
+            if of == "0" {
+                continue;
+            }
             assert_eq!(of, id);
             match &msg {
                 EventMsg::TurnComplete(_) | EventMsg::TurnAborted(_) => ended = true,
@@ -1036,4 +1040,65 @@ async fn answer_next(
             return (q.question.prompt, rx);
         }
     }
+}
+
+/// What the footer shows from the start comes when the engine starts, as
+/// submission `0`; the chat's name comes with its first turn and only when
+/// it changes (rp's `_tab_label`).
+#[tokio::test]
+async fn the_chat_says_its_effort_context_and_name() {
+    let mut rig = rig(
+        json!([
+            {"stream": [{"content": "hi"}]},
+            {"stream": [{"content": "again"}]},
+        ]),
+        &[("REASONING_EFFORT", "low")],
+    );
+    let mut opening = Vec::new();
+    for _ in 0..2 {
+        let event = rig.engine.next_event().await.unwrap();
+        assert_eq!(event.id, "0");
+        opening.push(event.msg);
+    }
+    assert_eq!(
+        opening[0],
+        EventMsg::EffortChanged(EffortChangedEvent {
+            effort: "low".into()
+        })
+    );
+    let budget = rig.turns.with_chat(|c| c.prompt_budget());
+    let EventMsg::TokenCount(gauge) = &opening[1] else {
+        panic!("{:?}", opening[1]);
+    };
+    assert!(gauge.used > 0, "the system prompt counts");
+    assert_eq!(Some(gauge.budget), budget);
+    assert_eq!(
+        gauge.auto_compact_at,
+        Some((gauge.budget as f64 * 0.85) as u64)
+    );
+    let titles = |events: &[EventMsg]| {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                EventMsg::TitleChanged(t) => Some(t.title.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let first = rig.send("hello\n  there").await;
+    assert_eq!(titles(&first), ["hello there"]);
+    // The name comes before the request.
+    let named = first
+        .iter()
+        .position(|e| matches!(e, EventMsg::TitleChanged(_)));
+    let asked = first
+        .iter()
+        .position(|e| matches!(e, EventMsg::RoundStarted(_)));
+    assert!(named < asked, "{first:?}");
+    assert_eq!(titles(&rig.send("again").await), Vec::<String>::new());
+    // A chat's own label, without a turn running.
+    assert_eq!(
+        rig.turns.with_chat(|c| c.tab_label(Some("later"))).unwrap(),
+        "hello there"
+    );
 }

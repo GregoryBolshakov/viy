@@ -10,9 +10,10 @@
 //! `/think on`) and then kept as a cell; running tools show a card with
 //! the last lines of their output, which moves up when the call ends.
 //! Ctrl-T draws every card's output and every trace whole. The footer
-//! shows the title, queued lines and the scroll position (the statuses
-//! are WP 3.10), and a question is answered as with nobody to ask, its
-//! unattended answer, until the question boxes of WP 3.11.
+//! shows the engine's statuses, queued lines and the scroll position
+//! ([`crate::footer`]); the tab title spins while a turn runs ([`tabtitle`]), if
+//! the chat turned it on. A question is answered as with nobody to ask,
+//! its unattended answer, until the question boxes of WP 3.11.
 
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -37,7 +38,6 @@ use ratatui::layout::Rect;
 use ratatui::layout::Size;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
-use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 use tokio::signal::unix::SignalKind;
 use tokio::signal::unix::signal;
@@ -61,10 +61,13 @@ use crate::cells::ToolCard;
 use crate::composer::Action;
 use crate::composer::Composer;
 use crate::composer::POPUP_ROWS;
+use crate::footer::Counts;
+use crate::footer::Status;
 use crate::frame::FrameLimiter;
 use crate::history::History;
 use crate::markdown;
 use crate::sanitize::sanitize_line_after;
+use crate::tabtitle;
 use crate::terminal::Terminal;
 use crate::transcript::Cell;
 use crate::transcript::TranscriptView;
@@ -125,9 +128,11 @@ pub struct App {
     turn: Option<Turn>,
     /// Messages sent that have not started yet, oldest first.
     queued: VecDeque<String>,
-    title: Option<String>,
-    /// The chat mode, once the engine has named one.
-    mode: Option<String>,
+    /// The engine's statuses, for the footer and the tab title.
+    status: Status,
+    /// The tab title, if the chat turned it on, and the title written last.
+    tab: Option<tabtitle::Encoding>,
+    tab_shown: Option<String>,
     /// Shutdown was sent; the chat closes when the engine says it has.
     closing: bool,
     /// The engine has stopped.
@@ -158,8 +163,9 @@ impl App {
             composer: Composer::new(history),
             turn: None,
             queued: VecDeque::new(),
-            title: None,
-            mode: None,
+            status: Status::default(),
+            tab: None,
+            tab_shown: None,
             closing: false,
             stopped: false,
             blind: None,
@@ -171,6 +177,22 @@ impl App {
             markdown: true,
             show_think: true,
         }
+    }
+
+    /// Sets the tab title from now on, in `encoding` (rp's
+    /// `CHAT_TAB_TITLE`): the terminal's own title must already be saved
+    /// ([`Tui::save_title`]).
+    pub fn tab_title(&mut self, encoding: tabtitle::Encoding) {
+        self.tab = Some(encoding);
+        self.tab_shown = None;
+        self.dirty = true;
+    }
+
+    /// The terminal was given back and taken again (Ctrl-Z): it shows the
+    /// shell's title, and the next frame writes the chat's.
+    pub fn retitle(&mut self) {
+        self.tab_shown = None;
+        self.dirty = true;
     }
 
     /// Adds a cell to the transcript.
@@ -230,12 +252,18 @@ impl App {
             return Some(self.limiter.deadline(now));
         }
         let animating = self.turn.is_some() || self.closing;
-        animating.then(|| self.last_frame.map_or(now, |t| t + SPINNER_FRAME))
+        if animating {
+            return Some(self.last_frame.map_or(now, |t| t + SPINNER_FRAME));
+        }
+        self.status.next_change(now)
     }
 
     /// Takes in one engine event.
     pub fn event(&mut self, msg: EventMsg) {
         self.dirty = true;
+        if self.status.event(&msg, Instant::now()) {
+            return;
+        }
         match msg {
             EventMsg::TurnStarted(e) => {
                 self.queued.pop_front();
@@ -318,8 +346,6 @@ impl App {
                     self.push(Cell::Tool(card));
                 }
             }
-            EventMsg::TitleChanged(e) => self.title = Some(e.title),
-            EventMsg::ModeChanged(e) => self.mode = Some(e.mode),
             EventMsg::QuestionRequest(e) => {
                 let answer = e.question.unattended;
                 let _ = self.ops.send(Op::QuestionAnswer {
@@ -577,7 +603,7 @@ impl App {
             .min(size.height);
         let top_height = size.height - bottom_height;
         self.view.prepare(&self.cells, size.width, top_height);
-        bottom.push(self.footer());
+        bottom.push(self.footer(usize::from(size.width)));
         let bottom: Vec<Line<'static>> = bottom.into_iter().map(clean_row).collect();
         let top = Rect::new(0, 0, size.width, top_height);
         let live_area = Rect::new(0, top_height, size.width, bottom_height);
@@ -585,6 +611,7 @@ impl App {
             2 + input_cursor.x,
             top_height + u16::try_from(input_top).unwrap_or(0) + input_cursor.y,
         );
+        self.write_title(term.backend_mut())?;
         let (cells, view) = (&self.cells, &mut self.view);
         term.draw(|frame| {
             view.render(cells, top, frame.buffer_mut());
@@ -703,24 +730,38 @@ impl App {
             .collect()
     }
 
-    fn footer(&self) -> Line<'static> {
-        let mut spans: Vec<Span<'static>> = vec![
-            self.title
-                .clone()
-                .unwrap_or_else(|| "viy".to_string())
-                .dim(),
-        ];
-        if let Some(mode) = self.mode.as_ref().filter(|m| *m != "normal") {
-            spans.push(format!(" │ {mode}").yellow());
+    fn footer(&self, width: usize) -> Line<'static> {
+        let counts = Counts {
+            // Questions are answered as they come until WP 3.11's boxes.
+            questions: 0,
+            queued: if self.turn.is_some() {
+                self.queued.len()
+            } else {
+                0
+            },
+            rows_below: self.view.rows_below(),
+        };
+        self.status.line(counts, width, Instant::now())
+    }
+
+    /// Queues the tab title into `out` when it changed: the spinner while a
+    /// turn runs, else the idle glyph (rp's `TabTitle`). Written with the
+    /// frame, in its one write.
+    fn write_title(&mut self, out: &mut impl Write) -> io::Result<()> {
+        let Some(encoding) = self.tab else {
+            return Ok(());
+        };
+        let busy = self
+            .turn
+            .as_ref()
+            .map(|turn| (turn.started.elapsed().as_millis() / SPINNER_FRAME.as_millis()) as usize);
+        let title = tabtitle::title(self.status.title.as_deref(), busy, encoding);
+        if self.tab_shown.as_deref() == Some(title.as_str()) {
+            return Ok(());
         }
-        if !self.queued.is_empty() && self.turn.is_some() {
-            spans.push(format!(" │ {} queued", self.queued.len()).cyan());
-        }
-        let below = self.view.rows_below();
-        if below > 0 {
-            spans.push(format!(" │ ↓ {below} rows (End)").cyan());
-        }
-        Line::from(spans)
+        out.write_all(tabtitle::osc(&title).as_bytes())?;
+        self.tab_shown = Some(title);
+        Ok(())
     }
 }
 
@@ -756,7 +797,10 @@ pub async fn run(
     let mut input = spawn_input()?;
     loop {
         match app.run(tui.terminal(), &mut input, events).await? {
-            Flow::Suspend => tui.suspend()?,
+            Flow::Suspend => {
+                tui.suspend()?;
+                app.retitle();
+            }
             Flow::Exit => return Ok(()),
         }
     }

@@ -44,6 +44,7 @@ use viy_protocol::BackgroundEvent;
 use viy_protocol::BackgroundState;
 use viy_protocol::BackgroundTask;
 use viy_protocol::Choices;
+use viy_protocol::EffortChangedEvent;
 use viy_protocol::EventMsg;
 use viy_protocol::NoticeEvent;
 use viy_protocol::NoticeLevel;
@@ -73,6 +74,7 @@ use crate::prompt::SystemPrompt;
 use crate::sessions::SessionError;
 use crate::sessions::SessionLog;
 use crate::sessions::Sessions;
+use crate::sessions::default_title;
 use crate::stream::Endpoint;
 use crate::stream::Round;
 use crate::stream::Sink;
@@ -140,6 +142,10 @@ pub struct Chat {
     inflight: Option<Vec<Value>>,
     /// What the round in progress has streamed of its answer.
     partial: String,
+    /// The name last sent as [`EventMsg::TitleChanged`]; empty at first,
+    /// as the frontend starts with no name. Shared with the background
+    /// title request, which sends the title it gets.
+    label_sent: Arc<Mutex<String>>,
 }
 
 /// How long closing, switching or forking a chat waits for its title.
@@ -199,6 +205,7 @@ impl Chat {
             title_job: None,
             inflight: None,
             partial: String::new(),
+            label_sent: Arc::default(),
         })
     }
 
@@ -222,6 +229,59 @@ impl Chat {
         lock(&self.session)
             .as_ref()
             .and_then(|log| log.title().map(str::to_string))
+    }
+
+    /// The chat's name for the tab title and the footer (rp's
+    /// `_tab_label`): its session's title, else its first user message,
+    /// `user` on a chat's first turn; empty while it has neither.
+    pub fn tab_label(&self, user: Option<&str>) -> String {
+        if let Some(title) = self.title() {
+            return title;
+        }
+        let first;
+        let msgs: &[Value] = match user {
+            Some(text) if self.messages.is_empty() => {
+                first = [json!({"role": "user", "content": text})];
+                &first
+            }
+            _ => &self.messages,
+        };
+        default_title(msgs).unwrap_or_default()
+    }
+
+    /// Sends the chat's name if it changed since last sent.
+    fn announce_label(&mut self, ctx: &TurnContext, user: Option<&str>) {
+        let label = self.tab_label(user);
+        let mut sent = lock(&self.label_sent);
+        if *sent != label {
+            ctx.emit(EventMsg::TitleChanged(TitleChangedEvent {
+                title: label.clone(),
+            }));
+            *sent = label;
+        }
+    }
+
+    /// What the footer shows from the start (Codex's `SessionConfigured`):
+    /// the reasoning effort, the context gauge, the chat's name.
+    pub fn opened(&mut self, ctx: &TurnContext) {
+        ctx.emit(EventMsg::EffortChanged(EffortChangedEvent {
+            effort: self.settings.reasoning_effort.clone(),
+        }));
+        let (used, _) = self.context_state(&[]);
+        ctx.emit(EventMsg::TokenCount(self.token_count(used)));
+        self.announce_label(ctx, None);
+    }
+
+    /// The context gauge at `used` tokens.
+    fn token_count(&self, used: u64) -> TokenCountEvent {
+        let budget = self.prompt_budget();
+        TokenCountEvent {
+            used,
+            budget,
+            auto_compact_at: self
+                .auto_compact
+                .then_some((budget as f64 * self.auto_compact_threshold) as u64),
+        }
     }
 
     /// Keeps this chat in `store`, filed under `project`: with autosave
@@ -333,6 +393,7 @@ impl Chat {
         if let Some(log) = fresh {
             self.install(log);
         }
+        self.announce_label(ctx, None);
         notice(ctx, NoticeLevel::Info, "new_chat", "new chat");
     }
 
@@ -381,6 +442,7 @@ impl Chat {
         self.earlier = st.earlier;
         self.today = crate::prompt::today();
         self.inflight = None;
+        self.announce_label(ctx, None);
         true
     }
 
@@ -429,6 +491,7 @@ impl Chat {
                 ctx.emit(EventMsg::TitleChanged(TitleChangedEvent {
                     title: title.to_string(),
                 }));
+                *lock(&self.label_sent) = title.to_string();
             }
         }
     }
@@ -639,6 +702,7 @@ impl Chat {
                 self.context_line(),
             );
         }
+        self.announce_label(ctx, content.as_str());
         let outcome = self.turn(ctx, content).await;
         self.maybe_start_title(ctx);
         self.inflight = None;
@@ -809,13 +873,7 @@ impl Chat {
             context_pct: round_to(fraction * 100.0, 1),
             chars_per_token: round_to(self.estimator.chars_per_token, 2),
         });
-        ctx.emit(EventMsg::TokenCount(TokenCountEvent {
-            used: context_tokens,
-            budget,
-            auto_compact_at: self
-                .auto_compact
-                .then_some((budget as f64 * self.auto_compact_threshold) as u64),
-        }));
+        ctx.emit(EventMsg::TokenCount(self.token_count(context_tokens)));
         TurnOutcome::Answered
     }
 
@@ -887,6 +945,7 @@ impl Chat {
             .timeouts(Duration::from_secs(10), Duration::from_secs(60));
         let http = Arc::clone(&self.endpoint.http);
         let session = Arc::clone(&self.session);
+        let label_sent = Arc::clone(&self.label_sent);
         let ctx = ctx.clone();
         ctx.emit(background(BackgroundState::Started));
         self.title_job = Some(tokio::spawn(async move {
@@ -915,6 +974,7 @@ impl Chat {
                 .filter(|log| log.id() == id && log.exists())
                 .is_some_and(|log| log.set_auto_title(&title).unwrap_or(false));
             if written {
+                *lock(&label_sent) = title.clone();
                 ctx.emit(EventMsg::TitleChanged(TitleChangedEvent { title }));
             }
             ctx.emit(background(BackgroundState::Done));
@@ -1066,6 +1126,10 @@ impl Turns for ChatTurns {
                 format!("{text}: slash commands come with WP 3.12"),
             );
         })
+    }
+
+    fn opened(&self, ctx: &TurnContext) {
+        self.with_chat(|chat| chat.opened(ctx));
     }
 
     fn closing(&self) {

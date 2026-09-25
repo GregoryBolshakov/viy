@@ -54,6 +54,9 @@ insta = { version = "1.46.3", default-features = false }
 libc = "0.2.191"
 pretty_assertions = "1.4.1"
 rand = { version = "0.9.5", default-features = false, features = ["os_rng", "std"] }
+# The answer's Markdown (flags F34). Codex has 0.10 (codex-rs/Cargo.toml);
+# 0.11 added the math events rp's `$...$` needs. Parser only, no HTML.
+pulldown-cmark = { version = "0.13.5", default-features = false }
 # Codex's features (codex-rs/Cargo.toml).
 ratatui = { version = "0.30.2", default-features = false, features = [
     "crossterm",

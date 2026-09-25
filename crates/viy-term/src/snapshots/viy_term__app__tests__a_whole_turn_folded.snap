@@ -1,0 +1,26 @@
+---
+source: crates/viy-term/src/app_tests.rs
+expression: "f.screen().join(\"\\n\")"
+---
+
+you › which GPU?
+
+[thinking] The user wants a table.
+
+Prices
+
+┌──────┬──────┐
+│ GPU  │  $/h │
+╞══════╪══════╡
+│ A100 │ 1.79 │
+└──────┴──────┘
+▸ run_shell  seq 6        exit 0  sandbox  0.0 s
+  └ … +3 lines (Ctrl-T shows all)
+    4
+    5
+    6
+review: low -- prints numbers
+
+Take the A100.
+› ▮
+viy

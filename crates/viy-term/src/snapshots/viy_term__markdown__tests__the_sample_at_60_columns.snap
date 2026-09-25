@@ -1,0 +1,30 @@
+---
+source: crates/viy-term/src/markdown_tests.rs
+expression: "lines(SAMPLE, 60).join(\"\\n\")"
+---
+Title
+
+Some bold, italic, code, gone, a link (https://x.org), x²
+and money: $5 or $10. snake_case_name stays, 2 * 3 * 4 too.
+
+┌──────┬───────┬─────────┐
+│ GPU  │  VRAM │  Notes  │
+╞══════╪═══════╪═════════╡
+│ A100 │ 80 GB │  fast   │
+│      │       │ enough  │
+├──────┼───────┼─────────┤
+│ 4090 │ 24 GB │ 中文 ✅ │
+└──────┴───────┴─────────┘
+
+1. one
+   ☑ done
+│ quoted
+
+────────────────────────────────────────────────────────────
+
+    a/b ≤ √c
+
+╭─ python
+x = 2 ** 3  # *not italic*
+╰─
+Last *unclosed line

@@ -1,6 +1,8 @@
 use pretty_assertions::assert_eq;
 use viy_protocol::DeltaEvent;
 use viy_protocol::HistoryRewrittenEvent;
+use viy_protocol::NoticeEvent;
+use viy_protocol::NoticeLevel;
 use viy_protocol::QuestionKind;
 use viy_protocol::QuestionRequestEvent;
 use viy_protocol::RewriteReason;
@@ -175,19 +177,27 @@ fn a_paste_is_inserted_and_never_sends() {
 }
 
 #[test]
-fn finished_paragraphs_move_up_and_the_rest_streams_below() {
-    let mut f = fixture(40, 10);
+fn finished_blocks_move_up_and_the_open_one_streams_below() {
+    let mut f = fixture(40, 11);
     f.app.event(started("explain"));
-    f.app.event(delta("First para"));
-    f.app.event(delta("graph.\n\nSecond "));
+    f.app.event(delta("First **para"));
+    f.app.event(delta("graph**.\n\nSecond "));
+    let screen = f.screen();
+    // One block so far: all of it live, under the activity line.
+    assert_eq!(screen[..5], ["", "", "", "", "you › explain"]);
+    assert!(screen[5].contains("writing ·"), "{screen:?}");
+    assert_eq!(
+        screen[6..],
+        ["First paragraph.", "", "Second", "› ▮", "viy"]
+    );
+    f.app.event(delta("one.\nmore"));
     let screen = f.screen();
     assert_eq!(
         screen[..6],
         ["", "", "", "you › explain", "", "First paragraph."]
     );
     assert!(screen[6].contains("writing ·"), "{screen:?}");
-    assert_eq!(screen[7..], ["Second", "› ▮", "viy"]);
-    f.app.event(delta("one."));
+    assert_eq!(screen[7..], ["Second one.", "more", "› ▮", "viy"]);
     f.app.event(complete());
     assert_eq!(
         f.screen(),
@@ -200,6 +210,7 @@ fn finished_paragraphs_move_up_and_the_rest_streams_below() {
             "First paragraph.",
             "",
             "Second one.",
+            "more",
             "› ▮",
             "viy"
         ]
@@ -212,9 +223,9 @@ fn a_blank_line_inside_a_code_fence_keeps_the_block_live() {
     f.app.event(started("code"));
     f.app.event(delta("```\nfn a() {}\n\nfn b() {}\n"));
     let screen = f.screen();
-    assert_eq!(screen[..5], ["", "", "", "", "you › code"]);
-    assert_eq!(screen[6..10], ["```", "fn a() {}", "", "fn b() {}"]);
-    f.app.event(delta("```\n\nAfter."));
+    assert_eq!(screen[..4], ["", "", "", "you › code"]);
+    assert_eq!(screen[5..10], ["╭─", "fn a() {}", "", "fn b() {}", "╰─"]);
+    f.app.event(delta("```\n\nAfter.\n"));
     let screen = f.screen();
     assert_eq!(
         screen[..8],
@@ -222,11 +233,11 @@ fn a_blank_line_inside_a_code_fence_keeps_the_block_live() {
             "",
             "you › code",
             "",
-            "```",
+            "╭─",
             "fn a() {}",
             "",
             "fn b() {}",
-            "```"
+            "╰─"
         ]
     );
     assert_eq!(screen[9], "After.");
@@ -384,7 +395,18 @@ fn a_rewritten_history_is_drawn_from_its_items() {
                 HistoryItem::Agent { text: "a".into() },
             ],
         }));
-    assert_eq!(f.screen(), ["", "", "you › q", "", "a", "› ▮", "viy"]);
+    assert_eq!(
+        f.screen(),
+        [
+            "",
+            "you › q",
+            "thought · Ctrl-T shows it",
+            "",
+            "a",
+            "› ▮",
+            "viy"
+        ]
+    );
 }
 
 #[test]
@@ -578,4 +600,65 @@ fn up_brings_back_what_was_sent() {
     f.ops();
     f.key(KeyCode::Up);
     assert_eq!(f.screen()[2], "› first message▮");
+}
+
+/// A turn with every kind of cell: reasoning, an answer in Markdown, a
+/// tool call with output, a notice, and the answer after it.
+fn a_whole_turn(f: &mut Fixture) {
+    use viy_protocol::ToolCallBeginEvent;
+    use viy_protocol::ToolCallEndEvent;
+    use viy_protocol::ToolCallOutputDeltaEvent;
+    use viy_protocol::ToolCallStatus;
+
+    f.app.event(started("which GPU?"));
+    f.app.event(EventMsg::ReasoningContentDelta(DeltaEvent {
+        delta: "The user wants a table.".into(),
+    }));
+    f.app.event(delta(
+        "## Prices\n\n| GPU | $/h |\n|:--|--:|\n| A100 | 1.79 |\n",
+    ));
+    f.app.event(EventMsg::ToolCallBegin(ToolCallBeginEvent {
+        call_id: "c1".into(),
+        tool: "run_shell".into(),
+        summary: "seq 6".into(),
+    }));
+    f.app
+        .event(EventMsg::ToolCallOutputDelta(ToolCallOutputDeltaEvent {
+            call_id: "c1".into(),
+            chunk: "1\n2\n3\n4\n5\n6\n".into(),
+        }));
+    let running = f.screen().join("\n");
+    assert!(running.contains("run_shell  seq 6"), "{running}");
+    assert!(
+        running.contains("  └ … +3 lines (Ctrl-T shows all)"),
+        "{running}"
+    );
+    f.app.event(EventMsg::ToolCallEnd(ToolCallEndEvent {
+        call_id: "c1".into(),
+        status: ToolCallStatus::Completed,
+        detail: Some("exit 0".into()),
+        duration_ms: 40,
+        sandboxed: true,
+        network: false,
+    }));
+    f.app.event(notice("review: low -- prints numbers"));
+    f.app.event(delta("Take the **A100**."));
+    f.app.event(complete());
+}
+
+#[test]
+fn a_whole_turn_folded() {
+    let mut f = fixture(48, 22);
+    a_whole_turn(&mut f);
+    insta::assert_snapshot!(f.screen().join("\n"));
+}
+
+#[test]
+fn ctrl_t_draws_tool_output_whole() {
+    let mut f = fixture(48, 26);
+    a_whole_turn(&mut f);
+    f.ctrl('t');
+    insta::assert_snapshot!(f.screen().join("\n"));
+    f.ctrl('t');
+    assert!(f.screen().join("\n").contains("… +3 lines"));
 }

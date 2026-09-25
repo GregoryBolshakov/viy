@@ -3,9 +3,11 @@ use pretty_assertions::assert_eq;
 use super::*;
 
 fn cell(text: &str) -> Cell {
-    text.split('\n')
-        .map(|l| Line::from(l.to_string()))
-        .collect()
+    Cell::lines(
+        text.split('\n')
+            .map(|l| Line::from(l.to_string()))
+            .collect(),
+    )
 }
 
 fn numbered(n: usize) -> Vec<Cell> {

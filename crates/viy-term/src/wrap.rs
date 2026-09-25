@@ -1,7 +1,9 @@
 //! Cutting text into screen rows: styled lines cut between graphemes
-//! ([`wrap_line`], the transcript until WP 3.9), and plain text word-wrapped
-//! into rows that keep the byte ranges they show ([`word_wrap`], the input
-//! box: Codex's `wrapping::wrap_ranges` over viy's sanitized glyphs).
+//! ([`wrap_line`], [`wrap_rows`]: code and tool output), plain text
+//! word-wrapped into rows that keep the byte ranges they show
+//! ([`word_wrap`], the input box: Codex's `wrapping::wrap_ranges` over
+//! viy's sanitized glyphs), and styled lines word-wrapped the same way
+//! ([`wrap_spans`], prose in the transcript and the answer).
 
 use std::borrow::Cow;
 use std::ops::Range;
@@ -230,6 +232,75 @@ pub fn word_wrap(text: &str, width: usize) -> Vec<TextRow> {
         offset += line.len() + 1;
     }
     rows
+}
+
+/// One row of a styled line cut by [`wrap_spans`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpanRow {
+    pub spans: Vec<Span<'static>>,
+    /// Where the row starts in the line's text, in bytes.
+    pub start: usize,
+    /// Cells it takes.
+    pub width: usize,
+}
+
+/// Word-wraps the styled `spans` of one line into rows at most `width`
+/// cells wide, as [`word_wrap`] cuts plain text (every char that could act
+/// on the terminal shown), each piece keeping its span's style. The spaces
+/// where a row breaks are dropped, as are spaces past the width. A line
+/// gives at least one row.
+pub fn wrap_spans(spans: &[Span<'_>], width: usize) -> Vec<SpanRow> {
+    let width = width.max(1);
+    let text: String = spans.iter().map(|s| s.content.as_ref()).collect();
+    let mut ends = Vec::with_capacity(spans.len());
+    let mut at = 0;
+    for span in spans {
+        at += span.content.len();
+        ends.push(at);
+    }
+    word_wrap(&text, width)
+        .into_iter()
+        .map(|row| {
+            let mut cells = row.cells;
+            cells.retain(|c| c.column + c.width <= width);
+            if !row.ends_line {
+                while cells
+                    .last()
+                    .is_some_and(|c| c.drawn.chars().all(|ch| ch == ' '))
+                {
+                    cells.pop();
+                }
+            }
+            let width = cells.last().map_or(0, |c| c.column + c.width);
+            let mut out: Vec<Span<'static>> = Vec::new();
+            let mut current = usize::MAX;
+            for cell in &cells {
+                let index = ends.partition_point(|&end| end <= cell.range.start);
+                match out.last_mut() {
+                    Some(span) if index == current => span.content.to_mut().push_str(&cell.drawn),
+                    _ => {
+                        let style = spans.get(index).map(|s| s.style).unwrap_or_default();
+                        out.push(Span::styled(cell.drawn.clone(), style));
+                        current = index;
+                    }
+                }
+            }
+            SpanRow {
+                spans: out,
+                start: row.range.start,
+                width,
+            }
+        })
+        .collect()
+}
+
+/// Cells `text` takes on one row, as drawn.
+pub fn text_width(text: &str) -> usize {
+    word_wrap(text, usize::MAX)
+        .iter()
+        .map(TextRow::width)
+        .max()
+        .unwrap_or(0)
 }
 
 fn wrap_one(line: &str, offset: usize, width: usize, rows: &mut Vec<TextRow>) {

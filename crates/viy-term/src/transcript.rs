@@ -1,18 +1,16 @@
-//! The transcript above the live region: cells of finished lines that viy
-//! wraps, scrolls and draws itself (ui-plan 2 and 3; Codex's
+//! The transcript above the live region: the cells of [`crate::cells`],
+//! which viy lays out, scrolls and draws itself (ui-plan 2 and 3; Codex's
 //! `transcript_view.rs`). It follows the bottom until scrolled back, and
 //! then holds still while rows arrive. The reading position is an anchor in
-//! a cell's text, not a screen row, so a resize rewraps every cell at the
-//! new width and the same text stays at the top (Codex's anchors).
+//! a cell (a row's key), not a screen row, so a resize lays every cell out
+//! again at the new width and the same text stays at the top (Codex's
+//! anchors).
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::Line;
 
-use crate::wrap::wrap_rows;
-
-/// One entry of the transcript: a user message, an answer, a notice.
-pub type Cell = Vec<Line<'static>>;
+pub use crate::cells::Cell;
 
 /// Where the view is.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -24,40 +22,35 @@ enum Position {
     Reading(Anchor),
 }
 
-/// A place in the text: a cell, a line of it, a char offset in the line.
+/// A place in the text: a cell and the key of a row in it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Anchor {
     cell: usize,
-    line: usize,
-    offset: usize,
+    key: (usize, usize),
 }
 
-/// A cell cut into rows at one width.
+/// A cell laid out at one width.
 #[derive(Debug, Default)]
 struct Layout {
     rows: Vec<Line<'static>>,
-    /// Where each row starts in the cell: line, char offset.
+    /// Each row's key, growing down the cell.
     starts: Vec<(usize, usize)>,
 }
 
 impl Layout {
-    fn new(cell: &Cell, width: usize) -> Self {
-        let mut layout = Self::default();
-        for (line, source) in cell.iter().enumerate() {
-            let mut offset = 0;
-            for (row, chars) in wrap_rows(source, width) {
-                layout.starts.push((line, offset));
-                offset += chars;
-                layout.rows.push(row);
-            }
-        }
-        layout
+    fn new(cell: &Cell, width: usize, expanded: bool) -> Self {
+        let (rows, starts) = cell
+            .rows(width, expanded)
+            .into_iter()
+            .map(|row| (row.line, row.key))
+            .unzip();
+        Self { rows, starts }
     }
 
-    /// The row holding `(line, offset)`.
-    fn row_of(&self, line: usize, offset: usize) -> usize {
+    /// The row holding `key`.
+    fn row_of(&self, key: (usize, usize)) -> usize {
         self.starts
-            .partition_point(|&start| start <= (line, offset))
+            .partition_point(|&start| start <= key)
             .saturating_sub(1)
     }
 }
@@ -71,9 +64,25 @@ pub struct TranscriptView {
     layouts: Vec<Layout>,
     /// Rows the last render showed: a page.
     page: usize,
+    /// Tool output and reasoning drawn whole (Ctrl-T).
+    expanded: bool,
 }
 
 impl TranscriptView {
+    /// Cell `index` and the ones after it changed: they are laid out again
+    /// on the next render.
+    pub fn changed(&mut self, index: usize) {
+        self.layouts.truncate(index);
+    }
+
+    /// Draws tool output and reasoning whole, or folded again.
+    pub fn set_expanded(&mut self, expanded: bool) {
+        if expanded != self.expanded {
+            self.expanded = expanded;
+            self.layouts.clear();
+        }
+    }
+
     /// Forgets the layouts, for a transcript whose cells were replaced
     /// (rewind, `/new`, resume), and follows its end.
     pub fn reset(&mut self) {
@@ -168,7 +177,7 @@ impl TranscriptView {
         self.layouts.truncate(cells.len());
         let width = usize::from(width.max(1));
         for cell in &cells[self.layouts.len()..] {
-            self.layouts.push(Layout::new(cell, width));
+            self.layouts.push(Layout::new(cell, width, self.expanded));
         }
     }
 
@@ -193,20 +202,19 @@ impl TranscriptView {
             + self
                 .layouts
                 .get(anchor.cell)
-                .map_or(0, |l| l.row_of(anchor.line, anchor.offset))
+                .map_or(0, |l| l.row_of(anchor.key))
     }
 
     fn anchor_at(&self, mut row: usize) -> Anchor {
         for (cell, layout) in self.layouts.iter().enumerate() {
-            if let Some(&(line, offset)) = layout.starts.get(row) {
-                return Anchor { cell, line, offset };
+            if let Some(&key) = layout.starts.get(row) {
+                return Anchor { cell, key };
             }
             row -= layout.rows.len();
         }
         Anchor {
             cell: self.layouts.len(),
-            line: 0,
-            offset: 0,
+            key: (0, 0),
         }
     }
 }

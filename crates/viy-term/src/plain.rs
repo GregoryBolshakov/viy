@@ -11,6 +11,7 @@ use std::io::Write;
 
 use viy_protocol::EventMsg;
 use viy_protocol::Op;
+use viy_protocol::ToolCallStatus;
 use viy_protocol::TurnOutcome;
 
 use crate::app::answer_word;
@@ -54,6 +55,23 @@ impl<W: Write> Plain<W> {
             }
             EventMsg::Notice(notice) => self.line(&notice.message)?,
             EventMsg::ToolCallBegin(e) => self.line(&format!("▸ {}  {}", e.tool, e.summary))?,
+            // rp prints a command's output after it, then its result.
+            EventMsg::ToolCallOutputDelta(e) => {
+                self.end_line()?;
+                self.text(&e.chunk)?;
+            }
+            EventMsg::ToolCallEnd(e) => {
+                let mut said: Vec<String> = e.detail.iter().cloned().collect();
+                match e.status {
+                    ToolCallStatus::Completed => {}
+                    ToolCallStatus::Failed => said.push("failed".into()),
+                    ToolCallStatus::Declined => said.push("declined".into()),
+                    _ => said.push("interrupted".into()),
+                }
+                if !said.is_empty() {
+                    self.line(&format!("  [{}]", said.join(", ")))?;
+                }
+            }
             EventMsg::QuestionRequest(e) => {
                 let answer = e.question.unattended;
                 self.line(&format!(

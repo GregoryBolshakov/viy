@@ -4,12 +4,15 @@
 //! (kb d036), and frames are drawn at most 30 a second, each in one
 //! synchronized write.
 //!
-//! The shell of WP 3.6: its widgets are the first cut. The answer is plain
-//! text whose finished paragraphs move up into the transcript (Markdown is
-//! WP 3.9), the input is the spike's text area (the composer is WP 3.8),
-//! the footer shows the title, queued lines and the scroll position (the
-//! statuses are WP 3.10), and a question is answered as with nobody to ask,
-//! its unattended answer, until the question boxes of WP 3.11.
+//! The answer streams as Markdown: its finished blocks move up into the
+//! transcript, the open one is drawn again with each delta under the
+//! activity line ([`markdown::finished`]). Reasoning is drawn live (rp
+//! `/think on`) and then kept as a cell; running tools show a card with
+//! the last lines of their output, which moves up when the call ends.
+//! Ctrl-T draws every card's output and every trace whole. The footer
+//! shows the title, queued lines and the scroll position (the statuses
+//! are WP 3.10), and a question is answered as with nobody to ask, its
+//! unattended answer, until the question boxes of WP 3.11.
 
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -45,24 +48,27 @@ use viy_protocol::Choices;
 use viy_protocol::Event;
 use viy_protocol::EventMsg;
 use viy_protocol::HistoryItem;
-use viy_protocol::NoticeEvent;
-use viy_protocol::NoticeLevel;
 use viy_protocol::Op;
 use viy_protocol::Question;
 use viy_protocol::StatusPhase;
+use viy_protocol::ToolCallEndEvent;
+use viy_protocol::ToolCallStatus;
 use viy_protocol::TurnOutcome;
 
+use crate::cells::Reasoning;
+use crate::cells::Running;
+use crate::cells::ToolCard;
 use crate::composer::Action;
 use crate::composer::Composer;
 use crate::composer::POPUP_ROWS;
 use crate::frame::FrameLimiter;
 use crate::history::History;
+use crate::markdown;
 use crate::sanitize::sanitize_line_after;
 use crate::terminal::Terminal;
 use crate::transcript::Cell;
 use crate::transcript::TranscriptView;
 use crate::tui::Tui;
-use crate::wrap::wrap_line;
 
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 /// One spinner frame; while a turn runs, a frame is drawn this often.
@@ -94,14 +100,21 @@ pub enum Flow {
     Exit,
 }
 
-/// The turn running: what the activity line and the live answer show.
+/// The turn running: what the activity line and the live region show.
 struct Turn {
     started: Instant,
     phase: Option<StatusPhase>,
     tokens: u64,
-    /// The answer not yet moved up into the transcript; it never starts
-    /// inside a code fence.
-    live: String,
+    /// The round's reasoning so far, and when it began.
+    reasoning: String,
+    reasoning_since: Option<Instant>,
+    /// The answer since the last tool call; `answer[..committed]` is in
+    /// the transcript, as the cell `answer_cell`.
+    answer: String,
+    committed: usize,
+    answer_cell: Option<usize>,
+    /// Tool calls running, in the order they began.
+    tools: Vec<(ToolCard, Instant)>,
 }
 
 pub struct App {
@@ -127,6 +140,12 @@ pub struct App {
     dirty: bool,
     /// The next frame rewrites every cell (Ctrl-L).
     repaint: bool,
+    /// Tool output and reasoning drawn whole (Ctrl-T).
+    expanded: bool,
+    /// Answers drawn as Markdown (rp `/md on`, its default).
+    markdown: bool,
+    /// The reasoning trace drawn (rp `/think on`, its default).
+    show_think: bool,
 }
 
 impl App {
@@ -148,6 +167,9 @@ impl App {
             last_frame: None,
             dirty: true,
             repaint: false,
+            expanded: false,
+            markdown: true,
+            show_think: true,
         }
     }
 
@@ -217,25 +239,37 @@ impl App {
         match msg {
             EventMsg::TurnStarted(e) => {
                 self.queued.pop_front();
-                self.push(user_cell(&e.user_text));
+                self.push(Cell::user(&e.user_text));
                 self.turn = Some(Turn {
                     started: Instant::now(),
                     phase: None,
                     tokens: 0,
-                    live: String::new(),
+                    reasoning: String::new(),
+                    reasoning_since: None,
+                    answer: String::new(),
+                    committed: 0,
+                    answer_cell: None,
+                    tools: Vec::new(),
                 });
             }
-            EventMsg::AgentMessageContentDelta(e) => {
+            EventMsg::ReasoningContentDelta(e) => {
+                self.commit_answer();
                 if let Some(turn) = &mut self.turn {
-                    turn.live.push_str(&e.delta);
+                    turn.reasoning.push_str(&e.delta);
+                    turn.reasoning_since.get_or_insert_with(Instant::now);
+                    turn.phase = Some(StatusPhase::Reasoning);
+                }
+            }
+            EventMsg::AgentMessageContentDelta(e) => {
+                self.commit_reasoning();
+                if let Some(turn) = &mut self.turn {
+                    turn.answer.push_str(&e.delta);
+                    if e.delta.contains('\r') || turn.answer.ends_with('\r') {
+                        turn.answer = markdown::visible_cr(&turn.answer, false).into_owned();
+                    }
                     turn.phase = Some(StatusPhase::Answering);
                 }
                 self.commit_finished();
-            }
-            EventMsg::ReasoningContentDelta(_) => {
-                if let Some(turn) = &mut self.turn {
-                    turn.phase = Some(StatusPhase::Reasoning);
-                }
             }
             EventMsg::Status(e) => {
                 if let Some(turn) = &mut self.turn {
@@ -246,19 +280,43 @@ impl App {
             EventMsg::TurnComplete(e) => {
                 self.end_turn();
                 if let TurnOutcome::Failed { message } = e.outcome {
-                    self.push(vec![Line::from(format!("✗ {message}").red())]);
+                    self.push(Cell::lines(vec![Line::from(format!("✗ {message}").red())]));
                 }
             }
             EventMsg::TurnAborted(_) => {
                 self.end_turn();
-                self.push(vec![Line::from("■ interrupted".yellow())]);
+                self.push(Cell::lines(vec![Line::from("■ interrupted".yellow())]));
             }
-            EventMsg::Notice(notice) => self.push(notice_cell(&notice)),
+            EventMsg::Notice(notice) => self.push(Cell::notice(&notice)),
             EventMsg::ToolCallBegin(e) => {
-                self.commit_live();
-                self.push(vec![Line::from(
-                    format!("▸ {}  {}", e.tool, e.summary).dim(),
-                )]);
+                self.commit_reasoning();
+                self.commit_answer();
+                if let Some(turn) = &mut self.turn {
+                    let card = ToolCard::new(&e.call_id, &e.tool, &e.summary);
+                    turn.tools.push((card, Instant::now()));
+                    turn.phase = Some(StatusPhase::RunningTools);
+                }
+            }
+            EventMsg::ToolCallOutputDelta(e) => {
+                if let Some(turn) = &mut self.turn
+                    && let Some((card, _)) =
+                        turn.tools.iter_mut().find(|(c, _)| c.call_id == e.call_id)
+                {
+                    card.output.push_str(&e.chunk);
+                }
+            }
+            EventMsg::ToolCallEnd(e) => {
+                let card = self.turn.as_mut().and_then(|turn| {
+                    let i = turn
+                        .tools
+                        .iter()
+                        .position(|(c, _)| c.call_id == e.call_id)?;
+                    Some(turn.tools.remove(i).0)
+                });
+                if let Some(mut card) = card {
+                    card.end = Some(e);
+                    self.push(Cell::Tool(card));
+                }
             }
             EventMsg::TitleChanged(e) => self.title = Some(e.title),
             EventMsg::ModeChanged(e) => self.mode = Some(e.mode),
@@ -271,8 +329,16 @@ impl App {
                 self.push(question_cell(&e.question, answer));
             }
             EventMsg::HistoryRewritten(e) => {
-                self.cells = e.items.iter().map(history_cell).collect();
+                self.cells = e
+                    .items
+                    .iter()
+                    .filter_map(|item| history_cell(item, self.markdown))
+                    .collect();
                 self.view.reset();
+                // The answer's cell, if one is being written, is gone.
+                if let Some(turn) = &mut self.turn {
+                    turn.answer_cell = None;
+                }
             }
             EventMsg::ShutdownComplete => self.stopped = true,
             _ => {}
@@ -329,6 +395,10 @@ impl App {
             }
             KeyCode::Char('z') if ctrl => return Some(Flow::Suspend),
             KeyCode::Char('l') if ctrl => self.repaint = true,
+            KeyCode::Char('t') if ctrl => {
+                self.expanded = !self.expanded;
+                self.view.set_expanded(self.expanded);
+            }
             KeyCode::Home if ctrl => self.view.home(),
             KeyCode::End if !self.view.is_following() => self.view.end(),
             KeyCode::PageUp => self.view.scroll_up(page),
@@ -370,50 +440,92 @@ impl App {
         }
     }
 
-    /// Moves the answer's finished paragraphs into the transcript: up to
-    /// the last blank line outside a code fence.
+    /// Moves the answer's finished blocks into the transcript: all but
+    /// the last top-level block, which can still change.
     fn commit_finished(&mut self) {
-        let Some(turn) = &mut self.turn else {
+        let Some(turn) = &self.turn else {
             return;
         };
-        let mut fenced = false;
-        let mut cut = None;
-        let mut start = 0;
-        for line in turn.live.split_inclusive('\n') {
-            if !line.ends_with('\n') {
-                break;
-            }
-            start += line.len();
-            if line.trim_start().starts_with("```") {
-                fenced = !fenced;
-            } else if !fenced && line.trim().is_empty() {
-                cut = Some(start);
-            }
-        }
-        if let Some(end) = cut {
-            let done: String = turn.live.drain(..end).collect();
-            let text = done.trim_end_matches('\n');
-            if !text.trim().is_empty() {
-                self.push(answer_cell(text));
-            }
+        let cut = markdown::finished(&turn.answer[turn.committed..]);
+        if cut > 0 {
+            let end = turn.committed + cut;
+            self.show_answer(end);
         }
     }
 
-    /// Moves the whole answer so far into the transcript.
-    fn commit_live(&mut self) {
+    /// Moves the whole answer so far into the transcript; what comes
+    /// next starts a new one.
+    fn commit_answer(&mut self) {
+        let Some(turn) = &self.turn else {
+            return;
+        };
+        let end = turn.answer.len();
+        self.show_answer(end);
+        if let Some(turn) = &mut self.turn {
+            turn.answer.clear();
+            turn.committed = 0;
+            turn.answer_cell = None;
+        }
+    }
+
+    /// Shows `answer[..end]` in the answer's transcript cell.
+    fn show_answer(&mut self, end: usize) {
+        let markdown = self.markdown;
         let Some(turn) = &mut self.turn else {
             return;
         };
-        let done = std::mem::take(&mut turn.live);
-        let text = done.trim_end_matches('\n');
+        turn.committed = end;
+        let text = &turn.answer[..end];
+        if text.trim().is_empty() {
+            return;
+        }
+        let cell = Cell::answer(text, markdown);
+        match turn.answer_cell {
+            Some(i) if i < self.cells.len() => {
+                self.cells[i] = cell;
+                self.view.changed(i);
+            }
+            _ => {
+                turn.answer_cell = Some(self.cells.len());
+                self.cells.push(cell);
+            }
+        }
+        self.dirty = true;
+    }
+
+    /// Moves the round's reasoning into the transcript.
+    fn commit_reasoning(&mut self) {
+        let show_think = self.show_think;
+        let Some(turn) = &mut self.turn else {
+            return;
+        };
+        let text = std::mem::take(&mut turn.reasoning);
+        let since = turn.reasoning_since.take();
         if !text.trim().is_empty() {
-            self.push(answer_cell(text));
+            self.push(Cell::Reasoning(Reasoning {
+                text,
+                took: since.map(|t| t.elapsed()),
+                shown: show_think,
+            }));
         }
     }
 
     fn end_turn(&mut self) {
-        self.commit_live();
-        self.turn = None;
+        self.commit_reasoning();
+        self.commit_answer();
+        // A call the engine never ended stopped with the turn.
+        let left = self.turn.take().map(|t| t.tools).unwrap_or_default();
+        for (mut card, started) in left {
+            card.end = Some(ToolCallEndEvent {
+                call_id: card.call_id.clone(),
+                status: ToolCallStatus::Interrupted,
+                detail: None,
+                duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                sandboxed: false,
+                network: false,
+            });
+            self.push(Cell::Tool(card));
+        }
     }
 
     /// Draws a frame; a failed write stops the drawing and closes the chat.
@@ -512,11 +624,30 @@ impl App {
             " ".into(),
             activity.dim(),
         ]));
-        for row in turn.live.split('\n') {
-            lines.extend(wrap_line(&Line::from(row.to_string()), width));
+        if self.show_think && !turn.reasoning.trim().is_empty() {
+            let live = Reasoning {
+                text: turn.reasoning.clone(),
+                took: None,
+                shown: true,
+            };
+            // Without the blank row a cell starts with.
+            lines.extend(live.rows(width, false).into_iter().skip(1).map(|r| r.line));
         }
-        if turn.live.ends_with('\n') || turn.live.is_empty() {
-            lines.pop();
+        let tail = &turn.answer[turn.committed..];
+        if !tail.trim().is_empty() {
+            let rows = Cell::answer(tail, self.markdown).rows(width, false);
+            lines.extend(rows.into_iter().skip(1).map(|r| r.line));
+        }
+        for (card, started) in &turn.tools {
+            let running = Running {
+                spinner: SPINNER[frame],
+                elapsed: started.elapsed(),
+            };
+            lines.extend(
+                card.rows(width, false, Some(running))
+                    .into_iter()
+                    .map(|r| r.line),
+            );
         }
         lines
     }
@@ -594,8 +725,8 @@ impl App {
 }
 
 /// `line` as one row with every char that could act on the terminal shown,
-/// not applied: the live region's last check (ui-plan 7). The transcript's
-/// rows come from [`wrap_line`], which does the same.
+/// not applied: the live region's last check (ui-plan 7). The cells' rows
+/// come from the wrapping functions, which do the same.
 fn clean_row(mut line: Line<'static>) -> Line<'static> {
     let mut prev = None;
     for span in &mut line.spans {
@@ -661,41 +792,8 @@ fn spawn_input() -> io::Result<mpsc::UnboundedReceiver<Input>> {
     Ok(rx)
 }
 
-fn user_cell(text: &str) -> Cell {
-    let mut cell = vec![Line::from("")];
-    for (i, row) in text.split('\n').enumerate() {
-        let prefix = if i == 0 { "you › " } else { "      " };
-        cell.push(Line::from(vec![
-            prefix.cyan().bold(),
-            row.to_string().into(),
-        ]));
-    }
-    cell
-}
-
-fn answer_cell(text: &str) -> Cell {
-    let mut cell = vec![Line::from("")];
-    cell.extend(text.split('\n').map(|row| Line::from(row.to_string())));
-    cell
-}
-
-fn notice_cell(notice: &NoticeEvent) -> Cell {
-    notice
-        .message
-        .split('\n')
-        .map(|row| {
-            let row = row.to_string();
-            Line::from(match notice.level {
-                NoticeLevel::Info => row.dim(),
-                NoticeLevel::Warn => row.yellow(),
-                NoticeLevel::Error => row.red(),
-            })
-        })
-        .collect()
-}
-
 fn question_cell(question: &Question, answer: Answer) -> Cell {
-    vec![Line::from(
+    Cell::lines(vec![Line::from(
         format!(
             "{} {} {} (question boxes come with WP 3.11)",
             question.prompt,
@@ -703,7 +801,7 @@ fn question_cell(question: &Question, answer: Answer) -> Cell {
             answer_word(answer)
         )
         .yellow(),
-    )]
+    )])
 }
 
 /// rp's `[y/N]` and `[y/N/a=always]`.
@@ -722,16 +820,25 @@ pub fn answer_word(answer: Answer) -> &'static str {
     }
 }
 
-fn history_cell(item: &HistoryItem) -> Cell {
-    match item {
-        HistoryItem::User { text } => user_cell(text),
-        HistoryItem::Agent { text } => answer_cell(text),
-        HistoryItem::ToolCall { tool, summary, .. } => {
-            vec![Line::from(format!("▸ {tool}  {summary}").dim())]
-        }
-        HistoryItem::Notice(notice) => notice_cell(notice),
-        _ => Vec::new(),
-    }
+/// How a resumed or rewritten history draws `item` (kb d052): the trace of
+/// a message that had one is not kept, so it is one line.
+fn history_cell(item: &HistoryItem, markdown: bool) -> Option<Cell> {
+    Some(match item {
+        HistoryItem::User { text } => Cell::user(text),
+        HistoryItem::Agent { text } => Cell::answer(text, markdown),
+        HistoryItem::Reasoning { text } => Cell::Reasoning(Reasoning {
+            text: text.clone(),
+            took: None,
+            shown: false,
+        }),
+        HistoryItem::ToolCall {
+            call_id,
+            tool,
+            summary,
+        } => Cell::Tool(ToolCard::new(call_id, tool, summary)),
+        HistoryItem::Notice(notice) => Cell::notice(notice),
+        _ => return None,
+    })
 }
 
 #[cfg(test)]

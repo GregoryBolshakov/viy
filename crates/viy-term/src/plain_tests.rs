@@ -137,6 +137,18 @@ fn hostile_strings_write_no_escape_and_reach_no_terminal_feature() {
                 tool: (*text).into(),
                 summary: (*text).into(),
             }),
+            EventMsg::ToolCallOutputDelta(viy_protocol::ToolCallOutputDeltaEvent {
+                call_id: "c1".into(),
+                chunk: (*text).into(),
+            }),
+            EventMsg::ToolCallEnd(viy_protocol::ToolCallEndEvent {
+                call_id: "c1".into(),
+                status: viy_protocol::ToolCallStatus::Failed,
+                detail: Some((*text).into()),
+                duration_ms: 1,
+                sandboxed: false,
+                network: false,
+            }),
             EventMsg::QuestionRequest(QuestionRequestEvent {
                 question_id: "q1".into(),
                 question: Question {
@@ -162,4 +174,43 @@ fn hostile_strings_write_no_escape_and_reach_no_terminal_feature() {
     assert_eq!(parser.callbacks().foreign(), Vec::<String>::new());
     assert!(text.contains("␛]52;c;cm0gLXJmIH4K␇"), "{text}");
     assert!(text.contains("invoice_<U+202E>fdp.exe"), "{text}");
+}
+
+/// rp prints a command, its output, then `[exit 1]`.
+#[test]
+fn a_tool_call_shows_its_output_and_result() {
+    use viy_protocol::ToolCallBeginEvent;
+    use viy_protocol::ToolCallEndEvent;
+    use viy_protocol::ToolCallOutputDeltaEvent;
+    use viy_protocol::ToolCallStatus;
+
+    let end = |status, detail: Option<&str>| {
+        EventMsg::ToolCallEnd(ToolCallEndEvent {
+            call_id: "c1".into(),
+            status,
+            detail: detail.map(str::to_string),
+            duration_ms: 1,
+            sandboxed: true,
+            network: false,
+        })
+    };
+    let (text, _) = render(&[
+        delta("Checking."),
+        EventMsg::ToolCallBegin(ToolCallBeginEvent {
+            call_id: "c1".into(),
+            tool: "run_shell".into(),
+            summary: "false; echo hi".into(),
+        }),
+        EventMsg::ToolCallOutputDelta(ToolCallOutputDeltaEvent {
+            call_id: "c1".into(),
+            chunk: "hi\nthere".into(),
+        }),
+        end(ToolCallStatus::Completed, Some("exit 1")),
+        end(ToolCallStatus::Completed, None),
+        end(ToolCallStatus::Declined, None),
+    ]);
+    assert_eq!(
+        text,
+        "Checking.\n▸ run_shell  false; echo hi\nhi\nthere\n  [exit 1]\n  [declined]\n"
+    );
 }

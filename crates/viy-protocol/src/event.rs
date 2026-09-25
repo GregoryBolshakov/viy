@@ -136,6 +136,10 @@ pub struct ToolCallOutputDeltaEvent {
 pub struct ToolCallEndEvent {
     pub call_id: String,
     pub status: ToolCallStatus,
+    /// The result in a few words, as rp prints it after the call:
+    /// `exit 1`, `timed out`, `1234 bytes`, `12 entries`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
     pub duration_ms: u64,
     pub sandboxed: bool,
     pub network: bool,

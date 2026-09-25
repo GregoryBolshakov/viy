@@ -5,8 +5,13 @@
 
 use pretty_assertions::assert_eq;
 use viy_protocol::Choices;
+use viy_protocol::NoticeEvent;
+use viy_protocol::NoticeLevel;
 use viy_protocol::TitleChangedEvent;
 use viy_protocol::ToolCallBeginEvent;
+use viy_protocol::ToolCallEndEvent;
+use viy_protocol::ToolCallOutputDeltaEvent;
+use viy_protocol::ToolCallStatus;
 use viy_testkit::hostile::CORPUS;
 use viy_testkit::hostile::foreign_controls;
 use viy_testkit::screen::cell_text;
@@ -63,6 +68,47 @@ const WIDGETS: &[(&str, Show)] = &[
             tool: text.into(),
             summary: text.into(),
         }));
+    }),
+    ("tool output, running and ended", |f, text| {
+        f.app.event(started("q"));
+        f.app.event(EventMsg::ToolCallBegin(ToolCallBeginEvent {
+            call_id: "c1".into(),
+            tool: "run_shell".into(),
+            summary: "x".into(),
+        }));
+        f.app
+            .event(EventMsg::ToolCallOutputDelta(ToolCallOutputDeltaEvent {
+                call_id: "c1".into(),
+                chunk: text.into(),
+            }));
+        f.screen();
+        f.app.event(EventMsg::ToolCallEnd(ToolCallEndEvent {
+            call_id: "c1".into(),
+            status: ToolCallStatus::Failed,
+            detail: Some(text.into()),
+            duration_ms: 5,
+            sandboxed: true,
+            network: true,
+        }));
+        f.ctrl('t');
+    }),
+    ("reasoning, live and kept", |f, text| {
+        f.app.event(started("q"));
+        f.app.event(EventMsg::ReasoningContentDelta(DeltaEvent {
+            delta: text.into(),
+        }));
+        f.screen();
+        f.app.event(delta("a"));
+    }),
+    ("markdown around it", |f, text| {
+        f.app.event(started("q"));
+        let one = text.replace('\n', " ");
+        f.app.event(delta(&format!(
+            "# {one}\n\n[{one}]({one}) ![{one}]({one}) `{one}` *{one}* $${one}$$\n\n\
+             | {one} | b |\n|---|---|\n| {one} | b |\n\n> {one}\n\n- [x] {one}\n\n\
+             ```{one}\n{text}\n```\n"
+        )));
+        f.app.event(complete());
     }),
     ("title", |f, text| {
         f.app.event(EventMsg::TitleChanged(TitleChangedEvent {

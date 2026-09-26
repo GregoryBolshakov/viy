@@ -409,11 +409,12 @@ impl Chat {
                 let question = Question {
                     kind: None,
                     prompt: "that chat is open in another viy chat. Continue a copy of it \
-                             instead? [Y/n] "
+                             instead?"
                         .into(),
                     choices: Choices::YesNo,
                     default: Answer::Yes,
                     unattended: Answer::No,
+                    reason: Vec::new(),
                 };
                 if ctx.ask(&question).await != Answer::Yes {
                     return false;

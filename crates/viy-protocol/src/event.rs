@@ -42,6 +42,10 @@ pub enum EventMsg {
     /// A question for the user, answered by [`crate::Op::QuestionAnswer`]
     /// with its `question_id` (kb d036).
     QuestionRequest(QuestionRequestEvent),
+    /// The engine no longer waits for the answer to a question it asked:
+    /// the work that asked it stopped (Codex's `ServerRequestResolved`).
+    /// Not sent for a question answered by [`crate::Op::QuestionAnswer`].
+    QuestionResolved(QuestionResolvedEvent),
     /// A slash command has run.
     CommandComplete(CommandCompleteEvent),
     /// The engine has stopped; nothing follows.
@@ -52,6 +56,11 @@ pub enum EventMsg {
 pub struct QuestionRequestEvent {
     pub question_id: String,
     pub question: Question,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuestionResolvedEvent {
+    pub question_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

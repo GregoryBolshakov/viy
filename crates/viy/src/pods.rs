@@ -143,15 +143,13 @@ impl<'w> Printer<'w> {
         if !(self.terminal.stdin_tty && self.terminal.tty) {
             return None;
         }
-        let shown = if question.default == Answer::Yes {
-            "Y/n"
-        } else {
-            "y/N"
-        };
         self.close();
         {
             let mut guard = self.out.lock().unwrap_or_else(PoisonError::into_inner);
-            let prompt = format!("\x1b[33m{} [{shown}] \x1b[0m", question.prompt);
+            for notice in &question.reason {
+                let _ = writeln!(guard.0, "{}", notice.message);
+            }
+            let prompt = format!("\x1b[33m{} {} \x1b[0m", question.prompt, question.hint());
             let _ = guard.0.write_all(prompt.as_bytes());
             let _ = guard.0.flush();
         }

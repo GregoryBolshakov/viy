@@ -1006,7 +1006,7 @@ async fn resuming_a_chat_open_elsewhere_offers_a_copy() {
     d.rx = rx;
     assert_eq!(
         prompt,
-        "that chat is open in another viy chat. Continue a copy of it instead? [Y/n] "
+        "that chat is open in another viy chat. Continue a copy of it instead?"
     );
     assert_eq!(d.chat.messages(), Vec::<Value>::new());
 

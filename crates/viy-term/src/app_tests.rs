@@ -1,10 +1,13 @@
 use pretty_assertions::assert_eq;
+use viy_protocol::Answer;
 use viy_protocol::DeltaEvent;
 use viy_protocol::HistoryRewrittenEvent;
 use viy_protocol::NoticeEvent;
 use viy_protocol::NoticeLevel;
+use viy_protocol::Question;
 use viy_protocol::QuestionKind;
 use viy_protocol::QuestionRequestEvent;
+use viy_protocol::QuestionResolvedEvent;
 use viy_protocol::RewriteReason;
 use viy_protocol::TurnAbortReason;
 use viy_protocol::TurnAbortedEvent;
@@ -35,7 +38,7 @@ fn fixture(width: u16, height: u16) -> Fixture {
 
 impl Fixture {
     fn screen(&mut self) -> Vec<String> {
-        self.app.draw(&mut self.term);
+        self.app.draw_at(&mut self.term, self.clock);
         self.term.backend().screen_rows()
     }
 
@@ -360,26 +363,6 @@ fn page_keys_and_the_wheel_scroll_the_transcript() {
 }
 
 #[test]
-fn a_question_takes_its_unattended_answer_until_question_boxes() {
-    let mut f = fixture(80, 4);
-    f.app.event(EventMsg::QuestionRequest(QuestionRequestEvent {
-        question_id: "q1".into(),
-        question: Question::yes_no(Some(QuestionKind::Network), "run_shell wants the network?"),
-    }));
-    assert_eq!(
-        f.ops(),
-        [Op::QuestionAnswer {
-            id: "q1".into(),
-            answer: Answer::No
-        }]
-    );
-    assert_eq!(
-        f.screen()[1],
-        "run_shell wants the network? [y/N] n (question boxes come with WP 3.11)"
-    );
-}
-
-#[test]
 fn a_rewritten_history_is_drawn_from_its_items() {
     let mut f = fixture(30, 7);
     numbered(&mut f, 3);
@@ -546,6 +529,9 @@ mod hostile;
 #[path = "app_status_tests.rs"]
 mod status;
 
+#[path = "app_question_tests.rs"]
+mod question;
+
 /// Typing `/` opens the popup of commands above the input; Tab takes the
 /// choice, and its values follow.
 #[test]
@@ -578,7 +564,7 @@ fn the_slash_popup_is_drawn_above_the_input() {
 fn shift_tab_asks_for_the_next_mode_and_the_footer_shows_it() {
     let mut f = fixture(40, 4);
     f.key(KeyCode::BackTab);
-    assert_eq!(f.ops(), [Op::CycleMode]);
+    assert_eq!(f.ops(), [Op::CycleMode { question: None }]);
     f.app
         .event(EventMsg::ModeChanged(viy_protocol::ModeChangedEvent {
             mode: "auto-yes".into(),

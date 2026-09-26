@@ -13,6 +13,7 @@ pub mod history;
 pub mod latex;
 pub mod markdown;
 pub mod plain;
+pub mod question;
 pub mod sanitize;
 pub mod slash;
 pub mod tabtitle;

@@ -9,7 +9,10 @@
 //! [`Op::QuestionAnswer`] naming it, as Codex's `request_user_input` and
 //! `notify_user_input_response` (kb d036). A question whose turn is
 //! interrupted, or that is still open when the engine stops, gets the
-//! question's unattended answer if anything still awaits it.
+//! question's unattended answer if anything still awaits it. A question
+//! nothing waits for any more, because the work that asked it stopped or
+//! dropped it, is closed with [`EventMsg::QuestionResolved`], so the UI
+//! takes its box away (Codex's `ServerRequestResolved`).
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -34,6 +37,7 @@ use viy_protocol::NoticeLevel;
 use viy_protocol::Op;
 use viy_protocol::Question;
 use viy_protocol::QuestionRequestEvent;
+use viy_protocol::QuestionResolvedEvent;
 use viy_protocol::Submission;
 use viy_protocol::TurnAbortReason;
 use viy_protocol::TurnAbortedEvent;
@@ -169,12 +173,22 @@ impl Questions {
             events,
             sub_id,
             EventMsg::QuestionRequest(QuestionRequestEvent {
-                question_id,
+                question_id: question_id.clone(),
                 question: question.clone(),
             }),
         );
         let unattended = question.unattended;
-        Box::pin(async move { rx.await.unwrap_or(unattended) })
+        // Closes the question if the future goes before its answer came.
+        let waiting = Waiting {
+            questions: self.clone(),
+            events: events.clone(),
+            sub_id: sub_id.to_string(),
+            question_id,
+        };
+        Box::pin(async move {
+            let _waiting = waiting;
+            rx.await.unwrap_or(unattended)
+        })
     }
 
     /// Resolves question `id`; an id that is not open is ignored.
@@ -184,9 +198,55 @@ impl Questions {
         }
     }
 
-    /// Forgets the questions of submission `sub_id`, whose turn has ended.
-    fn forget(&self, sub_id: &str) {
-        self.lock().open.retain(|_, (asker, _)| asker != sub_id);
+    /// Closes question `id` unanswered, if it is still open.
+    fn close(&self, events: &mpsc::UnboundedSender<Event>, sub_id: &str, id: &str) {
+        if self.lock().open.remove(id).is_some() {
+            resolved(events, sub_id, id);
+        }
+    }
+
+    /// Closes the questions of submission `sub_id`, whose work has ended.
+    fn forget(&self, events: &mpsc::UnboundedSender<Event>, sub_id: &str) {
+        let mut closed: Vec<String> = Vec::new();
+        self.lock().open.retain(|id, (asker, _)| {
+            let keep = asker != sub_id;
+            if !keep {
+                closed.push(id.clone());
+            }
+            keep
+        });
+        // In the order they were asked: q9 before q10.
+        closed.sort_by_key(|id| (id.len(), id.clone()));
+        for id in closed {
+            resolved(events, sub_id, &id);
+        }
+    }
+}
+
+fn resolved(events: &mpsc::UnboundedSender<Event>, sub_id: &str, id: &str) {
+    emit(
+        events,
+        sub_id,
+        EventMsg::QuestionResolved(QuestionResolvedEvent {
+            question_id: id.to_string(),
+        }),
+    );
+}
+
+/// An asked question's future holds this: dropped before the answer came
+/// (the turn was interrupted, a tool call cancelled), it closes the
+/// question.
+struct Waiting {
+    questions: Questions,
+    events: mpsc::UnboundedSender<Event>,
+    sub_id: String,
+    question_id: String,
+}
+
+impl Drop for Waiting {
+    fn drop(&mut self) {
+        self.questions
+            .close(&self.events, &self.sub_id, &self.question_id);
     }
 }
 
@@ -253,7 +313,7 @@ impl Running {
     async fn cancel(self, questions: &Questions, events: &mpsc::UnboundedSender<Event>) {
         self.task.abort();
         let _ = self.task.await;
-        questions.forget(&self.sub_id);
+        questions.forget(events, &self.sub_id);
         let msg = match self.work {
             Work::Turn => EventMsg::TurnAborted(TurnAbortedEvent {
                 turn_id: self.sub_id.clone(),
@@ -301,7 +361,7 @@ async fn submission_loop(
                     Op::QuestionAnswer { id, answer } => questions.answer(&id, answer),
                     // The modes are phase 4's (modes.py, kb d024); until then
                     // Shift+Tab says so.
-                    Op::CycleMode => emit(
+                    Op::CycleMode { .. } => emit(
                         &events,
                         &sub.id,
                         EventMsg::Notice(NoticeEvent {
@@ -335,7 +395,7 @@ async fn submission_loop(
             Some(sub_id) = done.recv() => {
                 if running.as_ref().is_some_and(|r| r.sub_id == sub_id) {
                     running = None;
-                    questions.forget(&sub_id);
+                    questions.forget(&events, &sub_id);
                 }
             }
         }

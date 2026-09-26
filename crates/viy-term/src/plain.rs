@@ -14,8 +14,7 @@ use viy_protocol::Op;
 use viy_protocol::ToolCallStatus;
 use viy_protocol::TurnOutcome;
 
-use crate::app::answer_word;
-use crate::app::choices;
+use crate::question::answer_word;
 use crate::sanitize::sanitize_after;
 
 pub struct Plain<W: Write> {
@@ -74,10 +73,13 @@ impl<W: Write> Plain<W> {
             }
             EventMsg::QuestionRequest(e) => {
                 let answer = e.question.unattended;
+                for notice in &e.question.reason {
+                    self.line(&notice.message)?;
+                }
                 self.line(&format!(
                     "{} {} {} (no terminal to ask)",
                     e.question.prompt,
-                    choices(e.question.choices),
+                    e.question.hint(),
                     answer_word(answer)
                 ))?;
                 self.out.flush()?;

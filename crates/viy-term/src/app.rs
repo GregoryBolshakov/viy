@@ -12,8 +12,8 @@
 //! Ctrl-T draws every card's output and every trace whole. The footer
 //! shows the engine's statuses, queued lines and the scroll position
 //! ([`crate::footer`]); the tab title spins while a turn runs ([`tabtitle`]), if
-//! the chat turned it on. A question is answered as with nobody to ask,
-//! its unattended answer, until the question boxes of WP 3.11.
+//! the chat turned it on. Questions are boxes above the input, taking only
+//! keys pressed after they have been seen ([`crate::question`]).
 
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -43,13 +43,10 @@ use tokio::signal::unix::SignalKind;
 use tokio::signal::unix::signal;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
-use viy_protocol::Answer;
-use viy_protocol::Choices;
 use viy_protocol::Event;
 use viy_protocol::EventMsg;
 use viy_protocol::HistoryItem;
 use viy_protocol::Op;
-use viy_protocol::Question;
 use viy_protocol::StatusPhase;
 use viy_protocol::ToolCallEndEvent;
 use viy_protocol::ToolCallStatus;
@@ -66,6 +63,8 @@ use crate::footer::Status;
 use crate::frame::FrameLimiter;
 use crate::history::History;
 use crate::markdown;
+use crate::question::Questions;
+use crate::question::Taken;
 use crate::sanitize::sanitize_line_after;
 use crate::tabtitle;
 use crate::terminal::Terminal;
@@ -128,6 +127,8 @@ pub struct App {
     turn: Option<Turn>,
     /// Messages sent that have not started yet, oldest first.
     queued: VecDeque<String>,
+    /// The questions the engine waits on, oldest first.
+    questions: Questions,
     /// The engine's statuses, for the footer and the tab title.
     status: Status,
     /// The tab title, if the chat turned it on, and the title written last.
@@ -163,6 +164,7 @@ impl App {
             composer: Composer::new(history),
             turn: None,
             queued: VecDeque::new(),
+            questions: Questions::default(),
             status: Status::default(),
             tab: None,
             tab_shown: None,
@@ -252,10 +254,17 @@ impl App {
             return Some(self.limiter.deadline(now));
         }
         let animating = self.turn.is_some() || self.closing;
-        if animating {
-            return Some(self.last_frame.map_or(now, |t| t + SPINNER_FRAME));
+        let next = if animating {
+            Some(self.last_frame.map_or(now, |t| t + SPINNER_FRAME))
+        } else {
+            self.status.next_change(now)
+        };
+        // The box's keys light up when it starts taking them.
+        let armed = self.questions.armed_at().filter(|&at| at > now);
+        match (next, armed) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
         }
-        self.status.next_change(now)
     }
 
     /// Takes in one engine event.
@@ -346,13 +355,11 @@ impl App {
                     self.push(Cell::Tool(card));
                 }
             }
-            EventMsg::QuestionRequest(e) => {
-                let answer = e.question.unattended;
-                let _ = self.ops.send(Op::QuestionAnswer {
-                    id: e.question_id,
-                    answer,
-                });
-                self.push(question_cell(&e.question, answer));
+            EventMsg::QuestionRequest(e) => self.questions.push(e.question_id, e.question),
+            EventMsg::QuestionResolved(e) => {
+                if let Some(question) = self.questions.resolve(&e.question_id) {
+                    self.push(question.cell(None));
+                }
             }
             EventMsg::HistoryRewritten(e) => {
                 self.cells = e
@@ -382,7 +389,10 @@ impl App {
                 return self.key(key, Instant::now());
             }
             Input::Key(_) => {}
-            Input::Paste(text) => self.composer.paste(&text),
+            Input::Paste(text) => {
+                self.questions.typed(Instant::now());
+                self.composer.paste(&text);
+            }
             Input::Mouse(mouse) => match mouse.kind {
                 MouseEventKind::ScrollUp => self.view.scroll_up(WHEEL_ROWS),
                 MouseEventKind::ScrollDown => self.view.scroll_down(WHEEL_ROWS),
@@ -402,13 +412,33 @@ impl App {
     /// from typing by the time between keys).
     fn key(&mut self, key: KeyEvent, now: Instant) -> Option<Flow> {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        if self.closing && key.code == KeyCode::Char('c') && ctrl {
+            // A second Ctrl-C while closing: leave now.
+            return Some(Flow::Exit);
+        }
+        match self.questions.key(key, now, !self.composer.is_empty()) {
+            Some(Taken::Answered { question, answer }) => {
+                let _ = self.ops.send(Op::QuestionAnswer {
+                    id: question.id.clone(),
+                    answer,
+                });
+                self.push(question.cell(Some(answer)));
+                return None;
+            }
+            Some(Taken::CycleMode { question_id }) => {
+                let _ = self.ops.send(Op::CycleMode {
+                    question: Some(question_id),
+                });
+                return None;
+            }
+            None => {}
+        }
         let page = self.view.page().saturating_sub(1).max(1);
         match key.code {
             KeyCode::Char('c') if ctrl => {
-                if self.closing {
-                    // A second Ctrl-C while closing: leave now.
-                    return Some(Flow::Exit);
-                } else if self.turn.is_some() {
+                // A question not yet taking keys: stop the work that asked
+                // it, a turn or a command; the engine closes the question.
+                if self.turn.is_some() || self.questions.front().is_some() {
                     let _ = self.ops.send(Op::Interrupt);
                 } else if !self.composer.is_empty() {
                     self.composer.clear();
@@ -429,13 +459,17 @@ impl App {
             KeyCode::End if !self.view.is_following() => self.view.end(),
             KeyCode::PageUp => self.view.scroll_up(page),
             KeyCode::PageDown => self.view.scroll_down(page),
-            _ => match self.composer.key(key, now) {
-                Action::Submit(text) => self.submit(text),
-                Action::CycleMode => {
-                    let _ = self.ops.send(Op::CycleMode);
+            _ => {
+                // Typing: no question takes a key until it stops.
+                self.questions.typed(now);
+                match self.composer.key(key, now) {
+                    Action::Submit(text) => self.submit(text),
+                    Action::CycleMode => {
+                        let _ = self.ops.send(Op::CycleMode { question: None });
+                    }
+                    Action::None => {}
                 }
-                Action::None => {}
-            },
+            }
         }
         None
     }
@@ -559,11 +593,18 @@ impl App {
     where
         B: Backend<Error = io::Error> + Write,
     {
+        self.draw_at(term, Instant::now());
+    }
+
+    /// [`App::draw`], with the frame drawn at `now`.
+    fn draw_at<B>(&mut self, term: &mut Terminal<B>, now: Instant)
+    where
+        B: Backend<Error = io::Error> + Write,
+    {
         if std::mem::take(&mut self.repaint) {
             term.invalidate();
         }
-        let now = Instant::now();
-        if let Err(e) = self.render(term) {
+        if let Err(e) = self.render(term, now) {
             self.blind = Some(e);
             self.close();
         }
@@ -572,33 +613,45 @@ impl App {
         self.dirty = false;
     }
 
-    fn render<B>(&mut self, term: &mut Terminal<B>) -> io::Result<()>
+    fn render<B>(&mut self, term: &mut Terminal<B>, now: Instant) -> io::Result<()>
     where
         B: Backend<Error = io::Error> + Write,
     {
         let size = term.size();
         let width = size.width.max(4);
         let (input_rows, input_cursor) = self.composer.layout(width - 2);
-        let mut live = self.live_lines(usize::from(width));
-        live.extend(self.queued_lines(usize::from(width)));
-        live.extend(self.popup_lines(usize::from(width)));
         // The live region may take all but two rows; the transcript the
-        // rest. The answer's oldest rows give way first, then the
-        // activity line above them.
+        // rest. The question box keeps its rows longest, then the queued
+        // messages and the popup; of the activity, the answer's oldest
+        // rows give way first, then the activity line above them.
         let room = usize::from(size.height.saturating_sub(2)).max(2);
         let fixed = input_rows.len() + 1;
-        let live_room = room.saturating_sub(fixed);
+        let (question, whole) =
+            self.questions
+                .rows(usize::from(size.width), room.saturating_sub(fixed), now);
+        let mut tail = self.queued_lines(usize::from(width));
+        tail.extend(self.popup_lines(usize::from(width)));
+        // The rows furthest from the input give way first.
+        let excess = tail
+            .len()
+            .saturating_sub(room.saturating_sub(fixed + question.len()));
+        tail.drain(..excess);
+        let mut live = self.live_lines(usize::from(width));
+        let live_room = room.saturating_sub(fixed + question.len() + tail.len());
         if live.len() > live_room {
             let first = usize::from(live_room > 0);
             live.drain(first..first + live.len() - live_room);
         }
+        live.extend(question);
+        live.extend(tail);
         let input_top = live.len();
         let mut bottom = live;
         for (i, row) in input_rows.into_iter().enumerate() {
             let prefix = if i == 0 { "› ".cyan() } else { "  ".into() };
             bottom.push(Line::from(vec![prefix, row.into()]));
         }
-        let bottom_height = u16::try_from(bottom.len() + 1)
+        let bottom_rows = bottom.len() + 1;
+        let bottom_height = u16::try_from(bottom_rows)
             .unwrap_or(u16::MAX)
             .min(size.height);
         let top_height = size.height - bottom_height;
@@ -619,7 +672,10 @@ impl App {
             if cursor.y < size.height {
                 frame.set_cursor_position(cursor);
             }
-        })
+        })?;
+        self.questions
+            .drawn(now, whole && usize::from(bottom_height) == bottom_rows);
+        Ok(())
     }
 
     /// The activity line and the answer being written.
@@ -732,8 +788,7 @@ impl App {
 
     fn footer(&self, width: usize) -> Line<'static> {
         let counts = Counts {
-            // Questions are answered as they come until WP 3.11's boxes.
-            questions: 0,
+            questions: self.questions.waiting(),
             queued: if self.turn.is_some() {
                 self.queued.len()
             } else {
@@ -834,34 +889,6 @@ fn spawn_input() -> io::Result<mpsc::UnboundedReceiver<Input>> {
         }
     });
     Ok(rx)
-}
-
-fn question_cell(question: &Question, answer: Answer) -> Cell {
-    Cell::lines(vec![Line::from(
-        format!(
-            "{} {} {} (question boxes come with WP 3.11)",
-            question.prompt,
-            choices(question.choices),
-            answer_word(answer)
-        )
-        .yellow(),
-    )])
-}
-
-/// rp's `[y/N]` and `[y/N/a=always]`.
-pub fn choices(choices: Choices) -> &'static str {
-    match choices {
-        Choices::YesNoAlways => "[y/N/a=always]",
-        _ => "[y/N]",
-    }
-}
-
-pub fn answer_word(answer: Answer) -> &'static str {
-    match answer {
-        Answer::Yes => "y",
-        Answer::No => "n",
-        Answer::Always => "a",
-    }
 }
 
 /// How a resumed or rewritten history draws `item` (kb d052): the trace of

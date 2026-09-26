@@ -122,11 +122,7 @@ impl Cell {
 
     /// A notice in its level's colour.
     pub fn notice(notice: &NoticeEvent) -> Self {
-        let style = match notice.level {
-            NoticeLevel::Info => Style::new().dim(),
-            NoticeLevel::Warn => Style::new().yellow(),
-            NoticeLevel::Error => Style::new().red(),
-        };
+        let style = notice_style(notice.level);
         Self::lines(
             notice
                 .message
@@ -245,6 +241,15 @@ impl Reasoning {
 }
 
 /// `4.2 s`.
+/// A notice's colour, by its level.
+pub fn notice_style(level: NoticeLevel) -> Style {
+    match level {
+        NoticeLevel::Info => Style::new().dim(),
+        NoticeLevel::Warn => Style::new().yellow(),
+        NoticeLevel::Error => Style::new().red(),
+    }
+}
+
 pub fn seconds(t: Duration) -> String {
     format!("{:.1} s", t.as_secs_f64())
 }

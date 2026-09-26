@@ -3201,6 +3201,106 @@ def gen_chat_sessions(snap):
     }
 
 
+
+# ------------------------------------------------------------- ui/questions
+
+# How rp chat asks: the kinds a question may carry and the ones auto-yes
+# answers (modes.py), the line `_confirm` and `pod._ask` print, what rp makes
+# of each typed answer, and what it answers with no terminal. input() is
+# mocked and its prompt recorded with the colours and readline's markers
+# taken out; pod.notify is mocked so no desktop notification goes out.
+QUESTIONS_TYPED = ["", "y", "Y", "yes", "n", "N", "no", "a", "A", "always", "x", " y "]
+QUESTIONS_RUNNER = r"""
+import contextlib, io, json, re, sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv[1])
+from rpctl import chat, config, modes, pod
+typed = json.loads(sys.argv[2])
+ansi = re.compile(r"\x1b\[[0-9;]*m|[\x01\x02]")
+
+def make(mode="normal"):
+    cfg = dict(config.DEFAULTS, VLLM_API_KEY="k", SEARCH_ENABLED="0", TOOLS_ENABLED="0",
+               INSTRUCTIONS_ENABLED="0", CHAT_AUTO_TITLE="0", TRACE_ENABLED="0",
+               CONSULT_ENABLED="0", CHAT_MODE=mode)
+    return chat.Chat(cfg, "http://127.0.0.1:1")
+
+def confirm(always, kind, answer, tty=True, mode="normal"):
+    c = make(mode)
+    seen = []
+    def ask(prompt):
+        seen.append(ansi.sub("", prompt))
+        return answer
+    with patch.object(chat.sys.stdin, "isatty", return_value=tty), \
+            patch("builtins.input", side_effect=ask), \
+            contextlib.redirect_stdout(io.StringIO()):
+        got = c._confirm("  run it?", always=always, kind=kind)
+    return {"line": seen[0] if seen else None, "result": got}
+
+def ask_pod(default, answer, tty=True):
+    seen = []
+    def ask(prompt):
+        seen.append(ansi.sub("", prompt))
+        return answer
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), \
+            patch.object(pod.sys.stdin, "isatty", return_value=tty), \
+            patch.object(out, "isatty", return_value=tty), \
+            patch.object(pod, "notify"), patch("builtins.input", side_effect=ask):
+        got = pod._ask("Try the backup region?", default)
+    return {"line": seen[0] if seen else None, "result": got,
+            "said": ansi.sub("", out.getvalue())}
+
+auto = modes.get("auto-yes")
+res = {"kinds": list(modes.KINDS),
+       "auto_yes": sorted(auto.auto_yes),
+       "modes": [m.name for m in modes.MODES],
+       "confirm": [], "pod": [], "no_terminal": []}
+for always in (False, True):
+    for kind in (None, modes.DESTRUCTIVE):
+        for answer in typed:
+            res["confirm"].append({"always": always, "kind": kind, "typed": answer,
+                                   **confirm(always, kind, answer)})
+for default in (True, False):
+    for answer in typed:
+        res["pod"].append({"default": default, "typed": answer, **ask_pod(default, answer)})
+for mode in [m.name for m in modes.MODES]:
+    for kind in list(modes.KINDS) + [None]:
+        res["no_terminal"].append({"mode": mode, "kind": kind,
+                                   **confirm(True, kind, "y", tty=False, mode=mode)})
+for default in (True, False):
+    res["no_terminal"].append({"pod_default": default, **ask_pod(default, "n", tty=False)})
+print(json.dumps(res))
+"""
+
+
+def gen_ui_questions(snap):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+        for name, sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"),
+                          ("XDG_STATE_HOME", "state"), ("XDG_DATA_HOME", "data"),
+                          ("XDG_CACHE_HOME", "cache")):
+            (tmp / sub).mkdir()
+            env[name] = str(tmp / sub)
+        out = subprocess.run([sys.executable, "-I", "-c", QUESTIONS_RUNNER, str(snap),
+                              json.dumps(QUESTIONS_TYPED)],
+                             cwd=tmp, env=env, check=True, capture_output=True, text=True)
+        got = json.loads(out.stdout)
+    cases = [{"name": "kinds", "kinds": got["kinds"], "auto_yes": got["auto_yes"],
+              "modes": got["modes"]}]
+    cases += [{"name": "confirm", **c} for c in got["confirm"]]
+    cases += [{"name": "pod_ask", **c} for c in got["pod"]]
+    cases += [{"name": "no_terminal", **c} for c in got["no_terminal"]]
+    return {
+        "about": "how rp chat asks: modes.KINDS and auto-yes's kinds; the line "
+                 "Chat._confirm('  run it?') and pod._ask('Try the backup region?') print "
+                 "(colours and readline markers taken out) and their result for each typed "
+                 "answer; _confirm with no terminal in every mode and kind, and pod._ask's "
+                 "default with no terminal",
+        "cases": cases,
+    }
+
+
 GENERATORS = {
     "chat/context": gen_chat_context,
     "chat/sessions": gen_chat_sessions,
@@ -3218,6 +3318,7 @@ GENERATORS = {
     "pod/resolve": gen_pod_resolve,
     "pod/ssh": gen_pod_ssh,
     "prompt/system": gen_prompt_system,
+    "ui/questions": gen_ui_questions,
 }
 
 # ------------------------------------------------------------------ driver

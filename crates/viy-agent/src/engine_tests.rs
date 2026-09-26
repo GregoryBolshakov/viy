@@ -10,8 +10,9 @@ use viy_protocol::QuestionKind;
 use super::*;
 
 /// A turn that thinks, echoes the line, asks when the line says "ask",
-/// asks through a pod command's asker when it says "pod", and never ends
-/// when it says "hang". A command becomes a notice.
+/// asks through a pod command's asker when it says "pod", asks and stops
+/// waiting when it says "drop", and never ends when it says "hang". A
+/// command becomes a notice.
 pub(crate) struct StandIn;
 
 pub(crate) fn delta(text: impl Into<String>) -> EventMsg {
@@ -36,6 +37,9 @@ impl Turns for StandIn {
                 if let Some(asking) = ask(&question) {
                     ctx.emit(delta(format!("pod answered {:?}", asking.await)));
                 }
+            }
+            if text.contains("drop") {
+                drop(ctx.ask(&Question::yes_no(None, "  still there?")));
             }
             if text.contains("hang") {
                 std::future::pending::<()>().await;
@@ -158,6 +162,35 @@ async fn a_question_is_a_request_answered_by_an_op() {
         .unwrap();
     let rest = until(&mut engine, turn_done(&id)).await;
     assert!(msgs(&rest).contains(&delta("answered Yes")));
+    // Answered by the UI: nothing more to say about it.
+    assert!(
+        !msgs(&rest)
+            .iter()
+            .any(|m| matches!(m, EventMsg::QuestionResolved(_)))
+    );
+}
+
+#[tokio::test]
+async fn a_question_nothing_waits_for_is_closed() {
+    let mut engine = engine();
+    let id = engine
+        .submit(Op::UserTurn {
+            text: "drop it".into(),
+        })
+        .unwrap();
+    let events = until(&mut engine, turn_done(&id)).await;
+    let msgs = msgs(&events);
+    let asked = msgs
+        .iter()
+        .position(|m| matches!(m, EventMsg::QuestionRequest(_)))
+        .unwrap();
+    assert_eq!(
+        msgs[asked + 1],
+        EventMsg::QuestionResolved(QuestionResolvedEvent {
+            question_id: "q1".into()
+        })
+    );
+    assert_eq!(msgs[asked + 2], delta("echo: drop it"));
 }
 
 #[tokio::test]
@@ -202,12 +235,19 @@ async fn interrupt_ends_the_turn_and_forgets_its_question() {
     };
     engine.submit(Op::Interrupt).unwrap();
     let rest = until(&mut engine, turn_done(&id)).await;
+    // The question goes with the turn, and the UI is told before the turn
+    // ends.
     assert_eq!(
         msgs(&rest),
-        [EventMsg::TurnAborted(TurnAbortedEvent {
-            turn_id: id.clone(),
-            reason: TurnAbortReason::Interrupted
-        })]
+        [
+            EventMsg::QuestionResolved(QuestionResolvedEvent {
+                question_id: request.question_id.clone()
+            }),
+            EventMsg::TurnAborted(TurnAbortedEvent {
+                turn_id: id.clone(),
+                reason: TurnAbortReason::Interrupted
+            })
+        ]
     );
     // A late answer goes nowhere, and the next turn runs as usual.
     engine
@@ -276,7 +316,7 @@ async fn an_interrupt_with_nothing_running_changes_nothing() {
 #[tokio::test]
 async fn shift_tab_is_answered_until_the_modes_come() {
     let mut engine = engine();
-    engine.submit(Op::CycleMode).unwrap();
+    engine.submit(Op::CycleMode { question: None }).unwrap();
     let events = until(&mut engine, |e| matches!(e.msg, EventMsg::Notice(_))).await;
     let Some(EventMsg::Notice(notice)) = events.last().map(|e| &e.msg) else {
         panic!("{events:?}");
@@ -286,4 +326,26 @@ async fn shift_tab_is_answered_until_the_modes_come() {
         notice.message,
         "Shift+Tab: the chat modes come with phase 4"
     );
+}
+
+#[test]
+fn questions_left_open_are_closed_in_the_order_asked() {
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let questions = Questions::default();
+    let question = Question::yes_no(None, "go?");
+    let asking: Vec<Asking> = (0..10)
+        .map(|_| questions.ask(&tx, "1", &question))
+        .collect();
+    questions.forget(&tx, "1");
+    let closed: Vec<String> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter_map(|e| match e.msg {
+            EventMsg::QuestionResolved(r) => Some(r.question_id),
+            _ => None,
+        })
+        .collect();
+    let expected: Vec<String> = (1..=10).map(|n| format!("q{n}")).collect();
+    assert_eq!(closed, expected);
+    // Dropped after: already closed, nothing more is said.
+    drop(asking);
+    assert!(rx.try_recv().is_err());
 }

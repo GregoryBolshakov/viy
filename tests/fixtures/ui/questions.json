@@ -1,0 +1,748 @@
+{
+ "rpctl_commit": "b6de7f146b6f26eb15cbbbad96ea19db66623da4",
+ "generator": "tools/fixtures.py ui/questions",
+ "about": "how rp chat asks: modes.KINDS and auto-yes's kinds; the line Chat._confirm('  run it?') and pod._ask('Try the backup region?') print (colours and readline markers taken out) and their result for each typed answer; _confirm with no terminal in every mode and kind, and pod._ask's default with no terminal",
+ "cases": [
+  {
+   "name": "kinds",
+   "kinds": [
+    "destructive",
+    "secret_read",
+    "consult",
+    "network",
+    "fetch",
+    "protected_write",
+    "unsandboxed",
+    "remote"
+   ],
+   "auto_yes": [
+    "consult",
+    "destructive",
+    "fetch",
+    "network",
+    "remote",
+    "secret_read"
+   ],
+   "modes": [
+    "normal",
+    "auto-yes"
+   ]
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "y",
+   "line": "  run it? [y/N] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "Y",
+   "line": "  run it? [y/N] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "yes",
+   "line": "  run it? [y/N] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "n",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "N",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "no",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "a",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "A",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "always",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": "x",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": null,
+   "typed": " y ",
+   "line": "  run it? [y/N] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "y",
+   "line": "  run it? [y/N] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "Y",
+   "line": "  run it? [y/N] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "yes",
+   "line": "  run it? [y/N] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "n",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "N",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "no",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "a",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "A",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "always",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": "x",
+   "line": "  run it? [y/N] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": false,
+   "kind": "destructive",
+   "typed": " y ",
+   "line": "  run it? [y/N] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "",
+   "line": "  run it? [y/N/a=always] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "y",
+   "line": "  run it? [y/N/a=always] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "Y",
+   "line": "  run it? [y/N/a=always] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "yes",
+   "line": "  run it? [y/N/a=always] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "n",
+   "line": "  run it? [y/N/a=always] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "N",
+   "line": "  run it? [y/N/a=always] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "no",
+   "line": "  run it? [y/N/a=always] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "a",
+   "line": "  run it? [y/N/a=always] ",
+   "result": "always"
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "A",
+   "line": "  run it? [y/N/a=always] ",
+   "result": "always"
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "always",
+   "line": "  run it? [y/N/a=always] ",
+   "result": "always"
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": "x",
+   "line": "  run it? [y/N/a=always] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": null,
+   "typed": " y ",
+   "line": "  run it? [y/N/a=always] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "",
+   "line": "  run it? [y/N/a=always] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "y",
+   "line": "  run it? [y/N/a=always] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "Y",
+   "line": "  run it? [y/N/a=always] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "yes",
+   "line": "  run it? [y/N/a=always] ",
+   "result": true
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "n",
+   "line": "  run it? [y/N/a=always] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "N",
+   "line": "  run it? [y/N/a=always] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "no",
+   "line": "  run it? [y/N/a=always] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "a",
+   "line": "  run it? [y/N/a=always] ",
+   "result": "always"
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "A",
+   "line": "  run it? [y/N/a=always] ",
+   "result": "always"
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "always",
+   "line": "  run it? [y/N/a=always] ",
+   "result": "always"
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": "x",
+   "line": "  run it? [y/N/a=always] ",
+   "result": false
+  },
+  {
+   "name": "confirm",
+   "always": true,
+   "kind": "destructive",
+   "typed": " y ",
+   "line": "  run it? [y/N/a=always] ",
+   "result": true
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "",
+   "line": "Try the backup region? [Y/n] ",
+   "result": true,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "y",
+   "line": "Try the backup region? [Y/n] ",
+   "result": true,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "Y",
+   "line": "Try the backup region? [Y/n] ",
+   "result": true,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "yes",
+   "line": "Try the backup region? [Y/n] ",
+   "result": true,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "n",
+   "line": "Try the backup region? [Y/n] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "N",
+   "line": "Try the backup region? [Y/n] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "no",
+   "line": "Try the backup region? [Y/n] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "a",
+   "line": "Try the backup region? [Y/n] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "A",
+   "line": "Try the backup region? [Y/n] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "always",
+   "line": "Try the backup region? [Y/n] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": "x",
+   "line": "Try the backup region? [Y/n] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": true,
+   "typed": " y ",
+   "line": "Try the backup region? [Y/n] ",
+   "result": true,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "",
+   "line": "Try the backup region? [y/N] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "y",
+   "line": "Try the backup region? [y/N] ",
+   "result": true,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "Y",
+   "line": "Try the backup region? [y/N] ",
+   "result": true,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "yes",
+   "line": "Try the backup region? [y/N] ",
+   "result": true,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "n",
+   "line": "Try the backup region? [y/N] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "N",
+   "line": "Try the backup region? [y/N] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "no",
+   "line": "Try the backup region? [y/N] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "a",
+   "line": "Try the backup region? [y/N] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "A",
+   "line": "Try the backup region? [y/N] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "always",
+   "line": "Try the backup region? [y/N] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": "x",
+   "line": "Try the backup region? [y/N] ",
+   "result": false,
+   "said": ""
+  },
+  {
+   "name": "pod_ask",
+   "default": false,
+   "typed": " y ",
+   "line": "Try the backup region? [y/N] ",
+   "result": true,
+   "said": ""
+  },
+  {
+   "name": "no_terminal",
+   "mode": "normal",
+   "kind": "destructive",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "normal",
+   "kind": "secret_read",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "normal",
+   "kind": "consult",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "normal",
+   "kind": "network",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "normal",
+   "kind": "fetch",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "normal",
+   "kind": "protected_write",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "normal",
+   "kind": "unsandboxed",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "normal",
+   "kind": "remote",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "normal",
+   "kind": null,
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "auto-yes",
+   "kind": "destructive",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "auto-yes",
+   "kind": "secret_read",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "auto-yes",
+   "kind": "consult",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "auto-yes",
+   "kind": "network",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "auto-yes",
+   "kind": "fetch",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "auto-yes",
+   "kind": "protected_write",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "auto-yes",
+   "kind": "unsandboxed",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "auto-yes",
+   "kind": "remote",
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "mode": "auto-yes",
+   "kind": null,
+   "line": null,
+   "result": false
+  },
+  {
+   "name": "no_terminal",
+   "pod_default": true,
+   "line": null,
+   "result": true,
+   "said": "Try the backup region? -> yes (no terminal to ask)\n"
+  },
+  {
+   "name": "no_terminal",
+   "pod_default": false,
+   "line": null,
+   "result": false,
+   "said": "Try the backup region? -> no (no terminal to ask)\n"
+  }
+ ]
+}

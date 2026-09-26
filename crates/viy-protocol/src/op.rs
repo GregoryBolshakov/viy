@@ -28,8 +28,11 @@ pub enum Op {
     /// this `id`.
     QuestionAnswer { id: String, answer: Answer },
     /// Shift+Tab: the next chat mode (rpctl `modes.after`); the engine
-    /// answers with [`crate::EventMsg::ModeChanged`].
-    CycleMode,
+    /// answers with [`crate::EventMsg::ModeChanged`]. `question` is the
+    /// question Shift+Tab was pressed at, which the new mode answers if it
+    /// answers its kind (rp's `_shift_tab`); a question the user was not
+    /// looking at is never answered this way.
+    CycleMode { question: Option<String> },
     /// Leave the chat; the engine answers with
     /// [`crate::EventMsg::ShutdownComplete`].
     Shutdown,

@@ -4,9 +4,11 @@
 //! mode, and the bytes written hold only the renderer's sequences.
 
 use pretty_assertions::assert_eq;
+use viy_protocol::Answer;
 use viy_protocol::Choices;
 use viy_protocol::NoticeEvent;
 use viy_protocol::NoticeLevel;
+use viy_protocol::Question;
 use viy_protocol::TitleChangedEvent;
 use viy_protocol::ToolCallBeginEvent;
 use viy_protocol::ToolCallEndEvent;
@@ -124,6 +126,11 @@ const WIDGETS: &[(&str, Show)] = &[
                 choices: Choices::YesNo,
                 default: Answer::No,
                 unattended: Answer::No,
+                reason: vec![NoticeEvent {
+                    level: NoticeLevel::Warn,
+                    code: "test".into(),
+                    message: text.into(),
+                }],
             },
         }));
     }),

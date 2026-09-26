@@ -4,6 +4,8 @@ use std::pin::Pin;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::NoticeEvent;
+
 /// A question on its way to the user: resolves to the answer. The chat's
 /// engine resolves it when [`crate::Op::QuestionAnswer`] arrives, a
 /// terminal when a line is read.
@@ -26,6 +28,10 @@ pub struct Question {
     /// (rp's `_confirm` without a TTY), the default for `viy up`'s questions
     /// (rp's `pod._ask`).
     pub unattended: Answer,
+    /// What rp prints on the lines before the question (why it asks, the
+    /// reviewer's verdict): shown with it, and kept with its answer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reason: Vec<NoticeEvent>,
 }
 
 impl Question {
@@ -37,6 +43,7 @@ impl Question {
             choices: Choices::YesNo,
             default: Answer::No,
             unattended: Answer::No,
+            reason: Vec::new(),
         }
     }
 
@@ -45,6 +52,17 @@ impl Question {
         Self {
             choices: Choices::YesNoAlways,
             ..Self::yes_no(kind, prompt)
+        }
+    }
+
+    /// The choices as rp writes them after the prompt: `[y/N]`, `[Y/n]`
+    /// (rp's `pod._ask` when the default is yes), `[y/N/a=always]`.
+    pub fn hint(&self) -> &'static str {
+        match (self.choices, self.default) {
+            (Choices::YesNo, Answer::No) => "[y/N]",
+            (Choices::YesNo, _) => "[Y/n]",
+            (_, Answer::No) => "[y/N/a=always]",
+            _ => "[Y/n/a=always]",
         }
     }
 }
@@ -69,6 +87,8 @@ pub enum QuestionKind {
     ProtectedWrite,
     /// The sandbox is broken: run on the host?
     Unsandboxed,
+    /// A command on a server the user lent with `/ssh`.
+    Remote,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

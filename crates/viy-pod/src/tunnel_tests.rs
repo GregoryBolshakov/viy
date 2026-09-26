@@ -88,6 +88,23 @@ impl Bench {
             .collect()
     }
 
+    /// What the tunnel said and logged, for a failed assertion.
+    fn why(&self) -> String {
+        let said = self.said.lock().unwrap_or_else(PoisonError::into_inner);
+        let said: Vec<&str> = said.iter().map(|n| n.text.as_str()).collect();
+        let log = std::fs::read_to_string(self.paths.tunnel_log_file()).unwrap_or_default();
+        let listening = std::process::Command::new("ss")
+            .args(["-Hltnp", &format!("sport = :{}", self.local())])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default();
+        format!(
+            "local port {}, sshd port {}\nsaid: {said:#?}\ntunnel.log:\n{log}\nlistening there: {listening}",
+            self.local(),
+            self.sshd.port
+        )
+    }
+
     fn local(&self) -> u16 {
         self.cfg.get("TUNNEL_LOCAL_PORT").unwrap().parse().unwrap()
     }
@@ -348,18 +365,17 @@ async fn dead_tunnel_is_restarted_then_given_up() {
     bench.pin();
     let ssh = bench.ssh();
     let rp = RunPod::new(API_KEY, Arc::new(FakeHttp::new([bench.pod(), bench.pod()])));
-    assert!(
-        start(
-            &ssh,
-            &rp,
-            "127.0.0.1",
-            bench.sshd.port,
-            true,
-            &mut bench.say()
-        )
-        .await
-        .unwrap()
-    );
+    let started = start(
+        &ssh,
+        &rp,
+        "127.0.0.1",
+        bench.sshd.port,
+        true,
+        &mut bench.say(),
+    )
+    .await
+    .unwrap();
+    assert!(started, "{}", bench.why());
     bench.said();
     // The guard starts from a mapping that has gone stale.
     let mut guard = Guard::with_max_restarts("pod111", "127.0.0.1", 1, 2);
@@ -424,18 +440,17 @@ async fn live_tunnel_is_left_alone() {
     bench.pin();
     let ssh = bench.ssh();
     let rp = RunPod::new(API_KEY, Arc::new(FakeHttp::new([])));
-    assert!(
-        start(
-            &ssh,
-            &rp,
-            "127.0.0.1",
-            bench.sshd.port,
-            true,
-            &mut bench.say()
-        )
-        .await
-        .unwrap()
-    );
+    let started = start(
+        &ssh,
+        &rp,
+        "127.0.0.1",
+        bench.sshd.port,
+        true,
+        &mut bench.say(),
+    )
+    .await
+    .unwrap();
+    assert!(started, "{}", bench.why());
     let commands = bench.exec.sent().len();
     Guard::new("pod111", "127.0.0.1", bench.sshd.port)
         .check(&ssh, &rp, &mut bench.say())

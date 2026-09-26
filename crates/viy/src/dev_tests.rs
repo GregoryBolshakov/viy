@@ -314,13 +314,34 @@ fn dev_chat_in_plain_answers_each_line_then_closes() {
         let mut engine =
             viy_agent::Engine::spawn(std::sync::Arc::new(viy_agent::chat::ChatTurns::new(chat)));
         let (lines, rx) = tokio::sync::mpsc::unbounded_channel();
-        for step in script["steps"].as_array().unwrap() {
-            lines
-                .send(step["user"].as_str().unwrap().to_string())
-                .unwrap();
-        }
-        drop(lines);
-        super::plain_chat(&mut engine, rx, &mut out).await.unwrap();
+        let steps: Vec<String> = script["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|step| step["user"].as_str().unwrap().to_string())
+            .collect();
+        // Each line after the one before has been answered and named, as
+        // drive_rp waits for rp's title thread: the script holds the
+        // requests in rp's order, and the title request, started in the
+        // background, would otherwise race the next turn's.
+        let feed = async {
+            for (i, line) in steps.into_iter().enumerate() {
+                let titles = || {
+                    mock.requests()
+                        .iter()
+                        .filter(|r| r.body.as_ref().is_some_and(|b| b["stream"] == false))
+                        .count()
+                };
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+                while titles() < i && tokio::time::Instant::now() < deadline {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+                lines.send(line).unwrap();
+            }
+            drop(lines);
+        };
+        let (chat, ()) = tokio::join!(super::plain_chat(&mut engine, rx, &mut out), feed);
+        chat.unwrap();
     });
     assert_eq!(
         String::from_utf8(out).unwrap(),

@@ -58,6 +58,37 @@ fn tone_name(tone: Tone) -> &'static str {
     }
 }
 
+/// `text` with each `(from, to)` replaced in one pass, so a value put in
+/// is never read again: chained `replace` calls turned a real pid holding
+/// the fixture's port (pid 180012 holds 18001) into a pid that is no
+/// process.
+fn fill(text: &str, pairs: &[(&str, &str)]) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    'scan: while let Some(c) = rest.chars().next() {
+        for (from, to) in pairs {
+            if let Some(after) = rest.strip_prefix(from) {
+                out.push_str(to);
+                rest = after;
+                continue 'scan;
+            }
+        }
+        out.push(c);
+        rest = &rest[c.len_utf8()..];
+    }
+    out
+}
+
+#[test]
+fn fill_never_rereads_what_it_put_in() {
+    let pairs = [(FIXTURE_PID, "180012"), (FIXTURE_PORT, "14242")];
+    assert_eq!(
+        fill("pid 4242 port 18001, again 4242:18001", &pairs),
+        "pid 180012 port 14242, again 180012:14242"
+    );
+    assert_eq!(fill("nothing here", &pairs), "nothing here");
+}
+
 /// The processes and listeners a case stands up, ended with it.
 #[derive(Default)]
 struct Stage {
@@ -125,8 +156,7 @@ async fn replay(only: impl Fn(&str) -> bool) {
             .as_ref()
             .map_or(FIXTURE_PID.to_string(), |c| c.id().to_string());
         let state_dir = paths.pod_state_dir().display().to_string();
-        let real =
-            |text: &str, pid: &str| text.replace(FIXTURE_PID, pid).replace(FIXTURE_PORT, &port);
+        let real = |text: &str, pid: &str| fill(text, &[(FIXTURE_PID, pid), (FIXTURE_PORT, &port)]);
         fs::create_dir_all(paths.pod_state_dir()).unwrap();
         for (key, path) in [
             ("state", paths.pod_state_file()),

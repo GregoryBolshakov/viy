@@ -11,7 +11,6 @@
 //! key, no agent. Everything else goes out as viy built it.
 
 use std::io;
-use std::net::TcpListener;
 use std::net::TcpStream;
 use std::path::Path;
 use std::path::PathBuf;
@@ -19,6 +18,8 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::PoisonError;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -43,8 +44,21 @@ pub struct LocalSshd {
 }
 
 impl LocalSshd {
-    /// Starts the server and waits until it accepts connections.
+    /// Starts the server and waits until it accepts connections; on
+    /// another port if something took the one picked before sshd bound it.
     pub fn start() -> io::Result<Self> {
+        let mut tries = 0;
+        loop {
+            match Self::start_once() {
+                Err(e) if tries < 4 && e.to_string().contains("Address already in use") => {
+                    tries += 1;
+                }
+                started => return started,
+            }
+        }
+    }
+
+    fn start_once() -> io::Result<Self> {
         let dir = ScratchDir::new("sshd")?;
         let d = dir.path();
         for key in ["host", "client"] {
@@ -209,9 +223,80 @@ impl ExecBackend for SshdExec {
     }
 }
 
-/// A port nothing listens on just now.
+/// The lowest port [`free_port`] hands out.
+const FLOOR: u16 = 10_000;
+
+/// A port on 127.0.0.1 nothing listens on just now, for a server or a
+/// forward the test starts later.
+///
+/// Taken from below the kernel's ephemeral range, never from it: a port
+/// in that range, free when asked, can be handed to another test's bind to
+/// port 0 or to the source port of an outgoing connection before the test
+/// binds it (seen as "Address already in use" in the tunnel tests, 3 runs
+/// in 40 under load). Each process walks the range from its own offset and
+/// holds a lock on every port it handed out until it exits, so test
+/// binaries running side by side never get the same port; each port is
+/// also checked for a listener, for whatever else runs on the machine.
+///
+/// Checked by connecting, never by binding: a socket bound to the port,
+/// even for a moment, is copied into any process another test thread
+/// forks just then and stays open there, listening, until that child
+/// execs, so the port looked taken to the tunnel's own check and to sshd
+/// (seen as one failure in five with two tests in parallel).
 pub fn free_port() -> io::Result<u16> {
-    Ok(TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port())
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let ceiling = ephemeral_start().max(FLOOR + 1);
+    let span = usize::from(ceiling - FLOOR);
+    let offset = std::process::id() as usize * 997;
+    for _ in 0..span {
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let port = FLOOR + u16::try_from((offset + n) % span).unwrap_or(0);
+        if reserve(port)? && !accepts(port) {
+            return Ok(port);
+        }
+    }
+    Err(io::Error::other(format!(
+        "no free port in {FLOOR}..{ceiling}"
+    )))
+}
+
+/// Whether something accepts connections on `port` (loopback refuses a
+/// closed port at once).
+fn accepts(port: u16) -> bool {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
+}
+
+/// Takes `port` for this process unless another test process holds it: an
+/// `flock` on a file per port, held until this process exits (the kernel
+/// lets go of it then, also after a crash).
+fn reserve(port: u16) -> io::Result<bool> {
+    use std::os::fd::AsRawFd;
+    static HELD: Mutex<Vec<std::fs::File>> = Mutex::new(Vec::new());
+    let dir = std::env::temp_dir().join("viy-test-ports");
+    std::fs::create_dir_all(&dir)?;
+    let file = std::fs::File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join(port.to_string()))?;
+    // SAFETY: flock on a descriptor this function owns.
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Ok(false);
+    }
+    HELD.lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .push(file);
+    Ok(true)
+}
+
+/// Where the ephemeral ports begin (Linux's
+/// `net.ipv4.ip_local_port_range`, 32768 by default).
+fn ephemeral_start() -> u16 {
+    std::fs::read_to_string("/proc/sys/net/ipv4/ip_local_port_range")
+        .ok()
+        .and_then(|range| range.split_whitespace().next()?.parse().ok())
+        .unwrap_or(32_768)
 }
 
 /// A port on 127.0.0.1 held bound but not listening, so a connection to
@@ -265,3 +350,7 @@ fn run_quiet(command: &mut std::process::Command) -> io::Result<()> {
         ))
     }
 }
+
+#[cfg(test)]
+#[path = "sshd_tests.rs"]
+mod tests;

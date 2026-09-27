@@ -23,6 +23,10 @@ pub struct Plain<W: Write> {
     mid_line: bool,
     /// The last char written, for the sanitizer's joiners.
     last: Option<char>,
+    /// The reasoning trace written too (`viy ask --think`).
+    show_think: bool,
+    /// The trace is being written.
+    in_think: bool,
 }
 
 impl<W: Write> Plain<W> {
@@ -31,7 +35,16 @@ impl<W: Write> Plain<W> {
             out,
             mid_line: false,
             last: None,
+            show_think: false,
+            in_think: false,
         }
+    }
+
+    /// Writes the reasoning trace too, as rp's `--think` does: after
+    /// `[thinking] `, then a blank line before the answer.
+    pub fn show_think(mut self, on: bool) -> Self {
+        self.show_think = on;
+        self
     }
 
     pub fn into_inner(self) -> W {
@@ -41,7 +54,18 @@ impl<W: Write> Plain<W> {
     /// Writes what `msg` shows; the answer to send back for a question.
     pub fn event(&mut self, msg: &EventMsg) -> io::Result<Option<Op>> {
         match msg {
-            EventMsg::AgentMessageContentDelta(e) => self.text(&e.delta)?,
+            EventMsg::ReasoningContentDelta(e) if self.show_think => {
+                if !std::mem::replace(&mut self.in_think, true) {
+                    self.text("[thinking] ")?;
+                }
+                self.text(&e.delta)?;
+            }
+            EventMsg::AgentMessageContentDelta(e) => {
+                if std::mem::take(&mut self.in_think) {
+                    self.text("\n\n")?;
+                }
+                self.text(&e.delta)?;
+            }
             EventMsg::TurnComplete(e) => {
                 self.end_line()?;
                 if let TurnOutcome::Failed { message } = &e.outcome {
@@ -75,6 +99,9 @@ impl<W: Write> Plain<W> {
                 let answer = e.question.unattended;
                 for notice in &e.question.reason {
                     self.line(&notice.message)?;
+                }
+                for (i, option) in e.question.options.iter().enumerate() {
+                    self.line(&format!("  {:>3}. {option}", i + 1))?;
                 }
                 self.line(&format!(
                     "{} {} {} (no terminal to ask)",

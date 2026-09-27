@@ -18,6 +18,7 @@ workspace = true
 oracle = ["viy-testkit/oracle"]
 
 [dependencies]
+base64 = { workspace = true }
 chrono = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }

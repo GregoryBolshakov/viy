@@ -23,6 +23,9 @@ fn nowhere() -> Places {
     Places {
         workspace: std::path::PathBuf::from("/nonexistent/viy-workspace"),
         config_dir: std::path::PathBuf::from("/nonexistent/viy-config"),
+        root: std::path::PathBuf::from("/nonexistent/viy-project"),
+        transcripts: std::path::PathBuf::from("/nonexistent/viy-saved"),
+        home: std::path::PathBuf::from("/nonexistent/home"),
     }
 }
 
@@ -1102,3 +1105,6 @@ async fn the_chat_says_its_effort_context_and_name() {
         "hello there"
     );
 }
+
+#[path = "commands_tests.rs"]
+mod commands;

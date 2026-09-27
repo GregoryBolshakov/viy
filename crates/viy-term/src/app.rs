@@ -43,9 +43,12 @@ use tokio::signal::unix::SignalKind;
 use tokio::signal::unix::signal;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
+use viy_protocol::ContextCompactedEvent;
 use viy_protocol::Event;
 use viy_protocol::EventMsg;
 use viy_protocol::HistoryItem;
+use viy_protocol::NoticeEvent;
+use viy_protocol::NoticeLevel;
 use viy_protocol::Op;
 use viy_protocol::StatusPhase;
 use viy_protocol::ToolCallEndEvent;
@@ -129,6 +132,13 @@ pub struct App {
     queued: VecDeque<String>,
     /// The questions the engine waits on, oldest first.
     questions: Questions,
+    /// Your messages `/rewind` can go back to: their cell and text, since
+    /// the last compaction (kb d045).
+    points: Vec<(usize, String)>,
+    /// The rewind pick: which of `points` is chosen.
+    picking: Option<usize>,
+    /// Esc was pressed at an empty, idle prompt: a second opens the pick.
+    esc_primed: bool,
     /// The engine's statuses, for the footer and the tab title.
     status: Status,
     /// The tab title, if the chat turned it on, and the title written last.
@@ -165,6 +175,9 @@ impl App {
             turn: None,
             queued: VecDeque::new(),
             questions: Questions::default(),
+            points: Vec::new(),
+            picking: None,
+            esc_primed: false,
             status: Status::default(),
             tab: None,
             tab_shown: None,
@@ -277,6 +290,7 @@ impl App {
             EventMsg::TurnStarted(e) => {
                 self.queued.pop_front();
                 self.push(Cell::user(&e.user_text));
+                self.points.push((self.cells.len() - 1, e.user_text));
                 self.turn = Some(Turn {
                     started: Instant::now(),
                     phase: None,
@@ -362,17 +376,31 @@ impl App {
                 }
             }
             EventMsg::HistoryRewritten(e) => {
-                self.cells = e
-                    .items
-                    .iter()
-                    .filter_map(|item| history_cell(item, self.markdown))
-                    .collect();
+                self.picking = None;
+                self.cells.clear();
+                self.points.clear();
+                for item in &e.items {
+                    match item {
+                        HistoryItem::User { text } => {
+                            self.points.push((self.cells.len(), text.clone()));
+                        }
+                        HistoryItem::Compacted => self.points.clear(),
+                        _ => {}
+                    }
+                    self.cells.extend(history_cell(item, self.markdown));
+                }
                 self.view.reset();
                 // The answer's cell, if one is being written, is gone.
                 if let Some(turn) = &mut self.turn {
                     turn.answer_cell = None;
                 }
             }
+            EventMsg::ContextCompacted(e) => {
+                // What was summarised is no longer something to go back to.
+                self.points.clear();
+                self.push(compacted_cell(&e));
+            }
+            EventMsg::InputPrefill(e) => self.composer.set_text(&e.text),
             EventMsg::ShutdownComplete => self.stopped = true,
             _ => {}
         }
@@ -412,6 +440,19 @@ impl App {
     /// from typing by the time between keys).
     fn key(&mut self, key: KeyEvent, now: Instant) -> Option<Flow> {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        if self.picking.is_some() {
+            self.pick_key(key);
+            return None;
+        }
+        let primed = std::mem::take(&mut self.esc_primed);
+        if key.code == KeyCode::Esc && self.idle() && self.composer.is_empty() {
+            if primed {
+                self.open_pick();
+            } else {
+                self.esc_primed = true;
+            }
+            return None;
+        }
         if self.closing && key.code == KeyCode::Char('c') && ctrl {
             // A second Ctrl-C while closing: leave now.
             return Some(Flow::Exit);
@@ -431,6 +472,7 @@ impl App {
                 });
                 return None;
             }
+            Some(Taken::Chose) => return None,
             None => {}
         }
         let page = self.view.page().saturating_sub(1).max(1);
@@ -481,7 +523,10 @@ impl App {
             self.composer.set_text(&text);
             return;
         }
-        let op = if text.starts_with('/') {
+        let op = if let Some(rest) = text.strip_prefix('/') {
+            if self.screen_command(rest) {
+                return;
+            }
             Op::Command { text }
         } else {
             self.queued.push_back(text.clone());
@@ -489,6 +534,122 @@ impl App {
         };
         let _ = self.ops.send(op);
         self.view.end();
+    }
+
+    /// Nothing runs or waits: no turn, no queued line, no question.
+    fn idle(&self) -> bool {
+        self.turn.is_none()
+            && self.queued.is_empty()
+            && self.questions.front().is_none()
+            && !self.closing
+    }
+
+    /// `/rewind`'s pick in the transcript (kb d045): your last message
+    /// chosen. With none to choose, the chat says why.
+    fn open_pick(&mut self) {
+        let Some(last) = self.points.len().checked_sub(1) else {
+            let _ = self.ops.send(Op::Command {
+                text: "/rewind".into(),
+            });
+            return;
+        };
+        self.choose(last);
+    }
+
+    /// Chooses point `k`, drawn reversed, the one chosen before as it was.
+    fn choose(&mut self, k: usize) {
+        if let Some(old) = self.picking.replace(k) {
+            self.unchoose(old);
+        }
+        let (cell, text) = &self.points[k];
+        let cell = *cell;
+        self.cells[cell] = Cell::user_chosen(text);
+        self.view.changed(cell);
+        self.view.reveal(cell);
+    }
+
+    fn unchoose(&mut self, k: usize) {
+        if let Some((cell, text)) = self.points.get(k)
+            && *cell < self.cells.len()
+        {
+            self.cells[*cell] = Cell::user(text);
+            self.view.changed(*cell);
+        }
+    }
+
+    /// Ends the pick, the transcript as it was.
+    fn close_pick(&mut self) {
+        if let Some(k) = self.picking.take() {
+            self.unchoose(k);
+        }
+    }
+
+    /// A key during the pick: Up and Down move between your messages,
+    /// Home and End to the first and last, Enter goes back to before the
+    /// chosen one, Esc and Ctrl-C leave it as it was.
+    fn pick_key(&mut self, key: KeyEvent) {
+        let Some(k) = self.picking else {
+            return;
+        };
+        let last = self.points.len().saturating_sub(1);
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Up => self.choose(k.saturating_sub(1)),
+            KeyCode::Down => self.choose((k + 1).min(last)),
+            KeyCode::Home => self.choose(0),
+            KeyCode::End => self.choose(last),
+            KeyCode::Enter => {
+                self.close_pick();
+                let _ = self.ops.send(Op::Command {
+                    text: format!("/rewind {}", k + 1),
+                });
+                self.view.end();
+            }
+            KeyCode::Esc => self.close_pick(),
+            KeyCode::Char('c') if ctrl => self.close_pick(),
+            _ => {}
+        }
+    }
+
+    /// The slash commands that are the screen's own: `/exit`, `/redraw`
+    /// (Ctrl-L), and rp's `/think` and `/md`, which only change what is
+    /// shown. True when `rest` (after the `/`) was one.
+    fn screen_command(&mut self, rest: &str) -> bool {
+        let (cmd, arg) = rest.split_once(' ').unwrap_or((rest, ""));
+        let arg = arg.trim();
+        let say = |text: String| {
+            Cell::notice(&NoticeEvent {
+                level: NoticeLevel::Info,
+                code: cmd.to_string(),
+                message: text,
+            })
+        };
+        match cmd {
+            "exit" | "quit" | "q" => self.close(),
+            "rewind" if arg.is_empty() && self.idle() => self.open_pick(),
+            "redraw" => self.repaint = true,
+            "think" => {
+                self.show_think = arg != "off";
+                let how = if self.show_think { "shown" } else { "hidden" };
+                self.push(say(format!("reasoning trace {how}")));
+            }
+            "md" => {
+                if matches!(arg, "on" | "off") {
+                    self.markdown = arg == "on";
+                } else if !arg.is_empty() {
+                    self.push(Cell::notice(&NoticeEvent {
+                        level: NoticeLevel::Warn,
+                        code: "md".into(),
+                        message: "usage: /md on|off".into(),
+                    }));
+                    return true;
+                }
+                let how = if self.markdown { "on" } else { "off" };
+                self.push(say(format!("Markdown rendering {how}")));
+            }
+            _ => return false,
+        }
+        true
     }
 
     /// Asks the engine to close the chat: it closes the turn running into
@@ -681,6 +842,13 @@ impl App {
     /// The activity line and the answer being written.
     fn live_lines(&self, width: usize) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
+        if self.picking.is_some() {
+            let hint = "rewind: ↑↓ choose your message · Enter goes back to before it, to edit \
+                        and send again · Esc leaves it";
+            lines.push(Line::from(
+                hint.chars().take(width).collect::<String>().cyan(),
+            ));
+        }
         if self.closing {
             lines.push(Line::from("closing the chat…".dim()));
             return lines;
@@ -908,8 +1076,28 @@ fn history_cell(item: &HistoryItem, markdown: bool) -> Option<Cell> {
             summary,
         } => Cell::Tool(ToolCard::new(call_id, tool, summary)),
         HistoryItem::Notice(notice) => Cell::notice(notice),
+        HistoryItem::Thought => Cell::Reasoning(Reasoning {
+            text: String::new(),
+            took: None,
+            shown: false,
+        }),
+        HistoryItem::Compacted => Cell::lines(vec![Line::from(
+            "[earlier turns compacted: the model continues from a summary of what is above]".dim(),
+        )]),
         _ => return None,
     })
+}
+
+/// The marker a compaction leaves under the transcript (kb d053).
+fn compacted_cell(e: &ContextCompactedEvent) -> Cell {
+    Cell::lines(vec![Line::from(
+        format!(
+            "compacted {} messages -> {} ({} → {} tokens). the session log keeps the full \
+             history.",
+            e.messages_before, e.messages_after, e.tokens_before, e.tokens_after
+        )
+        .dim(),
+    )])
 }
 
 #[cfg(test)]

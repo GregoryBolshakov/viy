@@ -113,6 +113,22 @@ impl Cell {
         }
     }
 
+    /// [`Cell::user`] chosen: reversed, for `/rewind`'s pick (kb d045).
+    pub fn user_chosen(text: &str) -> Self {
+        let chosen = Style::new().add_modifier(Modifier::REVERSED);
+        Self::Lines {
+            lines: text
+                .split('\n')
+                .map(|l| Line::from(Span::styled(l.to_string(), chosen)))
+                .collect(),
+            gutter: Some(Gutter {
+                first: YOU.cyan().bold().reversed(),
+                rest: Span::styled(" ".repeat(YOU.chars().count()), chosen),
+            }),
+            blank: true,
+        }
+    }
+
     pub fn answer(source: &str, markdown: bool) -> Self {
         Self::Answer {
             source: source.to_string(),

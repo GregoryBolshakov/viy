@@ -157,6 +157,7 @@ fn hostile_strings_write_no_escape_and_reach_no_terminal_feature() {
                     choices: Choices::YesNo,
                     default: Answer::No,
                     unattended: Answer::No,
+                    options: Vec::new(),
                     reason: vec![NoticeEvent {
                         level: NoticeLevel::Warn,
                         code: "test".into(),

@@ -84,7 +84,7 @@ fn seconds(t: DateTime<Utc>) -> f64 {
 }
 
 /// Python's truth of a JSON value, for fields rp tests with `if`.
-fn truthy(v: &Value) -> bool {
+pub(crate) fn truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
         Value::Bool(b) => *b,
@@ -312,6 +312,100 @@ pub struct Summary {
     pub snippet: Option<String>,
 }
 
+/// How long ago `ts` was, as a listing says it (rp's `_age`): `just now`,
+/// `5m ago`, `3h ago`, `2d ago`, then the local date.
+pub fn age(ts: Option<f64>, now: DateTime<Utc>) -> String {
+    let Some(ts) = ts.filter(|&t| t != 0.0) else {
+        return "?".into();
+    };
+    let d = seconds(now) - ts;
+    if d < 60.0 {
+        "just now".into()
+    } else if d < 3600.0 {
+        format!("{}m ago", (d / 60.0) as i64)
+    } else if d < 86400.0 {
+        format!("{}h ago", (d / 3600.0) as i64)
+    } else if d < 7.0 * 86400.0 {
+        format!("{}d ago", (d / 86400.0) as i64)
+    } else {
+        DateTime::from_timestamp(ts as i64, 0)
+            .map(|t| t.with_timezone(&Local).format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "?".into())
+    }
+}
+
+/// Where a chat is filed, as a listing names it (rp's `_project_label`):
+/// `this project`, a path under home as `~/...`, `?` for none.
+pub fn project_label(project: Option<&str>, here: Option<&str>, home: &Path) -> String {
+    let Some(project) = project.filter(|p| !p.is_empty()) else {
+        return "?".into();
+    };
+    if Some(project) == here {
+        return "this project".into();
+    }
+    match Path::new(project).strip_prefix(home) {
+        Ok(rest) => format!("~/{}", rest.display()),
+        Err(_) => project.to_string(),
+    }
+}
+
+/// How a listing shows one chat (rp's `_print_rows` without its colours),
+/// numbered from 1: `*` marks `current`, the project shown with
+/// `all_projects`; a search hit's snippet on a line below it.
+pub fn row_lines(row: &Summary, number: usize, view: &RowView<'_>) -> Vec<String> {
+    let mark = if view.current == Some(row.id.as_str()) {
+        "*"
+    } else {
+        " "
+    };
+    let mut line = format!(
+        "{mark}{number:>3}. {}  {} · {} msgs · {}",
+        row.title,
+        age(row.updated, view.now),
+        row.messages,
+        row.id
+    );
+    if view.all_projects {
+        line.push_str("  ");
+        line.push_str(&project_label(row.project.as_deref(), view.here, view.home));
+    }
+    let mut lines = vec![line];
+    if let Some(snippet) = &row.snippet {
+        lines.push(format!("       {snippet}"));
+    }
+    lines
+}
+
+/// What a listing needs besides the rows.
+pub struct RowView<'a> {
+    pub all_projects: bool,
+    pub current: Option<&'a str>,
+    /// This project's root.
+    pub here: Option<&'a str>,
+    pub home: &'a Path,
+    pub now: DateTime<Utc>,
+}
+
+/// Rows a listing shows at most; rp's `_print_rows` limit.
+pub const ROWS_SHOWN: usize = 25;
+
+/// A whole listing: each row, then how many more there are.
+pub fn listing(rows: &[Summary], view: &RowView<'_>) -> Vec<String> {
+    let mut lines: Vec<String> = rows
+        .iter()
+        .take(ROWS_SHOWN)
+        .enumerate()
+        .flat_map(|(i, row)| row_lines(row, i + 1, view))
+        .collect();
+    if rows.len() > ROWS_SHOWN {
+        lines.push(format!(
+            "  ... {} more; narrow with a search",
+            rows.len() - ROWS_SHOWN
+        ));
+    }
+    lines
+}
+
 fn mtime(path: &Path) -> io::Result<std::time::SystemTime> {
     fs::metadata(path)?.modified()
 }
@@ -501,6 +595,20 @@ impl Sessions {
         source.redact = redact;
         let twin = source.fork(st.system.as_deref(), &st.messages, None)?;
         Ok((twin, st))
+    }
+
+    /// The store's clock.
+    pub fn now(&self) -> DateTime<Utc> {
+        self.clock.now()
+    }
+
+    /// A search for `query`, or every row when it is empty (rp's `_find`).
+    pub fn find(&self, query: &str, scope: Option<&str>) -> Vec<Summary> {
+        if query.is_empty() {
+            self.list(scope)
+        } else {
+            self.search(query, scope)
+        }
     }
 
     /// Listing rows, newest first; only those in `scope`'s tree when given.

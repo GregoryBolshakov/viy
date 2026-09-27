@@ -66,6 +66,8 @@ pub struct TranscriptView {
     page: usize,
     /// Tool output and reasoning drawn whole (Ctrl-T).
     expanded: bool,
+    /// A cell to bring into view on the next render.
+    reveal: Option<usize>,
 }
 
 impl TranscriptView {
@@ -128,6 +130,11 @@ impl TranscriptView {
         }
     }
 
+    /// Brings cell `index` into view on the next render, if it is not.
+    pub fn reveal(&mut self, index: usize) {
+        self.reveal = Some(index);
+    }
+
     /// Follows the end again.
     pub fn end(&mut self) {
         self.position = Position::Latest;
@@ -153,6 +160,18 @@ impl TranscriptView {
     pub fn prepare(&mut self, cells: &[Cell], width: u16, height: u16) {
         self.lay_out(cells, width);
         self.page = usize::from(height);
+        if let Some(cell) = self.reveal.take()
+            && cell < self.layouts.len()
+        {
+            let start: usize = self.layouts[..cell].iter().map(|l| l.rows.len()).sum();
+            let end = start + self.layouts[cell].rows.len();
+            let top = self.top();
+            if start < top || end > top + self.page {
+                // A third of a page above it, for what led to it.
+                let row = start.saturating_sub(self.page / 3);
+                self.position = Position::Reading(self.anchor_at(row));
+            }
+        }
         if let Position::Reading(_) = self.position
             && self.top() + self.page >= self.total()
         {

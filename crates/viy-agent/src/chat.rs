@@ -90,6 +90,12 @@ pub struct Places {
     pub workspace: PathBuf,
     /// viy's config directory, for global instruction files.
     pub config_dir: PathBuf,
+    /// The project's root, which paths are shown from.
+    pub root: PathBuf,
+    /// Where `/save` writes and `/load` reads (the project's transcripts).
+    pub transcripts: PathBuf,
+    /// The user's home, for `~`.
+    pub home: PathBuf,
 }
 
 /// One conversation with the model.
@@ -140,6 +146,11 @@ pub struct Chat {
     title_job: Option<JoinHandle<()>>,
     /// The turn in progress: its user message, until the turn closes.
     inflight: Option<Vec<Value>>,
+    /// Images for the next message (`/image`): data URIs or URLs.
+    pending_images: Vec<String>,
+    /// Why the session ends when the chat closes: `exit`, or `ask` for
+    /// `viy ask --save`.
+    end_reason: &'static str,
     /// What the round in progress has streamed of its answer.
     partial: String,
     /// The name last sent as [`EventMsg::TitleChanged`]; empty at first,
@@ -204,6 +215,8 @@ impl Chat {
             stats: None,
             title_job: None,
             inflight: None,
+            pending_images: Vec::new(),
+            end_reason: "exit",
             partial: String::new(),
             label_sent: Arc::default(),
         })
@@ -293,6 +306,22 @@ impl Chat {
         }
         self.sessions = Some(store);
         self.project = project;
+    }
+
+    /// Sets the user's own system prompt (`--system`, `/system`).
+    pub fn set_system(&mut self, system: Option<String>) {
+        self.system = system;
+    }
+
+    /// Ends the session with `reason` when the chat closes (rp's
+    /// `_end_session("ask")` for `viy ask`).
+    pub fn end_with(&mut self, reason: &'static str) {
+        self.end_reason = reason;
+    }
+
+    /// Whether this chat's log has been written.
+    pub fn saved(&self) -> bool {
+        lock(&self.session).as_ref().is_some_and(SessionLog::exists)
     }
 
     /// The id of this chat's log, if it has one.
@@ -415,6 +444,7 @@ impl Chat {
                     default: Answer::Yes,
                     unattended: Answer::No,
                     reason: Vec::new(),
+                    options: Vec::new(),
                 };
                 if ctx.ask(&question).await != Answer::Yes {
                     return false;
@@ -1110,7 +1140,10 @@ impl Turns for ChatTurns {
                 };
             };
             match lease.chat.as_mut() {
-                Some(chat) => chat.send(&ctx, Value::String(text)).await,
+                Some(chat) => {
+                    let content = chat.user_content(text);
+                    chat.send(&ctx, content).await
+                }
                 None => TurnOutcome::Failed {
                     message: "the chat is busy".into(),
                 },
@@ -1120,12 +1153,11 @@ impl Turns for ChatTurns {
 
     fn command(self: Arc<Self>, ctx: TurnContext, text: String) -> BoxFuture<'static, ()> {
         Box::pin(async move {
-            notice(
-                &ctx,
-                NoticeLevel::Warn,
-                "not_ported",
-                format!("{text}: slash commands come with WP 3.12"),
-            );
+            if let Some(mut lease) = Lease::take(&self, &ctx)
+                && let Some(chat) = lease.chat.as_mut()
+            {
+                chat.command(&ctx, &text).await;
+            }
         })
     }
 
@@ -1143,11 +1175,18 @@ impl Turns for ChatTurns {
             if let Some(mut lease) = Lease::take(&self, &ctx)
                 && let Some(chat) = lease.chat.as_mut()
             {
-                chat.end_session(&ctx, "exit").await;
+                let reason = chat.end_reason;
+                chat.end_session(&ctx, reason).await;
             }
         })
     }
 }
+
+#[path = "commands.rs"]
+mod commands;
+pub use commands::history_items;
+pub use commands::render_content;
+pub use commands::state_block;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

@@ -16,6 +16,11 @@
 //! `_shift_tab`). Ctrl-C at a box that takes keys answers no, as rp's
 //! `_confirm` takes a Ctrl-C; the turn goes on, and a second Ctrl-C stops
 //! it (F13: rpctl's Ctrl-C table).
+//!
+//! A pick (rp's numbered lists: `/rewind`, `/resume`) lists its options
+//! with one chosen, the default at first: Up, Down, Home, End and a digit
+//! choose, Enter picks the one chosen, `q` or Esc picks none, with the
+//! same guard.
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -43,6 +48,8 @@ use crate::wrap::wrap_spans;
 pub const GUARD: Duration = Duration::from_millis(300);
 /// Narrower than this, a box is drawn without its frame.
 const FRAMED: usize = 12;
+/// A pick's options shown at once.
+pub const PICK_ROWS: usize = 8;
 
 /// A question on screen or waiting for its turn.
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +58,8 @@ pub struct QuestionBox {
     pub question: Question,
     /// Since when it has been drawn whole, without a break.
     shown: Option<Instant>,
+    /// The option chosen, for a pick.
+    chosen: usize,
 }
 
 /// What a box made of a key.
@@ -63,6 +72,8 @@ pub enum Taken {
     },
     /// Shift+Tab at the front question.
     CycleMode { question_id: String },
+    /// Another option of the front pick was chosen.
+    Chose,
 }
 
 /// The questions asked and not yet answered, oldest first.
@@ -75,10 +86,15 @@ pub struct Questions {
 
 impl Questions {
     pub fn push(&mut self, id: String, question: Question) {
+        let chosen = match question.default {
+            Answer::Pick(n) => n as usize,
+            _ => 0,
+        };
         self.queue.push_back(QuestionBox {
             id,
             question,
             shown: None,
+            chosen,
         });
     }
 
@@ -139,6 +155,9 @@ impl Questions {
             return None;
         }
         let question = &front.question;
+        if question.choices == Choices::Pick {
+            return self.pick_key(key, draft);
+        }
         let answer = match key.code {
             KeyCode::Char('y' | 'Y') => Answer::Yes,
             KeyCode::Char('n' | 'N') => Answer::No,
@@ -152,6 +171,32 @@ impl Questions {
             _ => return None,
         };
         self.answer(answer)
+    }
+
+    fn pick_key(&mut self, key: KeyEvent, draft: bool) -> Option<Taken> {
+        let front = self.queue.front_mut()?;
+        let last = front.question.options.len().saturating_sub(1);
+        let chosen = match key.code {
+            KeyCode::Up => front.chosen.saturating_sub(1),
+            KeyCode::Down => (front.chosen + 1).min(last),
+            KeyCode::Home => 0,
+            KeyCode::End => last,
+            KeyCode::Char(c @ '1'..='9') => {
+                let n = c as usize - '1' as usize;
+                if n > last {
+                    return None;
+                }
+                n
+            }
+            KeyCode::Enter if key.modifiers.is_empty() && !draft => {
+                let n = u32::try_from(front.chosen).unwrap_or(u32::MAX);
+                return self.answer(Answer::Pick(n));
+            }
+            KeyCode::Char('q' | 'Q') | KeyCode::Esc => return self.answer(Answer::No),
+            _ => return None,
+        };
+        front.chosen = chosen;
+        Some(Taken::Chose)
     }
 
     fn answer(&mut self, answer: Answer) -> Option<Taken> {
@@ -178,6 +223,9 @@ impl Questions {
                 }
             }
             rows.extend(wrapped(&prompt_spans(&front.question), inner));
+            if front.question.choices == Choices::Pick {
+                rows.extend(front.option_rows(inner));
+            }
             rows.extend(wrapped(
                 &keys_spans(&front.question, self.armed(now)),
                 inner,
@@ -225,6 +273,33 @@ impl Questions {
 }
 
 impl QuestionBox {
+    /// A pick's options in view, the chosen one reversed: the window
+    /// follows it.
+    fn option_rows(&self, width: usize) -> Vec<(Line<'static>, usize)> {
+        let options = &self.question.options;
+        let first = self
+            .chosen
+            .saturating_sub(PICK_ROWS - 1)
+            .min(options.len().saturating_sub(PICK_ROWS));
+        options
+            .iter()
+            .enumerate()
+            .skip(first)
+            .take(PICK_ROWS)
+            .map(|(i, option)| {
+                let row = format!("{:>3}. {}", i + 1, option.replace('\n', " "));
+                let mut cut = wrapped(&[Span::raw(row)], width);
+                let (line, used) = cut.swap_remove(0);
+                let line = if i == self.chosen {
+                    line.cyan().reversed()
+                } else {
+                    line
+                };
+                (line, used)
+            })
+            .collect()
+    }
+
     /// What the transcript keeps once the box is gone: the reason and the
     /// question as rp leaves them on screen, with the answer after it, or
     /// nothing after it when nobody answered.
@@ -264,12 +339,13 @@ pub fn kind_label(kind: Option<QuestionKind>) -> &'static str {
     }
 }
 
-/// What a typed answer shows as: rp's `y`, `n`, `a`.
-pub fn answer_word(answer: Answer) -> &'static str {
+/// What a typed answer shows as: rp's `y`, `n`, `a`, a pick's number.
+pub fn answer_word(answer: Answer) -> String {
     match answer {
-        Answer::Yes => "y",
-        Answer::No => "n",
-        Answer::Always => "a",
+        Answer::Yes => "y".into(),
+        Answer::No => "n".into(),
+        Answer::Always => "a".into(),
+        Answer::Pick(n) => (u64::from(n) + 1).to_string(),
     }
 }
 
@@ -284,10 +360,18 @@ fn prompt_spans(question: &Question) -> Vec<Span<'static>> {
 /// The keys the box takes, dim until it takes them.
 fn keys_spans(question: &Question, armed: bool) -> Vec<Span<'static>> {
     let mark = |default: bool| if default { " (default)" } else { "" };
-    let mut keys: Vec<(&str, String)> = vec![
-        ("y", format!("yes{}", mark(question.default == Answer::Yes))),
-        ("n", format!("no{}", mark(question.default == Answer::No))),
-    ];
+    let mut keys: Vec<(&str, String)> = if question.choices == Choices::Pick {
+        vec![
+            ("↑↓", "choose".into()),
+            ("Enter", "pick".into()),
+            ("q", "cancel".into()),
+        ]
+    } else {
+        vec![
+            ("y", format!("yes{}", mark(question.default == Answer::Yes))),
+            ("n", format!("no{}", mark(question.default == Answer::No))),
+        ]
+    };
     if question.choices == Choices::YesNoAlways {
         keys.push((
             "a",

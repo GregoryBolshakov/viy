@@ -1,0 +1,967 @@
+//! The chat's slash commands (rpctl chat.py `handle_command`), those of a
+//! chat without tools; the rest say which phase brings them. Each says
+//! what it did in notices with rp's words, and a command that changes the
+//! history draws it again ([`EventMsg::HistoryRewritten`], ui-plan 4).
+//!
+//! `/exit`, `/think`, `/md` and `/redraw` belong to the screen, which
+//! handles them itself; one that reaches the chat is told so.
+
+use std::path::Path;
+use std::path::PathBuf;
+
+use base64::Engine as _;
+use serde_json::Value;
+use serde_json::json;
+use viy_protocol::Answer;
+use viy_protocol::EffortChangedEvent;
+use viy_protocol::EventMsg;
+use viy_protocol::HistoryItem;
+use viy_protocol::HistoryRewrittenEvent;
+use viy_protocol::InputPrefillEvent;
+use viy_protocol::NoticeLevel;
+use viy_protocol::Question;
+use viy_protocol::RewriteReason;
+
+use super::Chat;
+use super::lock;
+use super::notice;
+use crate::engine::TurnContext;
+use crate::sessions;
+use crate::sessions::RowView;
+use crate::sessions::Summary;
+
+/// rp's `/help`, with viy's names.
+const HELP: &str = "  /help              show this
+  /new               start a fresh chat (this one stays saved; alias /reset)
+  /system <text>     set the system prompt (starts a fresh chat if this one
+                     has messages)
+  /rename [title]    name this chat (no arg shows the current name)
+  /rewind [n]        go back to before one of your messages: the turns after
+                     it leave the chat, the files write_file changed in them
+                     can be restored, and the message is back at the prompt
+                     to edit. No argument picks it in the transcript (Esc
+                     twice at an empty prompt does too)
+  /fork [title]      go on in a copy of this chat; the original stays saved
+                     as it is (/resume goes back). /fork then /rewind
+                     branches from an earlier message
+  /chats [query]     list / search saved chats  (--all: every project)
+  /resume [query]    switch to a saved chat
+  /image <path|url>  attach an image to the next message
+  /images            list pending attachments
+  /temp <float>      sampling temperature (default 1.0)
+  /effort [xhigh|medium|low]  how hard the model thinks (default medium)
+  /maxtok <int>      max tokens per reply, reasoning trace included
+  /think on|off      stream the reasoning trace, or hide it behind a spinner
+  /md on|off         render Markdown in replies (tables, headings, math), or
+                     print it raw
+  /search [on|off]   let the model search and read the web (needs a
+                     tool-capable pod); no argument shows the backends
+  /tools on|off      let the model build: write/read/list files & run shell (on)
+  /instructions [on|off]  show the AGENTS.md / QWEN.md / CLAUDE.md files loaded
+                     into the system prompt, or stop/start loading them
+  /mode [normal|auto-yes]  who answers the approver's questions: you, or
+                     yes by itself for some kinds (Shift+Tab cycles the modes)
+  /sources           list the URLs from this turn's searches
+  /save [file]       export a readable Markdown copy to transcripts/
+                     (chats autosave anyway; this is for sharing/reading)
+  /load [file]       load a /save transcript into this chat (no arg lists them)
+  /compact [full] [focus]  shrink the context: drops old tool output if that
+                     is enough, else summarizes (full or a focus: always
+                     summarize). The session log keeps everything
+  /autocompact on|off|<pct>  compact automatically before the context spills
+  /consult [on|off]  ask_claude: hand hard tasks to Claude Code; no argument
+                     lists this chat's consults. Also: mode act|advise,
+                     model <name>, effort <level>, approval ask|auto
+  /toolbox [list|show <name>|find <words>|check|on|off]  command-line tools
+                     kept between chats, listed in the system prompt and on
+                     run_shell's PATH (viy toolbox add/rm to manage them)
+  /mount [<drive|path> [rw]]  lend the model a drive or folder outside the
+                     workspace, read-only unless rw; no argument lists drives
+  /unmount [<drive|path>|all]  take a mounted drive back
+  /ssh [<host> [key file] [full]]  lend the model a server from ~/.ssh/config:
+                     it runs ssh <host> '<command>', each one asks you first,
+                     sandboxed there unless full; no argument lists hosts.
+                     Only you can grant it
+  /unssh [<host>|all]  take a server back
+  /git [init|import [branch...]|reset]  the model's own git repository in the
+                     sandbox (encrypted, local only): its branches, set it
+                     up, bring branches into yours as sandbox/*, or start over
+  /stats             last response timing
+  /redraw            draw the screen again (Ctrl-L)
+  /exit              quit  (the pod keeps running - use viy stop)
+
+  End a line with \\ to continue it on the next line.";
+
+/// The commands a later work package brings, and which.
+fn later(cmd: &str) -> Option<&'static str> {
+    Some(match cmd {
+        "tools" | "mount" | "unmount" | "ssh" | "unssh" | "mode" | "git" => "phase 4",
+        "search" | "sources" => "phase 5",
+        "compact" | "autocompact" => "phase 6",
+        "consult" | "toolbox" => "phase 7",
+        "up" | "stop" | "down" | "status" | "logs" | "tunnel" | "boots" | "backup" | "volume"
+        | "reap" | "shutdown" => "WP 3.13",
+        _ => return None,
+    })
+}
+
+/// How a replayed tool call is labelled, as the live chat shows it: the
+/// tool's name to its label and the argument shown (rp's `_REPLAY_TOOLS`).
+fn replay_label(name: &str) -> (&str, Option<&'static str>) {
+    match name {
+        "run_shell" => ("run", Some("command")),
+        "write_file" => ("write", Some("path")),
+        "read_file" => ("read", Some("path")),
+        "list_dir" => ("list", Some("path")),
+        "web_search" => ("search", Some("query")),
+        "fetch_url" => ("fetch", Some("url")),
+        "find_tool" => ("find_tool", Some("query")),
+        "ask_claude" => ("ask_claude", Some("task")),
+        "explore" => ("explore", Some("tasks")),
+        other => (other, None),
+    }
+}
+
+/// One tool call of a replayed chat: its label and what it was given (rp's
+/// `_replay_call`).
+fn replay_call(tc: &Value) -> HistoryItem {
+    let f = &tc["function"];
+    let name = f["name"].as_str().filter(|n| !n.is_empty()).unwrap_or("?");
+    let (label, key) = replay_label(name);
+    let raw = f["arguments"].as_str().unwrap_or_default();
+    let args: Option<serde_json::Map<String, Value>> =
+        serde_json::from_str(if raw.is_empty() { "{}" } else { raw }).ok();
+    let what = match (args, key) {
+        (None, _) => raw.to_string(),
+        (Some(args), Some("tasks")) => {
+            let n = args
+                .get("tasks")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            format!("{n} task{}", if n == 1 { "" } else { "s" })
+        }
+        (Some(args), Some(key)) => args
+            .get(key)
+            .or_else(|| args.get("name"))
+            .map(|v| match v {
+                Value::String(s) => s.clone(),
+                Value::Null => String::new(),
+                other => other.to_string(),
+            })
+            .unwrap_or_default(),
+        (Some(args), None) if args.is_empty() => String::new(),
+        (Some(args), None) => Value::Object(args).to_string(),
+    };
+    HistoryItem::ToolCall {
+        call_id: tc["id"].as_str().unwrap_or_default().to_string(),
+        tool: label.to_string(),
+        summary: what.chars().take(200).collect(),
+    }
+}
+
+/// What the user typed, without the client's notes; images as `[image]`
+/// (rp's `_user_text`).
+fn user_text(m: &Value) -> String {
+    match &m["content"] {
+        Value::Array(parts) => parts
+            .iter()
+            .filter(|p| {
+                p.is_object()
+                    && !p["text"]
+                        .as_str()
+                        .is_some_and(|t| t.starts_with(sessions::CLIENT_NOTE_PREFIX))
+            })
+            .map(|p| {
+                if p["type"] == "image_url" {
+                    "[image]".to_string()
+                } else {
+                    match &p["text"] {
+                        Value::String(s) => s.clone(),
+                        Value::Null => String::new(),
+                        other => other.to_string(),
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Value::String(s) => s.clone(),
+        _ => String::new(),
+    }
+}
+
+/// The history as the transcript draws it, from its start (rp's
+/// `show_resumed`, kb d052): what compactions summarised away (`earlier`)
+/// above a marker, then each message; the summary the model goes on from
+/// is not drawn.
+pub fn history_items(messages: &[Value], earlier: &[Value]) -> Vec<HistoryItem> {
+    let mut shown: Vec<&Value> = earlier.iter().collect();
+    let marker = sessions::compacted();
+    let tail: &[Value] = if sessions::opens_with_summary(messages) {
+        if !shown.last().is_some_and(|m| m["compacted"] == true) {
+            // A fork of a compacted chat.
+            shown.push(&marker);
+        }
+        &messages[2..]
+    } else {
+        messages
+    };
+    shown.extend(tail);
+    let mut items = Vec::new();
+    for m in shown {
+        if m["compacted"] == true {
+            items.push(HistoryItem::Compacted);
+            continue;
+        }
+        match m["role"].as_str() {
+            Some("user") => items.push(HistoryItem::User {
+                text: user_text(m).trim_matches('\n').to_string(),
+            }),
+            Some("assistant") => {
+                if sessions::truthy(&m["thought"]) {
+                    items.push(HistoryItem::Thought);
+                }
+                let text = sessions::message_text(m, false);
+                let text = text.trim_matches('\n');
+                if !text.is_empty() {
+                    items.push(HistoryItem::Agent {
+                        text: text.to_string(),
+                    });
+                }
+                for tc in m["tool_calls"].as_array().into_iter().flatten() {
+                    items.push(replay_call(tc));
+                }
+            }
+            _ => {}
+        }
+    }
+    items
+}
+
+/// A message's content as readable text, tool calls included (rp's
+/// `_render_content`).
+pub fn render_content(m: &Value) -> String {
+    let mut c = match &m["content"] {
+        Value::Array(parts) => parts
+            .iter()
+            .map(|p| match p.get("text") {
+                Some(Value::String(s)) => s.clone(),
+                Some(other) => other.to_string(),
+                None => "[image]".into(),
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        Value::String(s) => s.clone(),
+        _ => String::new(),
+    };
+    for tc in m["tool_calls"].as_array().into_iter().flatten() {
+        let f = &tc["function"];
+        let text = |v: &Value| match v {
+            Value::String(s) => s.clone(),
+            Value::Null => "None".into(),
+            other => other.to_string(),
+        };
+        let sep = if c.is_empty() { "" } else { "\n\n" };
+        c.push_str(&format!(
+            "{sep}[tool call] {}({})",
+            text(&f["name"]),
+            text(&f["arguments"])
+        ));
+    }
+    c
+}
+
+/// Where a saved transcript's state starts and ends.
+const STATE_OPEN: &str = "<!-- rpctl-state\n";
+const STATE_CLOSE: &str = "\n-->";
+
+/// The machine-readable state in a `/save` transcript (rp's `STATE_RE`).
+pub fn state_block(text: &str) -> Option<&str> {
+    let start = text.find(STATE_OPEN)? + STATE_OPEN.len();
+    let len = text[start..].find(STATE_CLOSE)?;
+    Some(&text[start..start + len])
+}
+
+/// An image for the next message: a URL as it is, a local file as a data
+/// URI (rp's `_encode_image`).
+fn encode_image(reference: &str, home: &Path) -> std::io::Result<String> {
+    if reference.starts_with("http://") || reference.starts_with("https://") {
+        return Ok(reference.to_string());
+    }
+    let path = expand_home(reference, home);
+    let bytes = std::fs::read(&path)?;
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
+    let mime = match ext.as_deref() {
+        Some("jpg" | "jpeg" | "jpe") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        Some("svg") => "image/svg+xml",
+        Some("tif" | "tiff") => "image/tiff",
+        Some("ico") => "image/vnd.microsoft.icon",
+        Some("avif") => "image/avif",
+        _ => "image/png",
+    };
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+/// `~` and `~/...` under `home`.
+fn expand_home(text: &str, home: &Path) -> PathBuf {
+    match text.strip_prefix('~') {
+        Some("") => home.to_path_buf(),
+        Some(rest) if rest.starts_with('/') => home.join(&rest[1..]),
+        _ => PathBuf::from(text),
+    }
+}
+
+/// `path` as shown: from the project's root when it is under it.
+fn shown_path(path: &Path, root: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
+impl Chat {
+    /// Runs the slash command `line` (`/` included).
+    pub async fn command(&mut self, ctx: &TurnContext, line: &str) {
+        let rest = line.strip_prefix('/').unwrap_or(line);
+        let (cmd, arg) = rest.split_once(' ').unwrap_or((rest, ""));
+        let arg = arg.trim();
+        let info = |code: &str, text: String| notice(ctx, NoticeLevel::Info, code, text);
+        let warn = |code: &str, text: String| notice(ctx, NoticeLevel::Warn, code, text);
+        match cmd {
+            "help" => info("help", HELP.to_string()),
+            "new" | "reset" => {
+                self.new_session(ctx, None).await;
+                self.redraw(ctx, RewriteReason::New);
+            }
+            "system" => {
+                let system = (!arg.is_empty()).then(|| arg.to_string());
+                if self.messages.is_empty() {
+                    self.system = system;
+                } else {
+                    self.new_session(ctx, system).await;
+                    self.redraw(ctx, RewriteReason::New);
+                }
+                let what = if arg.is_empty() { "cleared" } else { "set" };
+                info("system", format!("system prompt {what}"));
+            }
+            "rename" => self.rename_session(ctx, arg),
+            "rewind" => self.rewind(ctx, arg).await,
+            "fork" => self.fork_session(ctx, arg).await,
+            "chats" => {
+                let words: Vec<&str> = arg.split_whitespace().collect();
+                let all = words.contains(&"--all");
+                let query = words
+                    .iter()
+                    .filter(|w| **w != "--all")
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                self.list_chats(ctx, &query, all);
+            }
+            "resume" => self.resume(ctx, arg).await,
+            "image" => {
+                if arg.is_empty() {
+                    warn("image", "usage: /image <path|url>".into());
+                    return;
+                }
+                match encode_image(arg, &self.places.home) {
+                    Ok(image) => {
+                        self.pending_images.push(image);
+                        info(
+                            "image",
+                            format!("attached ({} pending)", self.pending_images.len()),
+                        );
+                    }
+                    Err(_) => notice(
+                        ctx,
+                        NoticeLevel::Error,
+                        "image",
+                        format!("no such file: {arg}"),
+                    ),
+                }
+            }
+            "images" => {
+                if self.pending_images.is_empty() {
+                    info("images", "none pending".into());
+                }
+                for (i, image) in self.pending_images.iter().enumerate() {
+                    let more = if image.chars().count() > 70 {
+                        "..."
+                    } else {
+                        ""
+                    };
+                    let head: String = image.chars().take(70).collect();
+                    info("images", format!("  {}. {head}{more}", i + 1));
+                }
+            }
+            "temp" => match arg.parse::<f64>() {
+                Ok(t) => {
+                    self.settings.temperature = t;
+                    info("temp", format!("temperature = {t:?}"));
+                }
+                Err(_) => warn("temp", "usage: /temp 0.7".into()),
+            },
+            "maxtok" => match arg.parse::<i64>() {
+                Ok(n) => {
+                    self.settings.max_tokens = n;
+                    info("maxtok", format!("max_tokens = {n}"));
+                }
+                Err(_) => warn("maxtok", "usage: /maxtok 4096".into()),
+            },
+            "effort" => {
+                if matches!(arg, "xhigh" | "medium" | "low") {
+                    self.settings.reasoning_effort = arg.to_string();
+                    ctx.emit(EventMsg::EffortChanged(EffortChangedEvent {
+                        effort: arg.to_string(),
+                    }));
+                } else if !arg.is_empty() {
+                    warn("effort", "usage: /effort xhigh|medium|low".into());
+                    return;
+                }
+                info(
+                    "effort",
+                    format!("reasoning effort = {}", self.settings.reasoning_effort),
+                );
+            }
+            "instructions" => {
+                if matches!(arg, "on" | "off") {
+                    self.instructions_on = arg == "on";
+                    info("instructions", format!("instruction files {arg}"));
+                    if !self.instructions_on {
+                        return;
+                    }
+                } else if !arg.is_empty() {
+                    warn("instructions", "usage: /instructions [on|off]".into());
+                    return;
+                }
+                for line in self.report_instructions() {
+                    info("instructions", line);
+                }
+            }
+            "stats" => {
+                let stats = self.stats.as_ref().map_or_else(
+                    || json!({}),
+                    |s| serde_json::to_value(s).unwrap_or_default(),
+                );
+                info(
+                    "stats",
+                    serde_json::to_string_pretty(&stats).unwrap_or_default(),
+                );
+            }
+            "save" => self.save_transcript(ctx, arg),
+            "load" => self.load_transcript(ctx, arg),
+            "exit" | "quit" | "q" | "think" | "md" | "redraw" => {
+                warn(
+                    "screen_only",
+                    format!("/{cmd}: the chat's screen handles it"),
+                );
+            }
+            _ => match later(cmd) {
+                Some(when) => warn("not_ported", format!("/{cmd} comes with {when}")),
+                None => warn(
+                    "unknown_command",
+                    format!("unknown command: /{cmd}  (try /help)"),
+                ),
+            },
+        }
+    }
+
+    /// The next user message: the line, then the pending images (rp's
+    /// `_user_content`, without the `/mount` and `/ssh` notes of phase 4).
+    pub fn user_content(&mut self, line: String) -> Value {
+        if self.pending_images.is_empty() {
+            return Value::String(line);
+        }
+        let mut parts = Vec::new();
+        if !line.is_empty() {
+            parts.push(json!({"type": "text", "text": line}));
+        }
+        parts.extend(
+            std::mem::take(&mut self.pending_images)
+                .into_iter()
+                .map(|url| json!({"type": "image_url", "image_url": {"url": url}})),
+        );
+        if parts.len() > 1 {
+            Value::Array(parts)
+        } else {
+            Value::String(line)
+        }
+    }
+
+    /// Draws the history again, and the footer's gauge and name with it.
+    fn redraw(&mut self, ctx: &TurnContext, reason: RewriteReason) {
+        ctx.emit(EventMsg::HistoryRewritten(HistoryRewrittenEvent {
+            reason,
+            items: history_items(&self.messages, &self.earlier),
+        }));
+        let (used, _) = self.context_state(&[]);
+        ctx.emit(EventMsg::TokenCount(self.token_count(used)));
+        self.announce_label(ctx, None);
+    }
+
+    fn view<'a>(
+        &'a self,
+        all_projects: bool,
+        current: Option<&'a str>,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> RowView<'a> {
+        RowView {
+            all_projects,
+            current,
+            here: self.project.as_deref(),
+            home: &self.places.home,
+            now,
+        }
+    }
+
+    /// `/chats [query] [--all]`.
+    fn list_chats(&self, ctx: &TurnContext, query: &str, all: bool) {
+        let Some(store) = &self.sessions else {
+            return;
+        };
+        let scope = if all { None } else { self.project.as_deref() };
+        let rows = store.find(query, scope);
+        if rows.is_empty() {
+            let place = if all {
+                "anywhere"
+            } else {
+                "in this project (--all for every project)"
+            };
+            let what = if query.is_empty() {
+                String::new()
+            } else {
+                format!("matching '{query}' ")
+            };
+            notice(
+                ctx,
+                NoticeLevel::Info,
+                "sessions",
+                format!("no saved chats {what}{place}"),
+            );
+            return;
+        }
+        let current = self.session_id();
+        let view = self.view(all, current.as_deref(), store.now());
+        for line in sessions::listing(&rows, &view) {
+            notice(ctx, NoticeLevel::Info, "rows", line);
+        }
+    }
+
+    /// `/resume [query]`: a search hit taken at once, else a pick from the
+    /// list (rp's `_cmd_resume` and `pick_session`).
+    async fn resume(&mut self, ctx: &TurnContext, query: &str) {
+        let Some(store) = self.sessions.clone() else {
+            return;
+        };
+        let Some(current) = self.session_id() else {
+            notice(
+                ctx,
+                NoticeLevel::Warn,
+                "autosave_off",
+                "autosave is off (CHAT_AUTOSAVE=0); there is nothing to resume",
+            );
+            return;
+        };
+        self.checkpoint(ctx);
+        let mut all = false;
+        let mut rows = store.find(query, self.project.as_deref());
+        if rows.is_empty() {
+            rows = store.find(query, None);
+            all = !rows.is_empty();
+            if all {
+                notice(
+                    ctx,
+                    NoticeLevel::Info,
+                    "pick_session",
+                    "nothing in this project; showing every project",
+                );
+            }
+        }
+        if rows.is_empty() {
+            let matching = if query.is_empty() {
+                String::new()
+            } else {
+                format!(" matching '{query}'")
+            };
+            notice(
+                ctx,
+                NoticeLevel::Info,
+                "pick_session",
+                format!("no saved chats{matching}"),
+            );
+            return;
+        }
+        let row = if !query.is_empty() && rows.len() == 1 {
+            rows.swap_remove(0)
+        } else {
+            match self.pick_row(ctx, &rows, all, &current).await {
+                Some(row) => row,
+                None => return,
+            }
+        };
+        if row.id != current {
+            self.resume_id(ctx, &row.id).await;
+        }
+    }
+
+    /// Asks which of `rows` to resume.
+    async fn pick_row(
+        &self,
+        ctx: &TurnContext,
+        rows: &[Summary],
+        all: bool,
+        current: &str,
+    ) -> Option<Summary> {
+        let store = self.sessions.as_ref()?;
+        let view = self.view(all, Some(current), store.now());
+        let shown = &rows[..rows.len().min(sessions::ROWS_SHOWN)];
+        let options = shown
+            .iter()
+            .enumerate()
+            .map(|(i, row)| {
+                let lines = sessions::row_lines(row, i + 1, &view);
+                // Without the number and the mark: the pick numbers them.
+                let first = lines[0][6..].to_string();
+                match lines.get(1) {
+                    Some(snippet) => format!("{first} — {}", snippet.trim()),
+                    None => first,
+                }
+            })
+            .collect();
+        let question = Question::pick("resume which chat?", options, 0);
+        match ctx.ask(&question).await {
+            Answer::Pick(n) => shown.get(n as usize).cloned(),
+            _ => None,
+        }
+    }
+
+    /// Switches to chat `id` and draws it whole (kb d052).
+    pub async fn resume_id(&mut self, ctx: &TurnContext, id: &str) -> bool {
+        if !self.attach_session(ctx, id).await {
+            return false;
+        }
+        self.redraw(ctx, RewriteReason::Resume);
+        let shown = lock(&self.session)
+            .as_ref()
+            .map(|log| (super::shown_title(log), log.id().to_string()));
+        if let Some((title, id)) = shown {
+            notice(
+                ctx,
+                NoticeLevel::Info,
+                "resumed",
+                format!(
+                    "resumed '{title}'  ({} messages, {id})",
+                    self.messages.len()
+                ),
+            );
+        }
+        true
+    }
+
+    /// (index, message) of each user message `/rewind` can go back to; a
+    /// compaction's summary is not one (rp's `_rewind_points`).
+    fn rewind_points(&self) -> Vec<usize> {
+        let start = if sessions::opens_with_summary(&self.messages) {
+            2
+        } else {
+            0
+        };
+        (start..self.messages.len())
+            .filter(|&i| self.messages[i]["role"] == "user")
+            .collect()
+    }
+
+    /// `/rewind [n]`: back to before user message n; without one, a pick
+    /// (rp's `_cmd_rewind`; the screen picks in the transcript instead,
+    /// kb d045).
+    async fn rewind(&mut self, ctx: &TurnContext, arg: &str) {
+        let points = self.rewind_points();
+        if points.is_empty() {
+            let why = if self.messages.is_empty() {
+                ""
+            } else {
+                " (the earlier turns were compacted)"
+            };
+            notice(
+                ctx,
+                NoticeLevel::Info,
+                "rewind",
+                format!("nothing to rewind{why}"),
+            );
+            return;
+        }
+        let k = if arg.is_empty() {
+            if sessions::opens_with_summary(&self.messages) {
+                notice(
+                    ctx,
+                    NoticeLevel::Info,
+                    "rewind_points",
+                    "  (earlier turns were compacted; viy chats show has them)",
+                );
+            }
+            let options = points
+                .iter()
+                .map(|&i| {
+                    let text = sessions::message_text(&self.messages[i], false);
+                    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+                    let more = if text.chars().count() > 70 { "..." } else { "" };
+                    format!("{}{more}", text.chars().take(70).collect::<String>())
+                })
+                .collect();
+            let last = u32::try_from(points.len() - 1).unwrap_or(u32::MAX);
+            let question = Question::pick("rewind to before which message?", options, last);
+            match ctx.ask(&question).await {
+                Answer::Pick(n) => n as usize + 1,
+                _ => return,
+            }
+        } else {
+            arg.parse::<usize>().unwrap_or(0)
+        };
+        if !(1..=points.len()).contains(&k) {
+            notice(
+                ctx,
+                NoticeLevel::Warn,
+                "rewind",
+                format!(
+                    "usage: /rewind [1-{}]  (no argument lists them)",
+                    points.len()
+                ),
+            );
+            return;
+        }
+        self.rewind_to(ctx, points[k - 1], k);
+    }
+
+    /// Drops the history from message `cut` on and hands that user message
+    /// back to the input box (rp's `_rewind_to`; the files write_file
+    /// changed are offered back with phase 4's write_file).
+    fn rewind_to(&mut self, ctx: &TurnContext, cut: usize, k: usize) {
+        let dropped = self.messages.split_off(cut);
+        let parts: Vec<Value> = match &dropped[0]["content"] {
+            Value::Array(parts) => parts.clone(),
+            other => vec![json!({"type": "text", "text": other.as_str().unwrap_or_default()})],
+        };
+        let text = parts
+            .iter()
+            .filter(|p| p["type"] == "text")
+            .filter_map(|p| p["text"].as_str())
+            .filter(|t| !t.starts_with(sessions::CLIENT_NOTE_PREFIX))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let images: Vec<String> = parts
+            .iter()
+            .filter(|p| p["type"] == "image_url")
+            .filter_map(|p| p["image_url"]["url"].as_str())
+            .filter(|u| !u.is_empty())
+            .map(str::to_string)
+            .collect();
+        let n_images = images.len();
+        let mut pending = images;
+        pending.append(&mut self.pending_images);
+        self.pending_images = pending;
+        self.checkpoint(ctx);
+        self.redraw(ctx, RewriteReason::Rewind);
+        let info = |text: String| notice(ctx, NoticeLevel::Info, "rewind_to", text);
+        info(format!(
+            "rewound to before message {k}: {} messages left the chat (the session log keeps \
+             them)",
+            dropped.len()
+        ));
+        let names: Vec<&str> = dropped
+            .iter()
+            .flat_map(|m| m["tool_calls"].as_array().into_iter().flatten())
+            .filter_map(|tc| tc["function"]["name"].as_str())
+            .collect();
+        let shell = names.iter().filter(|n| **n == "run_shell").count();
+        let claude = names.iter().filter(|n| **n == "ask_claude").count();
+        if shell > 0 || claude > 0 {
+            let plural = |n: usize| if n > 1 { "s" } else { "" };
+            let what: Vec<String> = [
+                (shell > 0).then(|| format!("{shell} run_shell command{}", plural(shell))),
+                (claude > 0).then(|| format!("{claude} ask_claude task{}", plural(claude))),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            notice(
+                ctx,
+                NoticeLevel::Warn,
+                "rewind_to",
+                format!(
+                    "those turns also ran {}; what they changed is not undone",
+                    what.join(" and ")
+                ),
+            );
+        }
+        if n_images > 0 {
+            info(format!(
+                "{n_images} image{} attached again",
+                if n_images > 1 { "s" } else { "" }
+            ));
+        }
+        if !text.is_empty() {
+            ctx.emit(EventMsg::InputPrefill(InputPrefillEvent { text }));
+            info("your message is back at the prompt: edit it, or Enter to send it again".into());
+        }
+    }
+
+    /// A `/save` or `/load` argument as a path: a bare name under the
+    /// transcripts, `.md` added when there is no suffix; on read, a bare
+    /// name missing here falls back to the transcripts (rp's
+    /// `_transcript_path`).
+    fn transcript_path(&self, arg: &str, default: Option<&str>, for_read: bool) -> PathBuf {
+        let given = if arg.is_empty() {
+            default.unwrap_or_default()
+        } else {
+            arg
+        };
+        let mut p = expand_home(given, &self.places.home);
+        let bare = !p.is_absolute() && p.parent().is_none_or(|d| d.as_os_str().is_empty());
+        if bare && let Some(name) = p.file_name() {
+            p = self.places.transcripts.join(name);
+        }
+        if p.extension().is_none() {
+            p.set_extension("md");
+        }
+        if for_read
+            && !p.exists()
+            && let Some(name) = p.file_name()
+        {
+            let alt = self.places.transcripts.join(name);
+            if alt.exists() {
+                p = alt;
+            }
+        }
+        p
+    }
+
+    /// `/save [file]`: a readable copy, with the state `/load` reads.
+    fn save_transcript(&self, ctx: &TurnContext, arg: &str) {
+        let default = format!("chat-{}.md", chrono::Local::now().format("%Y%m%d-%H%M%S"));
+        let path = self.transcript_path(arg, Some(&default), false);
+        let mut out = Vec::new();
+        if let Some(system) = &self.system {
+            out.push(format!("## system\n\n{system}\n"));
+        }
+        for m in &self.messages {
+            out.push(format!(
+                "## {}\n\n{}\n",
+                m["role"].as_str().unwrap_or_default(),
+                render_content(m)
+            ));
+        }
+        let state = json!({"system": self.system, "messages": self.messages});
+        out.push(format!("{STATE_OPEN}{state}{STATE_CLOSE}\n"));
+        let written = path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&path, out.join("\n")));
+        match written {
+            Ok(()) => notice(
+                ctx,
+                NoticeLevel::Info,
+                "save_transcript",
+                format!(
+                    "wrote {}  ({} messages)",
+                    shown_path(&path, &self.places.root),
+                    self.messages.len()
+                ),
+            ),
+            Err(e) => notice(
+                ctx,
+                NoticeLevel::Error,
+                "save_transcript",
+                format!("could not write {}: {e}", path.display()),
+            ),
+        }
+    }
+
+    /// `/load [file]`: a `/save` transcript replaces the history; no
+    /// argument lists them, newest first.
+    fn load_transcript(&mut self, ctx: &TurnContext, arg: &str) {
+        let error = |text: String| notice(ctx, NoticeLevel::Error, "load_transcript", text);
+        if arg.is_empty() {
+            self.list_transcripts(ctx);
+            return;
+        }
+        let path = self.transcript_path(arg, None, true);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            error(format!("no such transcript: {}", path.display()));
+            return;
+        };
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let Some(block) = state_block(&text) else {
+            error(format!(
+                "{name} has no rpctl state block; only transcripts written by /save can be \
+                 loaded"
+            ));
+            return;
+        };
+        let state: Value = match serde_json::from_str(block) {
+            Ok(state) => state,
+            Err(e) => {
+                error(format!("could not parse the state in {name}: {e}"));
+                return;
+            }
+        };
+        self.system = state["system"].as_str().map(str::to_string);
+        self.messages = state["messages"].as_array().cloned().unwrap_or_default();
+        self.earlier.clear();
+        self.today = crate::prompt::today();
+        self.pending_images.clear();
+        self.redraw(ctx, RewriteReason::Load);
+        let note = if self.system.is_some() {
+            ", system prompt set"
+        } else {
+            ""
+        };
+        notice(
+            ctx,
+            NoticeLevel::Info,
+            "load_transcript",
+            format!("loaded {name}: {} messages{note}", self.messages.len()),
+        );
+    }
+
+    fn list_transcripts(&self, ctx: &TurnContext) {
+        let dir = &self.places.transcripts;
+        let shown = shown_path(dir, &self.places.root);
+        let mut files: Vec<(PathBuf, std::time::SystemTime)> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "md"))
+            .filter_map(|p| {
+                let t = std::fs::metadata(&p).and_then(|m| m.modified()).ok()?;
+                Some((p, t))
+            })
+            .collect();
+        let info = |text: String| notice(ctx, NoticeLevel::Info, "list_transcripts", text);
+        if files.is_empty() {
+            info(format!("no transcripts yet in {shown}/"));
+            return;
+        }
+        files.sort_by_key(|f| std::cmp::Reverse(f.1));
+        info(format!("transcripts in {shown}/ (newest first):"));
+        for (path, modified) in files {
+            let when = chrono::DateTime::<chrono::Local>::from(modified).format("%Y-%m-%d %H:%M");
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            info(format!("  {name}  {when}"));
+        }
+    }
+}

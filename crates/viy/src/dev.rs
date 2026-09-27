@@ -140,7 +140,7 @@ fn drive_scenario(
         .map_err(|e| Failure::from(e.to_string()))?;
     let (run, today, session) = runtime.block_on(async {
         let start = start_dir(dir)?;
-        let mut chat = chat(&cfg, url, http, paths, &start)?;
+        let mut chat = chat(&cfg, url, http, paths, &start, true)?;
         if !live {
             outside_files(&chat, &start)?;
         }
@@ -188,7 +188,7 @@ fn chat_ui(
         .map_err(|e| Failure::from(e.to_string()))?;
     let session = runtime.block_on(async {
         let start = start_dir(dir)?;
-        let mut chat = chat(&cfg, url, http, paths, &start)?;
+        let mut chat = chat(&cfg, url, http, paths, &start, true)?;
         chat.discover_max_model_len().await;
         let turns = Arc::new(ChatTurns::new(chat));
         let mut engine = Engine::spawn(turns.clone());
@@ -271,6 +271,8 @@ pub(crate) async fn plain_chat(
         tokio::select! {
             line = lines.recv(), if reading => match line {
                 Some(text) if text.trim().is_empty() => {}
+                // The plain renderer's own `/exit`: no more lines.
+                Some(text) if matches!(text.trim(), "/exit" | "/quit" | "/q") => reading = false,
                 Some(text) => {
                     let op = if text.starts_with('/') {
                         Op::Command { text }
@@ -342,13 +344,14 @@ fn config(mut cfg: Config, scenario: &Value) -> Result<Config, String> {
 }
 
 /// The chat at `url`, the backend's key and model, streaming touching the
-/// activity file under `paths`.
-fn chat(
+/// activity file under `paths`, kept with the other chats when `saved`.
+pub(crate) fn chat(
     cfg: &Config,
     url: &str,
     http: Arc<dyn HttpClient>,
     paths: &Paths,
     start: &Path,
+    saved: bool,
 ) -> Result<Chat, Failure> {
     let backend = Backend::resolve(cfg)?;
     let endpoint = Endpoint {
@@ -362,6 +365,9 @@ fn chat(
     let places = Places {
         workspace: viy_agent::prompt::workspace(cfg, project.root(), &paths.home),
         config_dir: paths.config_dir(),
+        root: project.root().to_path_buf(),
+        transcripts: project.transcripts_dir(),
+        home: paths.home.clone(),
     };
     let sessions = Sessions::new(paths.sessions_dir(), Arc::new(SystemTimeProvider));
     let paths = paths.clone();
@@ -374,7 +380,9 @@ fn chat(
         viy_agent::prompt::today(),
         touch,
     )?;
-    chat.use_sessions(sessions, Some(project.root().display().to_string()));
+    if saved {
+        chat.use_sessions(sessions, Some(project.root().display().to_string()));
+    }
     Ok(chat)
 }
 
@@ -406,12 +414,7 @@ fn write_result(
     let asked: Vec<Value> = asked
         .iter()
         .map(|(question, answer)| {
-            let answer = match answer {
-                Answer::Yes => "y",
-                Answer::No => "n",
-                Answer::Always => "a",
-            };
-            json!({"question": question, "answer": answer})
+            json!({"question": question, "answer": viy_term::question::answer_word(*answer)})
         })
         .collect();
     let text = json!({"today": today, "asked": asked, "session": session}).to_string();

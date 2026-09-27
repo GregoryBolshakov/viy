@@ -532,6 +532,9 @@ mod status;
 #[path = "app_question_tests.rs"]
 mod question;
 
+#[path = "app_repaint_tests.rs"]
+mod repaint;
+
 /// Typing `/` opens the popup of commands above the input; Tab takes the
 /// choice, and its values follow.
 #[test]

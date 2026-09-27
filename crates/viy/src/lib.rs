@@ -4,6 +4,8 @@
 //! package has not come yet say so and exit 1. The pod commands are in
 //! [`pods`], `viy shutdown` in [`shutdown`].
 
+pub mod ask;
+pub mod chats;
 pub mod cli;
 pub mod dev;
 pub mod hardening;
@@ -177,7 +179,24 @@ fn dispatch(
             };
             dev::run(args, &paths, base, out, terminal)
         }
-        Command::Chat(_) | Command::Chats(_) | Command::Ask(_) => not_ported(3),
+        Command::Chats(args) => {
+            let paths = paths()?;
+            let cfg = config(&paths)?;
+            chats::cmd_chats(
+                args,
+                &paths,
+                &cfg,
+                &cwd()?,
+                &mut std::io::stdin().lock(),
+                out,
+            )
+        }
+        Command::Ask(args) => {
+            let paths = paths()?;
+            let cfg = config(&paths)?;
+            ask::cmd_ask(args, &paths, cfg, &cwd()?, out)
+        }
+        Command::Chat(_) => not_ported(3),
         Command::Trace(_) | Command::Toolbox(_) => not_ported(7),
     }
 }

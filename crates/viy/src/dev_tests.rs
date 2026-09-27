@@ -309,7 +309,7 @@ fn dev_chat_in_plain_answers_each_line_then_closes() {
         .unwrap();
     let mut out = Vec::new();
     runtime.block_on(async {
-        let mut chat = super::chat(&cfg, &mock.uri(), http, &paths, &workspace).unwrap();
+        let mut chat = super::chat(&cfg, &mock.uri(), http, &paths, &workspace, true).unwrap();
         chat.discover_max_model_len().await;
         let mut engine =
             viy_agent::Engine::spawn(std::sync::Arc::new(viy_agent::chat::ChatTurns::new(chat)));

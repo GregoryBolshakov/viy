@@ -39,6 +39,11 @@ pub enum EventMsg {
     Background(BackgroundEvent),
     /// The history on screen is no longer what was shown: draw `items`.
     HistoryRewritten(HistoryRewrittenEvent),
+    /// The history was compacted: the transcript stays and gets a marker
+    /// (kb d053).
+    ContextCompacted(ContextCompactedEvent),
+    /// Text for the input box, to edit and send (a rewound message).
+    InputPrefill(InputPrefillEvent),
     /// A question for the user, answered by [`crate::Op::QuestionAnswer`]
     /// with its `question_id` (kb d036).
     QuestionRequest(QuestionRequestEvent),
@@ -293,19 +298,37 @@ pub enum BackgroundState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextCompactedEvent {
+    /// Messages in the history before and after.
+    pub messages_before: u64,
+    pub messages_after: u64,
+    /// The prompt's estimated tokens before and after.
+    pub tokens_before: u64,
+    pub tokens_after: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputPrefillEvent {
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryRewrittenEvent {
     pub reason: RewriteReason,
     pub items: Vec<HistoryItem>,
 }
 
+/// Why the history was drawn again. A compaction is not one: the
+/// transcript stays and [`EventMsg::ContextCompacted`] marks it (kb d053).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum RewriteReason {
     Rewind,
-    Compaction,
     New,
     Resume,
+    /// `/load`: a saved transcript replaced the history.
+    Load,
 }
 
 /// One entry of the history as the UI draws it.
@@ -328,4 +351,9 @@ pub enum HistoryItem {
         summary: String,
     },
     Notice(NoticeEvent),
+    /// The model reasoned before this reply; the trace is not kept.
+    Thought,
+    /// Above, the turns a compaction summarised; the model goes on from
+    /// its summary (kb d052).
+    Compacted,
 }

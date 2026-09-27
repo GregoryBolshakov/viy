@@ -2549,6 +2549,7 @@ dependencies = [
 name = "viy-agent"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "chrono",
  "pretty_assertions",
  "rand 0.9.5",

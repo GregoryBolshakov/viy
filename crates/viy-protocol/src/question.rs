@@ -32,6 +32,9 @@ pub struct Question {
     /// reviewer's verdict): shown with it, and kept with its answer.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reason: Vec<NoticeEvent>,
+    /// What [`Choices::Pick`] picks from, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<String>,
 }
 
 impl Question {
@@ -44,6 +47,7 @@ impl Question {
             default: Answer::No,
             unattended: Answer::No,
             reason: Vec::new(),
+            options: Vec::new(),
         }
     }
 
@@ -55,14 +59,34 @@ impl Question {
         }
     }
 
+    /// One of `options` (rp's numbered lists: `/rewind`, `/resume`):
+    /// Enter takes `default`, nobody to ask and `q` take none
+    /// ([`Answer::No`]).
+    pub fn pick(prompt: impl Into<String>, options: Vec<String>, default: u32) -> Self {
+        Self {
+            choices: Choices::Pick,
+            default: Answer::Pick(default),
+            options,
+            ..Self::yes_no(None, prompt)
+        }
+    }
+
     /// The choices as rp writes them after the prompt: `[y/N]`, `[Y/n]`
-    /// (rp's `pod._ask` when the default is yes), `[y/N/a=always]`.
-    pub fn hint(&self) -> &'static str {
+    /// (rp's `pod._ask` when the default is yes), `[y/N/a=always]`, and
+    /// for a pick rp's `/rewind` `[1-3, Enter = 3, q = cancel]`.
+    pub fn hint(&self) -> String {
         match (self.choices, self.default) {
-            (Choices::YesNo, Answer::No) => "[y/N]",
-            (Choices::YesNo, _) => "[Y/n]",
-            (_, Answer::No) => "[y/N/a=always]",
-            _ => "[Y/n/a=always]",
+            (Choices::Pick, default) => {
+                let enter = match default {
+                    Answer::Pick(n) => format!(", Enter = {}", n + 1),
+                    _ => String::new(),
+                };
+                format!("[1-{}{enter}, q = cancel]", self.options.len())
+            }
+            (Choices::YesNo, Answer::No) => "[y/N]".into(),
+            (Choices::YesNo, _) => "[Y/n]".into(),
+            (_, Answer::No) => "[y/N/a=always]".into(),
+            _ => "[Y/n/a=always]".into(),
         }
     }
 }
@@ -97,6 +121,8 @@ pub enum QuestionKind {
 pub enum Choices {
     YesNo,
     YesNoAlways,
+    /// One of [`Question::options`].
+    Pick,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,4 +132,6 @@ pub enum Answer {
     No,
     /// Yes, and remember it (only offered with [`Choices::YesNoAlways`]).
     Always,
+    /// The option at this index (only with [`Choices::Pick`]).
+    Pick(u32),
 }

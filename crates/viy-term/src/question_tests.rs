@@ -437,6 +437,7 @@ fn the_transcript_keeps_the_reason_question_and_answer() {
         id: "q1".into(),
         question: reasoned(),
         shown: None,
+        chosen: 0,
     };
     let Cell::Lines { lines, .. } = b.cell(Some(Answer::Always)) else {
         panic!()

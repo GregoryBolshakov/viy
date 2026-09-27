@@ -88,7 +88,6 @@ pub enum Command {
                       viy chats show REF         print a chat as Markdown\n\
                       viy chats rename REF TITLE\n\
                       viy chats rm REF           move a chat to the trash\n\
-                      viy chats import [DIR]     absorb old /save transcripts\n\
                       REF is a chat id, an id prefix, or a search query."
     )]
     Chats(ChatsArgs),

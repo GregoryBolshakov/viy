@@ -33,8 +33,9 @@ impl Project {
     }
 
     /// Marks `dir` as a project (`viy init`, rpctl's `init_project`):
-    /// creates `.viy/transcripts/` and, when there is none, a `.gitignore`
-    /// that keeps the input history and transcripts out of version control.
+    /// creates `.viy/` and, when there is none, a `.gitignore` that keeps
+    /// the input history out of version control. viy keeps no transcripts
+    /// (kb d082), so rp's `transcripts/` is neither made nor ignored.
     /// The project is `dir` itself, not the project it may sit in. Returns
     /// it and whether `.viy/` is new; `.rpctl/` is left alone (kb d039).
     pub fn init(dir: &Path) -> io::Result<(Self, bool)> {
@@ -46,8 +47,13 @@ impl Project {
         let with_path = |path: &Path, e: io::Error| {
             io::Error::new(e.kind(), format!("{}: {e}", path.display()))
         };
-        let transcripts = project.transcripts_dir();
-        std::fs::create_dir_all(&transcripts).map_err(|e| with_path(&transcripts, e))?;
+        if marker.exists() && !marker.is_dir() {
+            // The OS's ENOTDIR, as rp got it making its transcripts folder
+            // inside the marker.
+            let e = io::Error::from_raw_os_error(20);
+            return Err(with_path(&marker, e));
+        }
+        std::fs::create_dir_all(&marker).map_err(|e| with_path(&marker, e))?;
         // create_new: an existing file stays, and a symlink left there (a
         // project folder can come from anywhere) is not written through.
         let gitignore = marker.join(".gitignore");
@@ -55,7 +61,7 @@ impl Project {
             .write(true)
             .create_new(true)
             .open(&gitignore)
-            .and_then(|mut file| file.write_all(b"history\ntranscripts/\n"));
+            .and_then(|mut file| file.write_all(b"history\n"));
         match written {
             Err(e) if e.kind() != io::ErrorKind::AlreadyExists => {
                 return Err(with_path(&gitignore, e));
@@ -84,11 +90,6 @@ impl Project {
     /// `<root>/.rpctl`, rp's, read only.
     pub fn rpctl_dir(&self) -> PathBuf {
         self.root.join(RPCTL_MARKER)
-    }
-
-    /// Saved transcripts (`/save`, `/load`).
-    pub fn transcripts_dir(&self) -> PathBuf {
-        self.dir().join("transcripts")
     }
 
     /// The input history.

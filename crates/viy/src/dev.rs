@@ -365,8 +365,6 @@ pub(crate) fn chat(
     let places = Places {
         workspace: viy_agent::prompt::workspace(cfg, project.root(), &paths.home),
         config_dir: paths.config_dir(),
-        root: project.root().to_path_buf(),
-        transcripts: project.transcripts_dir(),
         home: paths.home.clone(),
     };
     let sessions = Sessions::new(paths.sessions_dir(), Arc::new(SystemTimeProvider));

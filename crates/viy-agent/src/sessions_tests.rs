@@ -7,8 +7,6 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::sync::PoisonError;
-use std::time::Duration;
-use std::time::UNIX_EPOCH;
 
 use pretty_assertions::assert_eq;
 use viy_testkit::fixtures;
@@ -359,31 +357,6 @@ fn trash_moves_the_log() {
 }
 
 #[test]
-fn import_keeps_the_transcript_date() {
-    let s = store();
-    let t = s.root.join("old.md");
-    fs::write(&t, "x").unwrap();
-    File::options()
-        .write(true)
-        .open(&t)
-        .unwrap()
-        .set_modified(UNIX_EPOCH + Duration::from_secs(1_700_000_000))
-        .unwrap();
-    let sid = s
-        .sessions
-        .import_transcript(&t, None, &[user("q")], Some(&s.project()))
-        .unwrap();
-    let row = &s.sessions.list(Some(&s.project()))[0];
-    assert_eq!(row.id, sid);
-    assert_eq!(row.title, "old");
-    assert_eq!(row.updated, Some(1_700_000_000.0));
-    assert_eq!(
-        row.source.as_deref(),
-        Some(fs::canonicalize(&t).unwrap().to_str().unwrap())
-    );
-}
-
-#[test]
 fn session_log_masks_on_disk_only() {
     let s = store();
     let tok = format!("hf_{}", "z".repeat(34));
@@ -639,21 +612,6 @@ fn run_case(case: &Value) -> Value {
                     Err(e) => panic!("trash: {e}"),
                 };
             }
-            "import" => {
-                let src = root.join(s["name"].as_str().unwrap());
-                fs::write(&src, "x").unwrap();
-                let when = UNIX_EPOCH + Duration::from_secs_f64(s["mtime"].as_f64().unwrap());
-                File::options()
-                    .write(true)
-                    .open(&src)
-                    .unwrap()
-                    .set_modified(when)
-                    .unwrap();
-                let id = store
-                    .import_transcript(&src, opt(&s["system"]), &msgs, opt(&s["project"]))
-                    .unwrap();
-                name_id(&mut names, &id, s["as"].as_str().unwrap());
-            }
             op => panic!("unknown step {op}"),
         }
         results.push(r);
@@ -723,10 +681,27 @@ fn run_case(case: &Value) -> Value {
     serde_json::from_str(&text).unwrap()
 }
 
+/// `v` without the `source` of every listing row and sidecar: rp's names
+/// the `/save` transcript a chat was imported from, and viy keeps no
+/// transcripts (kb d082).
+fn without_source(v: &mut Value) {
+    match v {
+        Value::Object(map) => {
+            if map.contains_key("title_auto") {
+                map.shift_remove("source");
+            }
+            map.values_mut().for_each(without_source);
+        }
+        Value::Array(items) => items.iter_mut().for_each(without_source),
+        _ => {}
+    }
+}
+
 /// `v` with each log's raw bytes left out: viy writes its own JSON (kb
-/// d031), compared as events.
+/// d031), compared as events; and without rp's `source`.
 fn without_raw(v: &Value) -> Value {
     let mut v = v.clone();
+    without_source(&mut v);
     for file in v["files"].as_object_mut().into_iter().flatten() {
         file.1.as_object_mut().unwrap().shift_remove("raw");
     }
@@ -861,9 +836,11 @@ mod rp_and_back {
         assert_eq!(rp_state["messages"], json!(three));
         assert_eq!(rp_state["title"], "Plan");
         assert_eq!(state_json(&replay(log.path()).unwrap()), rp_state);
+        let mut rp_list = rp("list", json!({"dir": dir, "scope": project}));
+        without_source(&mut rp_list);
         assert_eq!(
             serde_json::to_value(s.sessions.list(Some(&project))).unwrap(),
-            rp("list", json!({"dir": dir, "scope": project}))
+            rp_list
         );
 
         // And to viy once more, then into the trash, which rp sees.
@@ -910,12 +887,14 @@ mod rp_and_back {
         assert_eq!(rp_state["title"], "Model named");
         assert_eq!(rp_state["earlier"], json!([compacted()]));
         assert!(!rp_state.to_string().contains(&tok), "{rp_state}");
+        let mut rp_search = rp(
+            "search",
+            json!({"dir": dir, "query": "question 2", "scope": null}),
+        );
+        without_source(&mut rp_search);
         assert_eq!(
             serde_json::to_value(s.sessions.search("question 2", None)).unwrap(),
-            rp(
-                "search",
-                json!({"dir": dir, "query": "question 2", "scope": null})
-            )
+            rp_search
         );
 
         // rp continues the fork, and viy reads what rp wrote.

@@ -62,9 +62,6 @@ const HELP: &str = "  /help              show this
   /mode [normal|auto-yes]  who answers the approver's questions: you, or
                      yes by itself for some kinds (Shift+Tab cycles the modes)
   /sources           list the URLs from this turn's searches
-  /save [file]       export a readable Markdown copy to transcripts/
-                     (chats autosave anyway; this is for sharing/reading)
-  /load [file]       load a /save transcript into this chat (no arg lists them)
   /compact [full] [focus]  shrink the context: drops old tool output if that
                      is enough, else summarizes (full or a focus: always
                      summarize). The session log keeps everything
@@ -270,17 +267,6 @@ pub fn render_content(m: &Value) -> String {
     c
 }
 
-/// Where a saved transcript's state starts and ends.
-const STATE_OPEN: &str = "<!-- rpctl-state\n";
-const STATE_CLOSE: &str = "\n-->";
-
-/// The machine-readable state in a `/save` transcript (rp's `STATE_RE`).
-pub fn state_block(text: &str) -> Option<&str> {
-    let start = text.find(STATE_OPEN)? + STATE_OPEN.len();
-    let len = text[start..].find(STATE_CLOSE)?;
-    Some(&text[start..start + len])
-}
-
 /// An image for the next message: a URL as it is, a local file as a data
 /// URI (rp's `_encode_image`).
 fn encode_image(reference: &str, home: &Path) -> std::io::Result<String> {
@@ -317,14 +303,6 @@ fn expand_home(text: &str, home: &Path) -> PathBuf {
         Some(rest) if rest.starts_with('/') => home.join(&rest[1..]),
         _ => PathBuf::from(text),
     }
-}
-
-/// `path` as shown: from the project's root when it is under it.
-fn shown_path(path: &Path, root: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .display()
-        .to_string()
 }
 
 impl Chat {
@@ -456,8 +434,6 @@ impl Chat {
                     serde_json::to_string_pretty(&stats).unwrap_or_default(),
                 );
             }
-            "save" => self.save_transcript(ctx, arg),
-            "load" => self.load_transcript(ctx, arg),
             "exit" | "quit" | "q" | "think" | "md" | "redraw" => {
                 warn(
                     "screen_only",
@@ -810,158 +786,6 @@ impl Chat {
         if !text.is_empty() {
             ctx.emit(EventMsg::InputPrefill(InputPrefillEvent { text }));
             info("your message is back at the prompt: edit it, or Enter to send it again".into());
-        }
-    }
-
-    /// A `/save` or `/load` argument as a path: a bare name under the
-    /// transcripts, `.md` added when there is no suffix; on read, a bare
-    /// name missing here falls back to the transcripts (rp's
-    /// `_transcript_path`).
-    fn transcript_path(&self, arg: &str, default: Option<&str>, for_read: bool) -> PathBuf {
-        let given = if arg.is_empty() {
-            default.unwrap_or_default()
-        } else {
-            arg
-        };
-        let mut p = expand_home(given, &self.places.home);
-        let bare = !p.is_absolute() && p.parent().is_none_or(|d| d.as_os_str().is_empty());
-        if bare && let Some(name) = p.file_name() {
-            p = self.places.transcripts.join(name);
-        }
-        if p.extension().is_none() {
-            p.set_extension("md");
-        }
-        if for_read
-            && !p.exists()
-            && let Some(name) = p.file_name()
-        {
-            let alt = self.places.transcripts.join(name);
-            if alt.exists() {
-                p = alt;
-            }
-        }
-        p
-    }
-
-    /// `/save [file]`: a readable copy, with the state `/load` reads.
-    fn save_transcript(&self, ctx: &TurnContext, arg: &str) {
-        let default = format!("chat-{}.md", chrono::Local::now().format("%Y%m%d-%H%M%S"));
-        let path = self.transcript_path(arg, Some(&default), false);
-        let mut out = Vec::new();
-        if let Some(system) = &self.system {
-            out.push(format!("## system\n\n{system}\n"));
-        }
-        for m in &self.messages {
-            out.push(format!(
-                "## {}\n\n{}\n",
-                m["role"].as_str().unwrap_or_default(),
-                render_content(m)
-            ));
-        }
-        let state = json!({"system": self.system, "messages": self.messages});
-        out.push(format!("{STATE_OPEN}{state}{STATE_CLOSE}\n"));
-        let written = path
-            .parent()
-            .map_or(Ok(()), std::fs::create_dir_all)
-            .and_then(|()| std::fs::write(&path, out.join("\n")));
-        match written {
-            Ok(()) => notice(
-                ctx,
-                NoticeLevel::Info,
-                "save_transcript",
-                format!(
-                    "wrote {}  ({} messages)",
-                    shown_path(&path, &self.places.root),
-                    self.messages.len()
-                ),
-            ),
-            Err(e) => notice(
-                ctx,
-                NoticeLevel::Error,
-                "save_transcript",
-                format!("could not write {}: {e}", path.display()),
-            ),
-        }
-    }
-
-    /// `/load [file]`: a `/save` transcript replaces the history; no
-    /// argument lists them, newest first.
-    fn load_transcript(&mut self, ctx: &TurnContext, arg: &str) {
-        let error = |text: String| notice(ctx, NoticeLevel::Error, "load_transcript", text);
-        if arg.is_empty() {
-            self.list_transcripts(ctx);
-            return;
-        }
-        let path = self.transcript_path(arg, None, true);
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            error(format!("no such transcript: {}", path.display()));
-            return;
-        };
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let Some(block) = state_block(&text) else {
-            error(format!(
-                "{name} has no rpctl state block; only transcripts written by /save can be \
-                 loaded"
-            ));
-            return;
-        };
-        let state: Value = match serde_json::from_str(block) {
-            Ok(state) => state,
-            Err(e) => {
-                error(format!("could not parse the state in {name}: {e}"));
-                return;
-            }
-        };
-        self.system = state["system"].as_str().map(str::to_string);
-        self.messages = state["messages"].as_array().cloned().unwrap_or_default();
-        self.earlier.clear();
-        self.today = crate::prompt::today();
-        self.pending_images.clear();
-        self.redraw(ctx, RewriteReason::Load);
-        let note = if self.system.is_some() {
-            ", system prompt set"
-        } else {
-            ""
-        };
-        notice(
-            ctx,
-            NoticeLevel::Info,
-            "load_transcript",
-            format!("loaded {name}: {} messages{note}", self.messages.len()),
-        );
-    }
-
-    fn list_transcripts(&self, ctx: &TurnContext) {
-        let dir = &self.places.transcripts;
-        let shown = shown_path(dir, &self.places.root);
-        let mut files: Vec<(PathBuf, std::time::SystemTime)> = std::fs::read_dir(dir)
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "md"))
-            .filter_map(|p| {
-                let t = std::fs::metadata(&p).and_then(|m| m.modified()).ok()?;
-                Some((p, t))
-            })
-            .collect();
-        let info = |text: String| notice(ctx, NoticeLevel::Info, "list_transcripts", text);
-        if files.is_empty() {
-            info(format!("no transcripts yet in {shown}/"));
-            return;
-        }
-        files.sort_by_key(|f| std::cmp::Reverse(f.1));
-        info(format!("transcripts in {shown}/ (newest first):"));
-        for (path, modified) in files {
-            let when = chrono::DateTime::<chrono::Local>::from(modified).format("%Y-%m-%d %H:%M");
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            info(format!("  {name}  {when}"));
         }
     }
 }

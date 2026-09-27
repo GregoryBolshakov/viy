@@ -77,13 +77,6 @@ pub const COMMANDS: &[Command] = &[
         "list the URLs from this turn's searches",
         &[],
     ),
-    cmd("save", "[file]", "export a readable Markdown copy", &[]),
-    cmd(
-        "load",
-        "[file]",
-        "load a /save transcript into this chat",
-        &[],
-    ),
     cmd("compact", "[full] [focus]", "shrink the context", &[]),
     cmd(
         "autocompact",

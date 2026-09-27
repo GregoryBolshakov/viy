@@ -13,7 +13,7 @@ pub fn cmd_init(paths: &Paths, cwd: &Path, out: &mut dyn Write) -> Result<(), St
     let (project, created) = Project::init(cwd).map_err(|e| e.to_string())?;
     let root = project.root().display();
     let mut text = format!(
-        "{} project at {root}\n  {MARKER}/ holds this project's transcripts and history\n  the agent's file + shell tools operate on {root}\n",
+        "{} project at {root}\n  {MARKER}/ holds this project's history\n  the agent's file + shell tools operate on {root}\n",
         if created { "initialised" } else { "already a" }
     );
     if !paths.config_file().exists() {

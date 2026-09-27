@@ -398,63 +398,6 @@ async fn chats_lists_this_projects_chats_newest_first() {
     );
 }
 
-// --------------------------------------------------------- /save, /load
-
-#[tokio::test]
-async fn save_and_load_round_trip() {
-    let mut d = direct(ok(1), &[]);
-    let dir = d._scratch.path().join("saved");
-    d.chat.places.root = d._scratch.path().to_path_buf();
-    d.chat.places.transcripts = dir.clone();
-    d.cmd("/load").await;
-    assert_eq!(notices(&d.events()), ["no transcripts yet in saved/"]);
-    d.chat.system = Some("be brief".into());
-    d.send("héllo").await;
-    d.events();
-    d.cmd("/save notes").await;
-    assert_eq!(notices(&d.events()), ["wrote saved/notes.md  (2 messages)"]);
-    let text = std::fs::read_to_string(dir.join("notes.md")).unwrap();
-    assert!(
-        text.starts_with("## system\n\nbe brief\n\n## user\n\nhéllo\n\n## assistant\n\nok\n"),
-        "{text}"
-    );
-    assert!(
-        text.contains("<!-- rpctl-state\n{\"system\":\"be brief\",\"messages\":["),
-        "{text}"
-    );
-    d.cmd("/new").await;
-    d.events();
-    d.cmd("/load notes").await;
-    let events = d.events();
-    assert_eq!(
-        notices(&events).last().map(String::as_str),
-        Some("loaded notes.md: 2 messages, system prompt set")
-    );
-    assert_eq!(
-        rewritten(&events),
-        Some((RewriteReason::Load, vec![user("héllo"), agent("ok")]))
-    );
-    assert_eq!(d.chat.system.as_deref(), Some("be brief"));
-    d.cmd("/load").await;
-    let said = notices(&d.events());
-    assert_eq!(said[0], "transcripts in saved/ (newest first):");
-    assert!(said[1].starts_with("  notes.md  "), "{said:?}");
-    d.cmd("/load missing").await;
-    assert_eq!(
-        notices(&d.events()),
-        [format!(
-            "no such transcript: {}",
-            dir.join("missing.md").display()
-        )]
-    );
-    std::fs::write(dir.join("plain.md"), "## user\n\nhi\n").unwrap();
-    d.cmd("/load plain").await;
-    assert_eq!(
-        notices(&d.events()),
-        ["plain.md has no rpctl state block; only transcripts written by /save can be loaded"]
-    );
-}
-
 // -------------------------------------------------- settings and words
 
 #[tokio::test]
@@ -479,6 +422,9 @@ async fn settings_commands_say_what_they_set() {
         ),
         ("/tools on", "/tools comes with phase 4"),
         ("/up", "/up comes with WP 3.13"),
+        // rp's transcripts are not kept (kb d082).
+        ("/save", "unknown command: /save  (try /help)"),
+        ("/load x", "unknown command: /load  (try /help)"),
         ("/frobnicate", "unknown command: /frobnicate  (try /help)"),
         ("/think off", "/think: the chat's screen handles it"),
     ] {

@@ -4,6 +4,8 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 use viy_testkit::scratch::ScratchDir;
 
+use std::path::PathBuf;
+
 use super::*;
 
 struct Rig {
@@ -155,40 +157,4 @@ fn a_chat_open_elsewhere_is_not_renamed_or_removed() {
         ))
     );
     drop(held);
-}
-
-#[test]
-fn import_turns_saved_transcripts_into_chats_once() {
-    let r = rig();
-    let dir = r.project.join(".viy").join("transcripts");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("notes.md"),
-        "## user\n\nhi\n\n<!-- rpctl-state\n{\"system\": null, \"messages\": \
-         [{\"role\": \"user\", \"content\": \"hi\"}]}\n-->\n",
-    )
-    .unwrap();
-    std::fs::write(dir.join("plain.md"), "## user\n\nhi\n").unwrap();
-    let out = r.run(&["import"], false, "").unwrap();
-    let id = &r.store.list(None)[0].id;
-    assert_eq!(
-        out,
-        format!(
-            "imported notes.md -> {id}\nskipped plain.md: no rpctl state block\n1 imported; the \
-             .md files are untouched.\n"
-        )
-    );
-    assert_eq!(
-        r.store.list(None)[0].project.as_deref(),
-        Some(r.project.display().to_string().as_str())
-    );
-    let again = r.run(&["import"], false, "").unwrap();
-    assert!(
-        again.ends_with("0 imported; the .md files are untouched.\n"),
-        "{again}"
-    );
-    assert_eq!(
-        r.run(&["import", "/nonexistent/x"], false, "").unwrap(),
-        "no transcripts in /nonexistent/x\n"
-    );
 }

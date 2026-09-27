@@ -306,7 +306,6 @@ pub struct Summary {
     pub created: Option<f64>,
     pub updated: Option<f64>,
     pub messages: usize,
-    pub source: Option<String>,
     /// Where a search found its terms in the chat's text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snippet: Option<String>,
@@ -428,7 +427,6 @@ fn summary_of(st: &State, path: &Path) -> Summary {
         created,
         updated,
         messages: st.messages.len(),
-        source: st.meta_str("source"),
         snippet: None,
     }
 }
@@ -737,41 +735,6 @@ impl Sessions {
         }
         Ok(())
     }
-
-    /// A session built from an old /save transcript's state, dated by the
-    /// transcript's mtime so it sorts where it belongs. Returns its id.
-    pub fn import_transcript(
-        &self,
-        path: &Path,
-        system: Option<&str>,
-        messages: &[Value],
-        project: Option<&str>,
-    ) -> io::Result<String> {
-        let when = DateTime::<Utc>::from(mtime(path)?);
-        let mut log = self.create(project, None);
-        log.id = self.new_id(when);
-        log.path = self.path_of(&log.id);
-        log.clock = Arc::new(Fixed(when));
-        log.source = Some(fs::canonicalize(path)?.display().to_string());
-        log.sync(system, messages, true)?;
-        let name = path
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        log.rename(&name)?;
-        log.close("import")?;
-        Ok(log.id)
-    }
-}
-
-/// A clock stopped at one time: an imported transcript's.
-#[derive(Debug)]
-struct Fixed(DateTime<Utc>);
-
-impl TimeProvider for Fixed {
-    fn now(&self) -> DateTime<Utc> {
-        self.0
-    }
 }
 
 /// Takes the exclusive lock on a session's file, or says who has it.
@@ -804,8 +767,6 @@ pub struct SessionLog {
     redact: Option<Redactor>,
     created: Option<f64>,
     clock: Arc<dyn TimeProvider>,
-    /// The transcript an imported session came from.
-    source: Option<String>,
 }
 
 impl std::fmt::Debug for SessionLog {
@@ -834,7 +795,6 @@ impl SessionLog {
             redact: None,
             created: None,
             clock: Arc::clone(&store.clock),
-            source: None,
         }
     }
 
@@ -847,7 +807,6 @@ impl SessionLog {
             st.meta_str("model").as_deref(),
         );
         log.created = st.meta.get("created").and_then(Value::as_f64);
-        log.source = st.meta_str("source");
         log.persisted = st.messages.clone();
         log.system = st.system.clone();
         log.title = st.title.clone();
@@ -980,16 +939,13 @@ impl SessionLog {
         })?;
         let created = seconds(self.clock.now());
         self.created = Some(created);
-        let mut ev = json!({
+        let ev = json!({
             "t": "meta",
             "id": self.id,
             "created": created,
             "project": self.project,
             "model": self.model,
         });
-        if let Some(source) = &self.source {
-            ev["source"] = json!(source);
-        }
         self.append(ev)
     }
 
@@ -1078,7 +1034,6 @@ impl SessionLog {
             created: self.created,
             updated: Some(seconds(self.clock.now())),
             messages: self.persisted.len(),
-            source: self.source.clone(),
             snippet: None,
         };
         // The log is the record; the sidecar is only a cache.

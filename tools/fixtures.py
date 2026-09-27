@@ -2794,7 +2794,6 @@ def gen_chat_context(snap):
 #   files    {log}                        a file in the log's .files/ dir
 #   unlink_sidecar {log}
 #   trash    {log}                        -> "ok" / "busy"
-#   import   {as, name, mtime, system?, messages, project?}
 SESSIONS_RUNNER = r"""
 import json, os, pathlib, sys, time
 sys.path.insert(0, sys.argv[1])
@@ -2870,14 +2869,6 @@ for case in job:
                 r = "ok"
             except sessions.SessionBusy:
                 r = "busy"
-        elif op == "import":
-            src = root / s["name"]
-            src.write_text("x")
-            os.utime(src, (s["mtime"], s["mtime"]))
-            sid = sessions.import_transcript(
-                src, {"system": s.get("system"), "messages": s["messages"]},
-                s.get("project"))
-            names.setdefault(sid, s["as"])
         results.append(r)
     sdir = root / "sessions"
     files = {}
@@ -3099,12 +3090,6 @@ SESSIONS_CASES = [
         dict(op="close", log="a"),
         dict(op="trash", log="a")],
         queries=dict(list=[None])),
-    dict(name="import_keeps_the_transcript_date", steps=[
-        dict(op="import", name="old.md", mtime=1700000000, project="$T/proj",
-             messages=[_u("q"), _a("r")], system="sys", **{"as": "imp"}),
-        dict(op="import", name="older notes.md", mtime=1600000000.5,
-             messages=[], **{"as": "empty"})],
-        queries=dict(list=["$T/proj", None])),
     dict(name="redaction_masks_on_disk_only", steps=[
         dict(op="new", log="a", project="$T/proj"),
         dict(op="redact", log="a", literals=["literal-secret-value"]),

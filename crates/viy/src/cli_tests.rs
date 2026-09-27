@@ -11,6 +11,16 @@ fn as_viy(text: &str) -> String {
     text.replace("rp ", "viy ").replace("(.rpctl/)", "(.viy/)")
 }
 
+/// rpctl's longer description as viy's: without `chats import`, as viy
+/// keeps no transcripts (kb d082).
+fn viy_description(rpctl: &str) -> String {
+    as_viy(rpctl)
+        .lines()
+        .filter(|l| !l.starts_with("viy chats import"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// rpctl's help where viy's says something else on purpose.
 fn viy_help(subcommand: &str, rpctl: &str) -> String {
     match subcommand {
@@ -130,7 +140,7 @@ fn subcommands_and_flags_are_rps() {
         );
         assert_eq!(
             text(sub.get_after_help()),
-            json!(rp["description"].as_str().map(as_viy)),
+            json!(rp["description"].as_str().map(viy_description)),
             "{name}"
         );
         let args: Vec<Value> = sub

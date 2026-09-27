@@ -327,8 +327,6 @@ pub enum RewriteReason {
     Rewind,
     New,
     Resume,
-    /// `/load`: a saved transcript replaced the history.
-    Load,
 }
 
 /// One entry of the history as the UI draws it.

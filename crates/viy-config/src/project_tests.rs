@@ -63,11 +63,6 @@ fn the_root_and_global_paths_match_rpctl() {
         let got = [
             ("PROJECT_DIR", shown(project.root()), rpctl("PROJECT_DIR")),
             (
-                "TRANSCRIPTS",
-                shown(&project.transcripts_dir()),
-                as_viy("TRANSCRIPTS"),
-            ),
-            (
                 "HISTORY_PATH",
                 shown(&project.history_file()),
                 as_viy("HISTORY_PATH"),
@@ -167,7 +162,6 @@ fn viy_writes_under_viy_even_in_an_rpctl_project() {
     assert!(project.has_marker());
     assert_eq!(project.dir(), root.join(".viy"));
     assert_eq!(project.rpctl_dir(), root.join(".rpctl"));
-    assert_eq!(project.transcripts_dir(), root.join(".viy/transcripts"));
     assert_eq!(project.history_file(), root.join(".viy/history"));
     assert_eq!(
         project.config_files(),
@@ -201,6 +195,6 @@ fn init_does_not_write_through_a_gitignore_symlink() {
     std::os::unix::fs::symlink(&elsewhere, marker.join(".gitignore")).unwrap();
     let (project, created) = Project::init(scratch.path()).unwrap();
     assert!(!created);
-    assert!(project.transcripts_dir().is_dir());
+    assert!(project.dir().is_dir());
     assert!(!elsewhere.exists());
 }

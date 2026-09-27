@@ -90,10 +90,6 @@ pub struct Places {
     pub workspace: PathBuf,
     /// viy's config directory, for global instruction files.
     pub config_dir: PathBuf,
-    /// The project's root, which paths are shown from.
-    pub root: PathBuf,
-    /// Where `/save` writes and `/load` reads (the project's transcripts).
-    pub transcripts: PathBuf,
     /// The user's home, for `~`.
     pub home: PathBuf,
 }
@@ -364,7 +360,7 @@ impl Chat {
                         ctx,
                         NoticeLevel::Error,
                         "autosave_failed",
-                        format!("[autosave failed: {e}. /save to keep this chat]"),
+                        format!("[autosave failed: {e}]"),
                     );
                 }
                 self.autosave_failed = true;
@@ -510,7 +506,7 @@ impl Chat {
                 ctx,
                 NoticeLevel::Error,
                 "autosave_failed",
-                format!("[autosave failed: {e}. /save to keep this chat]"),
+                format!("[autosave failed: {e}]"),
             ),
             _ => {
                 notice(
@@ -1186,7 +1182,6 @@ impl Turns for ChatTurns {
 mod commands;
 pub use commands::history_items;
 pub use commands::render_content;
-pub use commands::state_block;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

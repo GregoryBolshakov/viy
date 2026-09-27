@@ -1,15 +1,13 @@
 //! `viy chats` (rpctl `cmd_chats`): list and search the saved chats, and
-//! `show`, `rename`, `rm` and `import` one, with rp's words.
+//! `show`, `rename` and `rm` one, with rp's words. rp's `import` of old
+//! `/save` transcripts is not kept: viy keeps no transcripts (kb d082).
 
-use std::collections::HashSet;
 use std::io::BufRead;
 use std::io::Write;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use viy_agent::chat::render_content;
-use viy_agent::chat::state_block;
 use viy_agent::sessions;
 use viy_agent::sessions::RowView;
 use viy_agent::sessions::SessionError;
@@ -98,7 +96,7 @@ pub fn cmd_chats(
     let action = words
         .first()
         .map(String::as_str)
-        .filter(|w| matches!(*w, "show" | "rename" | "rm" | "import" | "list"));
+        .filter(|w| matches!(*w, "show" | "rename" | "rm" | "list"));
     let rest: &[String] = if action.is_some() { &words[1..] } else { words };
     let joined = rest.join(" ");
     let say = |out: &mut (dyn Write + Send), text: String| {
@@ -168,7 +166,8 @@ pub fn cmd_chats(
                 .map_err(|e| Failure::from(e.to_string()))?;
             say(out, format!("renamed {} to '{title}'", row.id))
         }
-        Some("rm") => {
+        // `rm`.
+        Some(_) => {
             if rest.is_empty() {
                 return Err("usage: viy chats rm REF".into());
             }
@@ -196,86 +195,7 @@ pub fn cmd_chats(
                 format!("moved to {}/", here.store.dir().join("trash").display()),
             )
         }
-        Some(_) => {
-            let dir = match rest.first() {
-                Some(dir) => expand_home(dir, here.home),
-                None => here.project.transcripts_dir(),
-            };
-            import(&here, &dir, out)
-        }
     }
-}
-
-/// `~` and `~/...` under `home`.
-fn expand_home(text: &str, home: &Path) -> PathBuf {
-    match text.strip_prefix('~') {
-        Some("") => home.to_path_buf(),
-        Some(rest) if rest.starts_with('/') => home.join(&rest[1..]),
-        _ => PathBuf::from(text),
-    }
-}
-
-/// `viy chats import [dir]`: old `/save` transcripts as saved chats; one
-/// imported before is skipped, the `.md` files left in place (rp's
-/// `cmd_chats_import`).
-fn import(here: &Here<'_>, dir: &Path, out: &mut (dyn Write + Send)) -> Result<(), Failure> {
-    let mut say = |text: String| writeln!(out, "{text}").map_err(|e| Failure::from(e.to_string()));
-    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "md"))
-        .collect();
-    files.sort();
-    if files.is_empty() {
-        return say(format!("no transcripts in {}", dir.display()));
-    }
-    let done: HashSet<String> = here
-        .store
-        .list(None)
-        .into_iter()
-        .filter_map(|r| r.source)
-        .collect();
-    // A project's own transcripts are filed under that project.
-    let owner = dir
-        .parent()
-        .filter(|d| {
-            d.file_name()
-                .is_some_and(|n| n == viy_config::project::MARKER)
-        })
-        .and_then(Path::parent)
-        .and_then(|root| Project::find(root).ok());
-    let project = owner.map_or_else(|| here.root(), |p| p.root().display().to_string());
-    let mut n = 0;
-    for file in files {
-        let name = file
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let resolved = std::fs::canonicalize(&file).unwrap_or_else(|_| file.clone());
-        if done.contains(&resolved.display().to_string()) {
-            continue;
-        }
-        let bytes = std::fs::read(&file).map_err(|e| Failure::from(e.to_string()))?;
-        let text = String::from_utf8_lossy(&bytes);
-        let Some(block) = state_block(&text) else {
-            say(format!("skipped {name}: no rpctl state block"))?;
-            continue;
-        };
-        let Ok(state) = serde_json::from_str::<serde_json::Value>(block) else {
-            say(format!("skipped {name}: unreadable state block"))?;
-            continue;
-        };
-        let messages = state["messages"].as_array().cloned().unwrap_or_default();
-        let id = here
-            .store
-            .import_transcript(&file, state["system"].as_str(), &messages, Some(&project))
-            .map_err(|e| Failure::from(e.to_string()))?;
-        say(format!("imported {name} -> {id}"))?;
-        n += 1;
-    }
-    say(format!("{n} imported; the .md files are untouched."))
 }
 
 #[cfg(test)]

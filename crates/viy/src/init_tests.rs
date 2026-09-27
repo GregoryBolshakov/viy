@@ -14,6 +14,17 @@ fn as_viy(text: &str) -> String {
         .replace("$T/config/rpctl/", "$T/config/viy/")
 }
 
+/// rp's transcripts folder, which viy does not make (kb d082).
+fn is_rps_transcripts(path: &str) -> bool {
+    let parts: Vec<&str> = path.split('/').collect();
+    parts.windows(2).any(|w| w == [".rpctl", "transcripts"])
+}
+
+/// rp's `.gitignore` without its transcripts line (kb d082).
+fn without_transcripts_line(text: &str) -> String {
+    text.replace("transcripts/\n", "")
+}
+
 fn paths(root: &Path) -> Paths {
     let config_home = root.join("config");
     Paths::from_vars(root.join("home"), move |name| {
@@ -75,17 +86,31 @@ fn viy_init_does_what_rp_init_does() {
             &project.join(case["cwd"].as_str().unwrap()),
             &mut out,
         );
+        let before = case["project_files"].as_object().unwrap();
         let expected_files: BTreeMap<String, String> = case["project_files_after"]
             .as_object()
             .unwrap()
             .iter()
-            .map(|(k, v)| (as_viy(k), v.as_str().unwrap().to_string()))
+            .filter(|(k, _)| before.contains_key(*k) || !is_rps_transcripts(k))
+            .map(|(k, v)| {
+                let text = v.as_str().unwrap();
+                let text = if before.contains_key(k) {
+                    text.to_string()
+                } else {
+                    without_transcripts_line(text)
+                };
+                (as_viy(k), text)
+            })
             .collect();
         assert_eq!(tree(&project), expected_files, "{name}");
         if case["exit"] == 0 {
             assert_eq!(result, Ok(()), "{name}");
-            let expected =
-                as_viy(case["stdout"].as_str().unwrap()).replace("$T", &root.to_string_lossy());
+            let expected = as_viy(case["stdout"].as_str().unwrap())
+                .replace("$T", &root.to_string_lossy())
+                .replace(
+                    "this project's transcripts and history",
+                    "this project's history",
+                );
             assert_eq!(String::from_utf8(out).unwrap(), expected, "{name}");
         } else {
             // rp fails with a Python traceback; viy with the path and the
@@ -117,7 +142,7 @@ fn an_rp_project_gets_viys_marker_and_rps_is_untouched() {
         2,
         "{files:?}"
     );
-    assert!(files.contains_key(".viy/transcripts/"));
+    assert_eq!(files[".viy/.gitignore"], "history\n");
 }
 
 /// Not in rp: without viy's config but with rp's, the hint is migrate.

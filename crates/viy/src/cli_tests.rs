@@ -121,18 +121,24 @@ fn subcommands_and_flags_are_rps() {
         .filter(|s| !s.is_hide_set())
         .map(clap::Command::get_name)
         .collect();
+    // rp's, the saved chats' commands as Codex's (kb d083): `chats` is
+    // resume, fork, archive, unarchive and delete, `ask` is exec.
     let rp_names: Vec<&str> = subcommands
         .iter()
-        .map(|s| s["name"].as_str().unwrap())
+        .flat_map(|s| match s["name"].as_str().unwrap() {
+            "chats" => vec!["resume", "fork", "archive", "unarchive", "delete"],
+            "ask" => vec!["exec"],
+            other => vec![other],
+        })
         .collect();
     assert_eq!(names, rp_names);
-    assert_eq!(names.len(), 19);
-    for (sub, rp) in cmd
-        .get_subcommands()
-        .filter(|s| !s.is_hide_set())
-        .zip(subcommands)
-    {
-        let name = sub.get_name();
+    assert_eq!(names.len(), 23);
+    for rp in subcommands {
+        let name = rp["name"].as_str().unwrap();
+        let Some(sub) = cmd.find_subcommand(name) else {
+            assert!(matches!(name, "chats" | "ask"), "{name}");
+            continue;
+        };
         assert_eq!(
             sub.get_about().unwrap().to_string(),
             viy_help(name, rp["help"].as_str().unwrap()),
@@ -152,6 +158,13 @@ fn subcommands_and_flags_are_rps() {
             .as_array()
             .unwrap()
             .iter()
+            // `chat -c` and `-r` are `viy resume` (kb d083).
+            .filter(|a| {
+                let resume = a["flags"]
+                    .as_array()
+                    .is_some_and(|f| f.iter().any(|x| x == "-c" || x == "-r"));
+                !(name == "chat" && resume)
+            })
             .map(|a| expected(name, a))
             .collect();
         assert_eq!(args, rp_args, "{name}");
@@ -186,14 +199,17 @@ fn namespace(cli: &Cli) -> Value {
             "background": a.background, "stop": a.stop, "status": a.status,
             "forget_key": a.forget_key,
         }),
+        // Without rp's -c and -r, which are `viy resume` (kb d083).
         Command::Chat(a) => json!({
-            "url": a.url, "system": a.system, "cont": a.cont, "resume": a.resume,
+            "url": a.url, "system": a.system, "cont": false, "resume": null,
         }),
-        Command::Chats(a) => json!({"words": a.words, "all": a.all}),
-        Command::Ask(a) => json!({
-            "prompt": a.prompt, "url": a.url, "system": a.system, "think": a.think,
-            "save": a.save,
-        }),
+        // Codex's commands; rp has nothing to compare them with.
+        Command::Resume(_)
+        | Command::Fork(_)
+        | Command::Archive(_)
+        | Command::Unarchive(_)
+        | Command::Delete(_)
+        | Command::Exec(_) => json!({}),
         Command::Trace(a) => json!({"what": a.what, "n": a.n.map(|n| n.to_string())}),
         Command::Toolbox(a) => json!({
             "toolbox_action": word(&a.action), "arg": a.arg, "glob": a.global,
@@ -223,11 +239,18 @@ fn deviation(argv: &[&str]) -> Option<i32> {
         ["up", "--timeout", "abc"] => Some(2),
         // rp lists `rows[-n:]` with n = -3; a count is not negative.
         ["boots", "-n", "-3"] => Some(2),
-        // argparse fills a `*` positional once, so words after an option
-        // are refused; clap collects them all.
-        ["chats", "foo", "-a", "bar"] => Some(0),
+        // rp's saved-chat commands are Codex's in viy (kb d083).
+        ["chats", ..] | ["ask", ..] => Some(2),
+        ["chat", rest @ ..] if rest.iter().any(|a| is_resume_flag(a)) => Some(2),
         _ => None,
     }
+}
+
+/// rp's `chat -c` / `-r` in any spelling argparse takes, abbreviations
+/// included.
+fn is_resume_flag(arg: &str) -> bool {
+    let long = |name: &str| arg.len() > 3 && name.starts_with(arg.split('=').next().unwrap_or(arg));
+    arg.starts_with("-c") || arg.starts_with("-r") || long("--continue") || long("--resume")
 }
 
 #[test]
@@ -257,13 +280,29 @@ fn command_lines_parse_as_rps() {
     }
 }
 
+/// Codex's `exec resume --last PROMPT`: with --last, a lone positional is
+/// the prompt.
 #[test]
-fn words_after_an_option_are_still_the_query() {
-    let cli = parse(["chats", "foo", "-a", "bar"].map(OsString::from)).unwrap();
-    assert_eq!(
-        namespace(&cli),
-        json!({"cmd": "chats", "words": ["foo", "bar"], "all": true})
-    );
+fn exec_resume_last_takes_its_positional_as_the_prompt() {
+    let cli = parse(["exec", "resume", "--last", "go on"].map(OsString::from)).unwrap();
+    let Command::Exec(args) = cli.command else {
+        panic!("{:?}", cli.command);
+    };
+    let Some(ExecCommand::Resume(r)) = &args.command else {
+        panic!("{args:?}");
+    };
+    assert_eq!(r.split(), (None, Some("go on")));
+    let cli = parse(["e", "--ephemeral", "hi"].map(OsString::from)).unwrap();
+    let Command::Exec(args) = cli.command else {
+        panic!("{:?}", cli.command);
+    };
+    assert!(args.ephemeral);
+    assert_eq!(args.prompt.as_deref(), Some("hi"));
+    let cli = parse(["delete", "Plan", "--force"].map(OsString::from)).unwrap();
+    assert!(matches!(
+        cli.command,
+        Command::Delete(DeleteArgs { force: true, .. })
+    ));
 }
 
 #[test]

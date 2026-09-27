@@ -2,7 +2,7 @@
 //! transcript viy draws and scrolls itself above a live region, as in
 //! Codex's default layout (kb d038); the input composer, streaming Markdown,
 //! questions, the footer, the terminal-escape sanitizer and the tab title;
-//! plus the plain renderer for pipes and `viy ask` (ROADMAP phase 3).
+//! plus the plain renderer for pipes and `viy exec` (ROADMAP phase 3).
 
 pub mod app;
 pub mod cells;

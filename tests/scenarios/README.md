@@ -13,7 +13,7 @@ Per scenario `<name>`:
   (`python3 -I tools/drive_rp.py tests/scenarios/<name>.json --record`). The
   pre-commit hook re-runs rp and fails if they changed (`--check`).
 - `<name>.rp.session.jsonl`: rp's session log for the same run (written by
-  `--record` too, absent when the scenario turns CHAT_AUTOSAVE off): one
+  `--record` too; viy saves every chat, kb d083): one
   event per line, without times, the session's id as `{ID}`, the run's
   paths and date as placeholders. `--check` compares it, keys in order.
 - `<name>.rp.context.txt`: the same requests as a readable model-context

@@ -306,6 +306,10 @@ pub struct Summary {
     pub created: Option<f64>,
     pub updated: Option<f64>,
     pub messages: usize,
+    /// A one-shot chat (`viy exec`), which the resume pickers leave out
+    /// unless asked (Codex's non-interactive sessions).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub exec: bool,
     /// Where a search found its terms in the chat's text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snippet: Option<String>,
@@ -427,6 +431,7 @@ fn summary_of(st: &State, path: &Path) -> Summary {
         created,
         updated,
         messages: st.messages.len(),
+        exec: st.meta.get("exec").is_some_and(truthy),
         snippet: None,
     }
 }
@@ -584,13 +589,20 @@ impl Sessions {
         Ok((log, st))
     }
 
-    /// A copy of session `id` to go on in when another chat has it open:
-    /// its history, project and model, named after it. The original is
-    /// only read.
-    pub fn copy(&self, id: &str, redact: Option<Redactor>) -> io::Result<(SessionLog, State)> {
+    /// A copy of session `id` to go on in, when another chat has it open
+    /// or for `viy exec fork`: its history, project and model, named after
+    /// it. The original is only read.
+    pub fn copy(
+        &self,
+        id: &str,
+        redact: Option<Redactor>,
+        exec: bool,
+    ) -> io::Result<(SessionLog, State)> {
         let st = replay(&self.path_of(id))?;
         let mut source = SessionLog::from_state(self, id, &st);
         source.redact = redact;
+        // The copy is one-shot when `viy exec fork` makes it.
+        source.exec = exec;
         let twin = source.fork(st.system.as_deref(), &st.messages, None)?;
         Ok((twin, st))
     }
@@ -692,48 +704,102 @@ impl Sessions {
         titled
     }
 
-    /// Rows matching an id, an id prefix or a search query. An exact id
-    /// wins.
-    pub fn resolve(&self, reference: &str, scope: Option<&str>) -> Vec<Summary> {
-        if reference.is_empty() {
-            return self.list(scope);
-        }
-        let exact = self.path_of(reference);
+    /// The chat `target` names, as Codex's session commands take one: its
+    /// id, else the exact name of one interactive chat.
+    pub fn lookup(&self, target: &str) -> Result<Summary, LookupError> {
+        let exact = self.path_of(target);
         if exact.is_file() {
-            return summary(&exact).into_iter().collect();
+            return summary(&exact).map_err(|_| LookupError::Missing);
         }
-        let by_prefix: Vec<Summary> = self
+        let named: Vec<Summary> = self
             .list(None)
             .into_iter()
-            .filter(|r| r.id.starts_with(reference))
+            .filter(|r| !r.exec && r.title == target)
             .collect();
-        if !by_prefix.is_empty() && reference.starts_with(|c: char| c.is_ascii_digit()) {
-            return by_prefix;
+        match named.as_slice() {
+            [] => Err(LookupError::Missing),
+            [one] => Ok(one.clone()),
+            [a, b, ..] => Err(LookupError::Ambiguous(a.id.clone(), b.id.clone())),
         }
-        self.search(reference, scope)
     }
 
-    /// Moves a session out of the way; recoverable from `trash/`.
-    pub fn trash(&self, id: &str) -> Result<(), SessionError> {
-        let trash = self.ensure_dir().join("trash");
-        match fs::create_dir(&trash) {
-            Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err(e.into()),
-            _ => {}
+    /// The archived sessions: `archived_sessions/` beside these, as
+    /// Codex's `ARCHIVED_SESSIONS_SUBDIR`.
+    pub fn archived(&self) -> Sessions {
+        Sessions {
+            dir: self.dir.with_file_name("archived_sessions"),
+            clock: Arc::clone(&self.clock),
         }
+    }
+
+    /// Codex's `archive`: session `id` out of the lists, kept whole.
+    pub fn archive(&self, id: &str) -> Result<(), SessionError> {
+        self.move_to(id, &self.archived())
+    }
+
+    /// Codex's `unarchive`: archived session `id` back in this store.
+    pub fn unarchive(&self, id: &str) -> Result<(), SessionError> {
+        let archived = self.archived();
+        archived.move_to(id, self)
+    }
+
+    /// Codex's `delete`: session `id` removed for good, its files with it.
+    pub fn delete(&self, id: &str) -> Result<(), SessionError> {
         let src = self.path_of(id);
         let held = File::open(&src)?;
         lock(&held, id)?;
-        fs::rename(&src, trash.join(src.file_name().unwrap_or_default()))?;
+        fs::remove_file(&src)?;
         drop(held);
-        match fs::remove_file(sidecar(&src)) {
-            Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e.into()),
-            _ => {}
-        }
+        remove_if_there(&sidecar(&src))?;
         let files = files_dir(&src);
         if files.is_dir() {
-            fs::rename(&files, trash.join(files.file_name().unwrap_or_default()))?;
+            fs::remove_dir_all(&files)?;
         }
         Ok(())
+    }
+
+    /// Moves session `id` (log, sidecar, files) to `to`; refused while a
+    /// chat holds it.
+    fn move_to(&self, id: &str, to: &Sessions) -> Result<(), SessionError> {
+        let src = self.path_of(id);
+        let held = File::open(&src)?;
+        lock(&held, id)?;
+        let dest = to.ensure_dir();
+        fs::rename(&src, dest.join(src.file_name().unwrap_or_default()))?;
+        drop(held);
+        // The sidecar is a cache; the next listing there builds its own.
+        remove_if_there(&sidecar(&src))?;
+        let files = files_dir(&src);
+        if files.is_dir() {
+            fs::rename(&files, dest.join(files.file_name().unwrap_or_default()))?;
+        }
+        Ok(())
+    }
+}
+
+/// Whether `text` has the shape of a session id (`20260718-135451-84e1`,
+/// rp's and viy's), as Codex tells a UUID from a name.
+pub fn is_session_id(text: &str) -> bool {
+    let b = text.as_bytes();
+    b.len() == 20
+        && b[8] == b'-'
+        && b[15] == b'-'
+        && b[..8].iter().chain(&b[9..15]).all(u8::is_ascii_digit)
+        && b[16..].iter().all(u8::is_ascii_hexdigit)
+}
+
+/// Why [`Sessions::lookup`] found no one chat.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LookupError {
+    Missing,
+    /// Two of the chats with that name.
+    Ambiguous(String, String),
+}
+
+fn remove_if_there(path: &Path) -> io::Result<()> {
+    match fs::remove_file(path) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
     }
 }
 
@@ -764,6 +830,8 @@ pub struct SessionLog {
     title_auto: bool,
     /// The model has already named this chat.
     title_by_model: bool,
+    /// A one-shot chat (`viy exec`).
+    exec: bool,
     redact: Option<Redactor>,
     created: Option<f64>,
     clock: Arc<dyn TimeProvider>,
@@ -792,6 +860,7 @@ impl SessionLog {
             title: None,
             title_auto: true,
             title_by_model: false,
+            exec: false,
             redact: None,
             created: None,
             clock: Arc::clone(&store.clock),
@@ -812,6 +881,7 @@ impl SessionLog {
         log.title = st.title.clone();
         log.title_auto = st.title_auto;
         log.title_by_model = st.title_by_model;
+        log.exec = st.meta.get("exec").is_some_and(truthy);
         log
     }
 
@@ -838,6 +908,12 @@ impl SessionLog {
 
     pub fn project(&self) -> Option<&str> {
         self.project.as_deref()
+    }
+
+    /// Marks a chat not yet written as one-shot (`viy exec`): the resume
+    /// pickers leave it out unless asked.
+    pub fn mark_exec(&mut self) {
+        self.exec = true;
     }
 
     /// Masks what goes to disk from now on (CHAT_REDACT).
@@ -879,6 +955,7 @@ impl SessionLog {
         // where the fork goes, so the fork does not ask for one.
         twin.title_by_model = twin.title.is_some();
         twin.redact = self.redact.clone();
+        twin.exec = self.exec;
         twin.sync(system, messages, true)?;
         if self.files_dir().is_dir() {
             // The copied history names the same writes, so /rewind still
@@ -939,13 +1016,16 @@ impl SessionLog {
         })?;
         let created = seconds(self.clock.now());
         self.created = Some(created);
-        let ev = json!({
+        let mut ev = json!({
             "t": "meta",
             "id": self.id,
             "created": created,
             "project": self.project,
             "model": self.model,
         });
+        if self.exec {
+            ev["exec"] = json!(true);
+        }
         self.append(ev)
     }
 
@@ -1034,6 +1114,7 @@ impl SessionLog {
             created: self.created,
             updated: Some(seconds(self.clock.now())),
             messages: self.persisted.len(),
+            exec: self.exec,
             snippet: None,
         };
         // The log is the record; the sidecar is only a cache.

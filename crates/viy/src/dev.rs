@@ -14,8 +14,8 @@
 //! directory, as drive_rp refuses them from outside its tree: a scenario
 //! never carries the files of the project it was started in.
 //!
-//! With CHAT_AUTOSAVE on, the chat is saved as a session in viy's sessions
-//! directory, as drive_rp saves rp's.
+//! The chat is saved as a session in viy's sessions directory, as every
+//! chat is (kb d083) and as drive_rp saves rp's.
 //!
 //! The server, the workspace (the working directory) and HOME and the XDG
 //! directories are the caller's: `tools/drive_rp.py --client viy` sets them

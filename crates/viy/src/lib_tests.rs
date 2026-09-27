@@ -65,7 +65,11 @@ fn viy_alone_is_the_chat() {
 
 #[test]
 fn commands_still_to_come_say_so() {
-    for (args, phase) in [(&["chat", "-c"][..], 3), (&["trace"], 7)] {
+    for (args, phase) in [
+        (&["resume", "--last"][..], 3),
+        (&["fork"], 3),
+        (&["trace"], 7),
+    ] {
         let (code, out, err) = run_capture(args);
         assert_eq!(code, 1, "{args:?}");
         assert_eq!(out, "");

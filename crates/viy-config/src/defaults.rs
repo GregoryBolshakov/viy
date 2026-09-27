@@ -52,10 +52,8 @@ pub const DEFAULTS: &[(&str, &str)] = &[
     // so this usually postpones compaction a long way. 0 disables it.
     ("TOOL_ELIDE_THRESHOLD", "0.6"),
     ("TOOL_ELIDE_KEEP_TURNS", "2"),
-    // Client-side. Every chat is logged as it happens to
-    // ~/.local/share/rpctl/sessions/ and can be resumed with rp chat -c / -r.
-    // 0 makes chats throwaway again (nothing written unless you /save).
-    ("CHAT_AUTOSAVE", "1"),
+    // rp's CHAT_AUTOSAVE is not kept: viy saves every chat, as Codex
+    // records every session (kb d083).
     // Client-side. After a chat's first reply, ask the model for a 3-6 word
     // title in the background (one short request, thinking off). A title you
     // set with /rename is never replaced. 0 keeps the first-message title.

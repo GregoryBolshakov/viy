@@ -1,5 +1,5 @@
 //! The plain renderer (ui-plan 10): line output for pipes, scripts and
-//! `viy ask`, with no live region, no colour and no escape sequence of its
+//! `viy exec`, with no live region, no colour and no escape sequence of its
 //! own: every string goes through the sanitizer (ui-plan 7) as on the
 //! screen, since stdout may still be a terminal. The answer is written as
 //! it streams, everything else on lines of its own; a question has nobody
@@ -23,7 +23,7 @@ pub struct Plain<W: Write> {
     mid_line: bool,
     /// The last char written, for the sanitizer's joiners.
     last: Option<char>,
-    /// The reasoning trace written too (`viy ask --think`).
+    /// The reasoning trace written too (`viy exec --think`).
     show_think: bool,
     /// The trace is being written.
     in_think: bool,

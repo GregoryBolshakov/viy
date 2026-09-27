@@ -29,7 +29,7 @@ Writes into DIR (default target/scenario-runs/<scenario>/<client>/): raw.jsonl
 format tools/parity/compare_requests.py reads), meta.json and output.txt
 (what the client printed), and session.jsonl: the chat's session log, one
 event per line, without times, the session's id as {ID} and the run's paths
-and date as placeholders (nothing when CHAT_AUTOSAVE is off). --record
+and date as placeholders. --record
 copies rp's requests.jsonl to tests/scenarios/<scenario>.rp.jsonl and its
 session.jsonl to <scenario>.rp.session.jsonl; --check compares with those
 recordings, the session's events with their keys in order. Scenario format:
@@ -108,8 +108,8 @@ def child(job):
         if not pathlib.Path(path).resolve().is_relative_to(job["base"]):
             raise SystemExit(f"drive_rp: an instruction file outside the run's tree "
                              f"would be sent: {path}")
-    if cfg.get("CHAT_AUTOSAVE", "1") == "1":
-        c.session = sessions.SessionLog.new(config.PROJECT_DIR, c.model)
+    # Every chat saved, as viy saves them (it has no CHAT_AUTOSAVE, kb d083).
+    c.session = sessions.SessionLog.new(config.PROJECT_DIR, c.model)
     # cmd_chat and repl() before the first prompt.
     c._report_instructions()
     c._discover_max_model_len()

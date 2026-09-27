@@ -82,17 +82,25 @@ pub enum Command {
     Tunnel(TunnelArgs),
     #[command(about = "interactive streaming chat")]
     Chat(ChatArgs),
+    // The saved chats, as Codex's session commands (kb d083).
     #[command(
-        about = "list, search, show, rename or remove saved chats",
-        after_help = "viy chats [QUERY]          list this project's chats, or search them\n\
-                      viy chats show REF         print a chat as Markdown\n\
-                      viy chats rename REF TITLE\n\
-                      viy chats rm REF           move a chat to the trash\n\
-                      REF is a chat id, an id prefix, or a search query."
+        about = "resume a saved chat (picker by default; use --last to continue the most recent)"
     )]
-    Chats(ChatsArgs),
-    #[command(about = "one-shot prompt (reads stdin if omitted)")]
-    Ask(AskArgs),
+    Resume(ResumeArgs),
+    #[command(about = "fork a saved chat (picker by default; use --last to fork the most recent)")]
+    Fork(ForkArgs),
+    #[command(about = "archive a saved chat by id or name")]
+    Archive(SessionArg),
+    #[command(about = "unarchive a saved chat by id or name")]
+    Unarchive(SessionArg),
+    #[command(about = "permanently delete a saved chat by id or name")]
+    Delete(DeleteArgs),
+    #[command(
+        about = "run viy non-interactively: one prompt, its answer on stdout",
+        visible_alias = "e",
+        args_conflicts_with_subcommands = true
+    )]
+    Exec(ExecArgs),
     #[command(
         about = "per-turn metrics, alarms and traces of viy chat",
         after_help = "viy trace                 recent turns: rounds, tool calls, time, alarms\n\
@@ -143,8 +151,12 @@ impl Command {
             Self::Shutdown(_) => "shutdown",
             Self::Tunnel(_) => "tunnel",
             Self::Chat(_) => "chat",
-            Self::Chats(_) => "chats",
-            Self::Ask(_) => "ask",
+            Self::Resume(_) => "resume",
+            Self::Fork(_) => "fork",
+            Self::Archive(_) => "archive",
+            Self::Unarchive(_) => "unarchive",
+            Self::Delete(_) => "delete",
+            Self::Exec(_) => "exec",
             Self::Trace(_) => "trace",
             Self::Toolbox(_) => "toolbox",
             Self::Model(_) => "model",
@@ -258,45 +270,114 @@ pub struct ChatArgs {
     pub url: Option<String>,
     #[arg(long, help = "initial system prompt")]
     pub system: Option<String>,
-    #[arg(
-        short = 'c',
-        long = "continue",
-        help = "continue the most recent chat in this project"
-    )]
-    pub cont: bool,
-    // `-r` alone is an empty query: pick from every chat.
-    #[arg(
-        short,
-        long,
-        value_name = "QUERY",
-        num_args = 0..=1,
-        default_missing_value = "",
-        help = "pick a saved chat to continue (optionally searching)"
-    )]
-    pub resume: Option<String>,
 }
 
-#[derive(Debug, Args)]
-pub struct ChatsArgs {
-    pub words: Vec<String>,
-    #[arg(short, long, help = "every project, not just this one")]
+/// Which saved chat a session command takes, as Codex's.
+#[derive(Debug, Default, Args)]
+pub struct Pick {
+    /// The chat's id, or its exact name; without one, a picker.
+    #[arg(value_name = "SESSION_ID")]
+    pub session_id: Option<String>,
+    #[arg(long, help = "the most recent chat, without the picker")]
+    pub last: bool,
+    #[arg(long, help = "chats of every project, not only this one")]
     pub all: bool,
 }
 
-#[derive(Debug, Args)]
-pub struct AskArgs {
-    pub prompt: Option<String>,
-    #[arg(long)]
-    pub url: Option<String>,
-    #[arg(long)]
-    pub system: Option<String>,
-    #[arg(long, help = "also print the reasoning trace")]
-    pub think: bool,
+#[derive(Debug, Default, Args)]
+pub struct ResumeArgs {
+    #[command(flatten)]
+    pub pick: Pick,
     #[arg(
         long,
-        help = "keep this exchange as a saved chat (viy chats, viy chat -c)"
+        help = "include one-shot chats (viy exec) in the picker and --last"
     )]
-    pub save: bool,
+    pub include_non_interactive: bool,
+    #[arg(long, help = "override the endpoint base URL")]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Default, Args)]
+pub struct ForkArgs {
+    #[command(flatten)]
+    pub pick: Pick,
+    #[arg(long, help = "override the endpoint base URL")]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct SessionArg {
+    /// The chat's id, or its exact name.
+    #[arg(value_name = "SESSION")]
+    pub session: String,
+}
+
+#[derive(Debug, Args)]
+pub struct DeleteArgs {
+    #[command(flatten)]
+    pub target: SessionArg,
+    #[arg(long, help = "delete without asking; SESSION must be an id")]
+    pub force: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ExecArgs {
+    #[command(subcommand)]
+    pub command: Option<ExecCommand>,
+    /// The prompt; read from stdin when omitted or `-`.
+    pub prompt: Option<String>,
+    #[arg(long, global = true, help = "override the endpoint base URL")]
+    pub url: Option<String>,
+    #[arg(long, global = true, help = "the system prompt")]
+    pub system: Option<String>,
+    #[arg(long, global = true, help = "also print the reasoning trace")]
+    pub think: bool,
+    #[arg(long, global = true, help = "run without saving the chat")]
+    pub ephemeral: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ExecCommand {
+    /// Resume a saved chat by id or name, or the most recent with --last,
+    /// and send the prompt.
+    Resume(ExecResumeArgs),
+    /// Fork a saved chat by id or name into a new one, and send the
+    /// prompt.
+    Fork(ExecForkArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ExecResumeArgs {
+    /// The chat's id or exact name; with --last, the prompt.
+    #[arg(value_name = "SESSION_ID")]
+    pub session_id: Option<String>,
+    /// The prompt; read from stdin when omitted or `-`.
+    pub prompt: Option<String>,
+    #[arg(long, help = "the most recent chat, one-shot ones included")]
+    pub last: bool,
+    #[arg(long, help = "chats of every project, not only this one")]
+    pub all: bool,
+}
+
+impl ExecResumeArgs {
+    /// (session, prompt): with --last, a lone positional is the prompt, as
+    /// Codex's `exec resume --last PROMPT`.
+    pub fn split(&self) -> (Option<&str>, Option<&str>) {
+        if self.last && self.prompt.is_none() {
+            (None, self.session_id.as_deref())
+        } else {
+            (self.session_id.as_deref(), self.prompt.as_deref())
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct ExecForkArgs {
+    /// The chat's id or exact name.
+    #[arg(value_name = "SESSION_ID")]
+    pub session_id: String,
+    /// The prompt; read from stdin when omitted or `-`.
+    pub prompt: Option<String>,
 }
 
 #[derive(Debug, Args)]

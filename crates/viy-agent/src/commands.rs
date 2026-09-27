@@ -234,6 +234,12 @@ pub fn history_items(messages: &[Value], earlier: &[Value]) -> Vec<HistoryItem> 
     items
 }
 
+/// The chats a user picks from: one-shot ones (`viy exec`) left out, as
+/// Codex's resume picker leaves out non-interactive sessions.
+fn interactive(rows: Vec<Summary>) -> Vec<Summary> {
+    rows.into_iter().filter(|r| !r.exec).collect()
+}
+
 /// A message's content as readable text, tool calls included (rp's
 /// `_render_content`).
 pub fn render_content(m: &Value) -> String {
@@ -504,7 +510,7 @@ impl Chat {
             return;
         };
         let scope = if all { None } else { self.project.as_deref() };
-        let rows = store.find(query, scope);
+        let rows = interactive(store.find(query, scope));
         if rows.is_empty() {
             let place = if all {
                 "anywhere"
@@ -541,16 +547,16 @@ impl Chat {
             notice(
                 ctx,
                 NoticeLevel::Warn,
-                "autosave_off",
-                "autosave is off (CHAT_AUTOSAVE=0); there is nothing to resume",
+                "not_saved",
+                "this chat is not saved; there is nothing to resume",
             );
             return;
         };
         self.checkpoint(ctx);
         let mut all = false;
-        let mut rows = store.find(query, self.project.as_deref());
+        let mut rows = interactive(store.find(query, self.project.as_deref()));
         if rows.is_empty() {
-            rows = store.find(query, None);
+            rows = interactive(store.find(query, None));
             all = !rows.is_empty();
             if all {
                 notice(
@@ -680,7 +686,7 @@ impl Chat {
                     ctx,
                     NoticeLevel::Info,
                     "rewind_points",
-                    "  (earlier turns were compacted; viy chats show has them)",
+                    "  (earlier turns were compacted; /resume draws them)",
                 );
             }
             let options = points

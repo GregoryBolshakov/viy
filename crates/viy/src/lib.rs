@@ -4,15 +4,15 @@
 //! package has not come yet say so and exit 1. The pod commands are in
 //! [`pods`], `viy shutdown` in [`shutdown`].
 
-pub mod ask;
-pub mod chats;
 pub mod cli;
 pub mod dev;
+pub mod exec;
 pub mod hardening;
 pub mod init;
 pub mod migrate;
 pub mod model;
 pub mod pods;
+pub mod sessions_cli;
 pub mod shutdown;
 
 use std::ffi::OsString;
@@ -111,7 +111,7 @@ pub fn run(
             };
         }
     };
-    match dispatch(&cli.command, out, terminal) {
+    match dispatch(&cli.command, out, err, terminal) {
         Ok(()) => 0,
         Err(failure) => {
             if let Some(message) = failure.message {
@@ -125,6 +125,7 @@ pub fn run(
 fn dispatch(
     command: &Command,
     out: &mut (dyn Write + Send),
+    err: &mut (dyn Write + Send),
     terminal: Terminal,
 ) -> Result<(), Failure> {
     let not_ported = |phase: u8| {
@@ -179,24 +180,28 @@ fn dispatch(
             };
             dev::run(args, &paths, base, out, terminal)
         }
-        Command::Chats(args) => {
+        Command::Exec(args) => {
             let paths = paths()?;
             let cfg = config(&paths)?;
-            chats::cmd_chats(
-                args,
-                &paths,
-                &cfg,
-                &cwd()?,
-                &mut std::io::stdin().lock(),
-                out,
-            )
+            exec::cmd_exec(args, &paths, cfg, &cwd()?, out, err)
         }
-        Command::Ask(args) => {
-            let paths = paths()?;
-            let cfg = config(&paths)?;
-            ask::cmd_ask(args, &paths, cfg, &cwd()?, out)
+        Command::Archive(target) => {
+            sessions_cli::cmd_archive(sessions_cli::Action::Archive, target, &paths()?, out)
         }
-        Command::Chat(_) => not_ported(3),
+        Command::Unarchive(target) => {
+            sessions_cli::cmd_archive(sessions_cli::Action::Unarchive, target, &paths()?, out)
+        }
+        Command::Delete(args) => {
+            use std::io::IsTerminal;
+            let asking = sessions_cli::Asking {
+                can_ask: terminal.stdin_tty && std::io::stderr().is_terminal(),
+                input: &mut std::io::stdin().lock(),
+                err,
+            };
+            sessions_cli::cmd_delete(args, &paths()?, asking, out)
+        }
+        // They open the chat, which comes with WP 3.13.
+        Command::Chat(_) | Command::Resume(_) | Command::Fork(_) => not_ported(3),
         Command::Trace(_) | Command::Toolbox(_) => not_ported(7),
     }
 }

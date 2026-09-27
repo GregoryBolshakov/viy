@@ -197,7 +197,11 @@ fn second_writer_is_refused() {
         Err(SessionError::Busy(_))
     ));
     assert!(matches!(
-        s.sessions.trash(log.id()),
+        s.sessions.archive(log.id()),
+        Err(SessionError::Busy(_))
+    ));
+    assert!(matches!(
+        s.sessions.delete(log.id()),
         Err(SessionError::Busy(_))
     ));
     log.close("exit").unwrap();
@@ -228,7 +232,7 @@ fn a_copy_of_a_held_chat_keeps_its_project_and_model() {
     let mut log = s.sessions.create(Some(&s.project()), Some("m"));
     let msgs = [user("held"), assistant("elsewhere")];
     log.sync(Some("sys"), &msgs, false).unwrap();
-    let (mut twin, st) = s.sessions.copy(log.id(), None).unwrap();
+    let (mut twin, st) = s.sessions.copy(log.id(), None, false).unwrap();
     twin.close("exit").unwrap();
     assert_eq!(st.messages, msgs);
     let copied = replay(twin.path()).unwrap();
@@ -339,21 +343,99 @@ fn stale_sidecar_is_rebuilt() {
     assert!(side.exists());
 }
 
+/// rp's `test_trash_moves_the_log`, as Codex's archive: the log leaves
+/// the lists for `archived_sessions/`, and comes back.
 #[test]
-fn trash_moves_the_log() {
+fn archive_moves_the_log_and_unarchive_brings_it_back() {
     let s = store();
     let mut log = s.new_log();
     log.sync(None, &[user("a")], false).unwrap();
     log.close("exit").unwrap();
-    s.sessions.trash(log.id()).unwrap();
+    fs::create_dir(log.files_dir()).unwrap();
+    s.sessions.archive(log.id()).unwrap();
     assert_eq!(s.sessions.list(None), []);
-    assert!(
-        s.sessions
-            .dir()
-            .join("trash")
-            .join(log.path().file_name().unwrap())
-            .exists()
-    );
+    let archived = s.sessions.archived();
+    assert_eq!(archived.dir(), s.root.join("archived_sessions"));
+    assert_eq!(archived.list(None)[0].id, log.id());
+    assert!(files_dir(&archived.path_of(log.id())).is_dir());
+    s.sessions.unarchive(log.id()).unwrap();
+    assert_eq!(archived.list(None), []);
+    assert_eq!(s.sessions.list(None)[0].id, log.id());
+    assert!(log.files_dir().is_dir());
+}
+
+#[test]
+fn delete_removes_the_log_and_its_files() {
+    let s = store();
+    let mut log = s.new_log();
+    log.sync(None, &[user("a")], false).unwrap();
+    log.close("exit").unwrap();
+    fs::create_dir(log.files_dir()).unwrap();
+    s.sessions.delete(log.id()).unwrap();
+    assert_eq!(s.sessions.list(None), []);
+    assert!(!log.path().exists());
+    assert!(!sidecar(log.path()).exists());
+    assert!(!log.files_dir().exists());
+}
+
+#[test]
+fn lookup_takes_an_id_or_the_exact_name_of_one_interactive_chat() {
+    let s = store();
+    let mut a = s.new_log();
+    a.sync(None, &[user("a")], false).unwrap();
+    a.rename("Plan").unwrap();
+    a.close("exit").unwrap();
+    assert_eq!(s.sessions.lookup(a.id()).unwrap().id, a.id());
+    assert_eq!(s.sessions.lookup("Plan").unwrap().id, a.id());
+    assert_eq!(s.sessions.lookup("plan"), Err(LookupError::Missing));
+    let mut b = s.new_log();
+    b.mark_exec();
+    b.sync(None, &[user("b")], false).unwrap();
+    b.rename("Plan").unwrap();
+    b.close("exec").unwrap();
+    // A one-shot chat answers to its id only.
+    assert_eq!(s.sessions.lookup("Plan").unwrap().id, a.id());
+    assert_eq!(s.sessions.lookup(b.id()).unwrap().id, b.id());
+    assert!(s.sessions.lookup(b.id()).unwrap().exec);
+    let mut c = s.new_log();
+    c.sync(None, &[user("c")], false).unwrap();
+    c.rename("Plan").unwrap();
+    c.close("exit").unwrap();
+    assert!(matches!(
+        s.sessions.lookup("Plan"),
+        Err(LookupError::Ambiguous(_, _))
+    ));
+}
+
+#[test]
+fn session_ids_have_one_shape() {
+    let s = store();
+    let log = s.new_log();
+    assert!(is_session_id(log.id()), "{}", log.id());
+    for not in [
+        "Plan",
+        "20260718-135451-84e",
+        "20260718-135451-84eg",
+        "2026103a-135451-84e1",
+    ] {
+        assert!(!is_session_id(not), "{not}");
+    }
+}
+
+#[test]
+fn a_one_shot_chat_is_marked_in_its_log_and_sidecar() {
+    let s = store();
+    let mut log = s.new_log();
+    log.mark_exec();
+    log.sync(None, &[user("a")], false).unwrap();
+    log.close("exec").unwrap();
+    assert_eq!(read_events(log.path()).unwrap()[0]["exec"], true);
+    let side: Value = serde_json::from_slice(&fs::read(sidecar(log.path())).unwrap()).unwrap();
+    assert_eq!(side["exec"], true);
+    let (reopened, _) = s.sessions.open(log.id()).unwrap();
+    drop(reopened);
+    fs::remove_file(sidecar(log.path())).unwrap();
+    assert!(s.sessions.list(None)[0].exec);
 }
 
 #[test]
@@ -605,8 +687,9 @@ fn run_case(case: &Value) -> Value {
                 fs::write(dir.join("1"), "before").unwrap();
             }
             "unlink_sidecar" => fs::remove_file(sidecar(logs[&log_name].path())).unwrap(),
+            // rp's trash is Codex's archive here (kb d083).
             "trash" => {
-                r = match store.trash(logs[&log_name].id()) {
+                r = match store.archive(logs[&log_name].id()) {
                     Ok(()) => json!("ok"),
                     Err(SessionError::Busy(_)) => json!("busy"),
                     Err(e) => panic!("trash: {e}"),
@@ -656,23 +739,14 @@ fn run_case(case: &Value) -> Value {
         .iter()
         .map(|(q, sc)| store.search(q, sc.as_deref()))
         .collect();
-    let resolves: Vec<Vec<Summary>> = pairs("resolve")
-        .iter()
-        .map(|(r, sc)| {
-            let r = names
-                .iter()
-                .find(|(_, n)| format!("@{n}") == *r)
-                .map_or(r.clone(), |(id, _)| id.clone());
-            store.resolve(&r, sc.as_deref())
-        })
-        .collect();
     let got = json!({
         "results": results,
         "files": files,
-        "trash": listing(&store.dir().join("trash")),
+        // A folder not there is an empty one: rp makes its trash before
+        // finding the chat busy, viy its archive only to move a chat in.
+        "trash": listing(store.archived().dir()).unwrap_or_default(),
         "list": lists,
         "search": searches,
-        "resolve": resolves,
     });
     let mut text = got.to_string().replace(&t, "$T");
     for (id, name) in &names {
@@ -717,10 +791,9 @@ fn every_case_equals_rpctl() {
         let want = without_raw(&json!({
             "results": case["results"],
             "files": case["files"],
-            "trash": case["trash"],
+            "trash": if case["trash"].is_null() { json!([]) } else { case["trash"].clone() },
             "list": case["list"],
             "search": case["search"],
-            "resolve": case["resolve"],
         }));
         let got = run_case(case);
         assert_eq!(got, want, "{name}");
@@ -847,8 +920,8 @@ mod rp_and_back {
         let (mut log, st) = s.sessions.open(id).unwrap();
         assert_eq!(st.messages, three);
         log.close("exit").unwrap();
-        s.sessions.trash(id).unwrap();
-        s.sessions.trash(copy).unwrap();
+        s.sessions.archive(id).unwrap();
+        s.sessions.archive(copy).unwrap();
         assert_eq!(rp("list", json!({"dir": dir, "scope": null})), json!([]));
     }
 

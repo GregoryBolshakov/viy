@@ -471,11 +471,10 @@ async fn hosted_backend_gets_no_vllm_fields() {
 }
 
 #[tokio::test]
-async fn no_title_without_autosave_or_an_answer() {
-    let mut rig = titled(
-        json!([{"stream": [{"content": "hi"}]}]),
-        &[("CHAT_AUTOSAVE", "0")],
-    );
+async fn no_title_without_a_session_or_an_answer() {
+    // `viy exec --ephemeral`: nowhere to keep a title, so none is asked for.
+    let mut rig = titled(json!([{"stream": [{"content": "hi"}]}]), &[]);
+    rig.turns.with_chat(|c| *lock(&c.session) = None);
     rig.send("hello").await;
     assert_eq!(rig.sent().len(), 1);
     let mut rig = titled(json!([{"stream": [{"finish": "length"}]}]), &[]);
@@ -890,7 +889,7 @@ async fn new_keeps_the_old_chat() {
     assert_eq!(
         d.said(),
         [
-            "saved 'first chat' -- viy chat -r to come back to it",
+            "saved 'first chat' -- viy resume to come back to it",
             "new chat"
         ]
     );
@@ -953,11 +952,10 @@ async fn rename_command() {
 }
 
 #[tokio::test]
-async fn without_autosave_there_is_no_session() {
-    let mut d = direct(
-        json!([{"stream": [{"content": "hi"}]}]),
-        &[("CHAT_AUTOSAVE", "0")],
-    );
+async fn a_chat_without_a_session_keeps_nothing() {
+    // `viy exec --ephemeral`.
+    let mut d = direct(json!([{"stream": [{"content": "hi"}]}]), &[]);
+    *lock(&d.chat.session) = None;
     d.send("hello").await;
     assert_eq!(d.chat.session_id(), None);
     assert_eq!(d.store.list(None), []);
@@ -966,8 +964,8 @@ async fn without_autosave_there_is_no_session() {
     assert_eq!(
         d.said(),
         [
-            "autosave is off (CHAT_AUTOSAVE=0); nothing to name",
-            "autosave is off (CHAT_AUTOSAVE=0); there is nothing to fork"
+            "this chat is not saved; nothing to name",
+            "this chat is not saved; there is nothing to fork"
         ]
     );
 }

@@ -4,11 +4,13 @@
 //! (`_context_state`, the calibration after a turn, `last_stats`) and the
 //! max-model-len discovery (`_discover_max_model_len`), done before the
 //! first request a ready server gets (kb d041). [`ChatTurns`] runs it for
-//! the engine. With autosave on, the chat keeps its session log in line
-//! with the history (rpctl's `_checkpoint`): the user's message is on disk
-//! before the reply, and the turn when it ends, however it ends. `/new`,
-//! `/resume`, `/fork` and `/rename` are its methods here; their commands
-//! come with WP 3.12.
+//! the engine. A chat given a session store always keeps its session log
+//! in line with the history, as Codex records every session (rpctl's
+//! `_checkpoint`; rp's CHAT_AUTOSAVE is not kept, kb d083): the user's
+//! message is on disk before the reply, and the turn when it ends, however
+//! it ends. Only `viy exec --ephemeral` runs a chat without one. `/new`,
+//! `/resume`, `/fork` and `/rename` are its methods here, their commands in
+//! `commands`.
 //!
 //! A turn sends the system prompt, the history and the user's message; a
 //! reply without an answer (reasoning only, or a tool call) is asked for
@@ -71,6 +73,7 @@ use crate::payload::title_pair;
 use crate::payload::with_notice;
 use crate::payload::without_reasoning;
 use crate::prompt::SystemPrompt;
+use crate::sessions;
 use crate::sessions::SessionError;
 use crate::sessions::SessionLog;
 use crate::sessions::Sessions;
@@ -112,10 +115,9 @@ pub struct Chat {
     guide_on: bool,
     /// SEARCH_MAX_ROUNDS: tool rounds a turn may take.
     max_rounds: u64,
-    /// CHAT_AUTO_TITLE, and CHAT_AUTOSAVE: the title is the session's.
+    /// CHAT_AUTO_TITLE; the title is the session's, so a chat without one
+    /// gets none.
     auto_title: bool,
-    /// CHAT_AUTOSAVE.
-    autosave: bool,
     /// Every chat's log, and the project this chat is filed under.
     sessions: Option<Sessions>,
     project: Option<String>,
@@ -144,8 +146,8 @@ pub struct Chat {
     inflight: Option<Vec<Value>>,
     /// Images for the next message (`/image`): data URIs or URLs.
     pending_images: Vec<String>,
-    /// Why the session ends when the chat closes: `exit`, or `ask` for
-    /// `viy ask --save`.
+    /// Why the session ends when the chat closes: `exit`, or `exec` for
+    /// `viy exec`.
     end_reason: &'static str,
     /// What the round in progress has streamed of its answer.
     partial: String,
@@ -191,8 +193,7 @@ impl Chat {
                 .trim()
                 .parse()
                 .map_err(|_| format!("SEARCH_MAX_ROUNDS={max_rounds:?} is not a number"))?,
-            auto_title: on("CHAT_AUTO_TITLE", "1") && on("CHAT_AUTOSAVE", "1"),
-            autosave: on("CHAT_AUTOSAVE", "1"),
+            auto_title: on("CHAT_AUTO_TITLE", "1"),
             sessions: None,
             project: None,
             session: Arc::default(),
@@ -293,13 +294,11 @@ impl Chat {
         }
     }
 
-    /// Keeps this chat in `store`, filed under `project`: with autosave
-    /// on, a new session log, written from the first message on.
+    /// Keeps this chat in `store`, filed under `project`: a new session
+    /// log, written from the first message on.
     pub fn use_sessions(&mut self, store: Sessions, project: Option<String>) {
-        if self.autosave {
-            let log = store.create(project.as_deref(), Some(&self.settings.model));
-            self.install(log);
-        }
+        let log = store.create(project.as_deref(), Some(&self.settings.model));
+        self.install(log);
         self.sessions = Some(store);
         self.project = project;
     }
@@ -309,8 +308,8 @@ impl Chat {
         self.system = system;
     }
 
-    /// Ends the session with `reason` when the chat closes (rp's
-    /// `_end_session("ask")` for `viy ask`).
+    /// Ends the session with `reason` when the chat closes: `exec` for
+    /// `viy exec`, where rp's ask said `ask`.
     pub fn end_with(&mut self, reason: &'static str) {
         self.end_reason = reason;
     }
@@ -400,7 +399,7 @@ impl Chat {
                 ctx,
                 NoticeLevel::Info,
                 "session_saved",
-                format!("saved '{title}' -- viy chat -r to come back to it"),
+                format!("saved '{title}' -- viy resume to come back to it"),
             );
         }
         self.messages.clear();
@@ -445,7 +444,7 @@ impl Chat {
                 if ctx.ask(&question).await != Answer::Yes {
                     return false;
                 }
-                store.copy(id, self.redactor.clone())
+                store.copy(id, self.redactor.clone(), false)
             }
             Err(SessionError::Io(e)) => Err(e),
             Ok(opened) => Ok(opened),
@@ -463,14 +462,38 @@ impl Chat {
             }
         };
         self.end_session(ctx, "switch").await;
+        self.continue_in(log, st);
+        self.announce_label(ctx, None);
+        true
+    }
+
+    /// Goes on in `log`, opened with its state `st`: its history becomes
+    /// this chat's (`/resume`, `viy exec resume`).
+    pub fn continue_in(&mut self, log: SessionLog, st: sessions::State) {
         self.install(log);
+        self.load_history(st);
+    }
+
+    /// Takes `st`'s history without its log: `viy exec --ephemeral` on a
+    /// saved chat reads it and keeps nothing.
+    pub fn load_history(&mut self, st: sessions::State) {
         self.system = st.system;
         self.messages = st.messages;
         self.earlier = st.earlier;
         self.today = crate::prompt::today();
         self.inflight = None;
-        self.announce_label(ctx, None);
-        true
+    }
+
+    /// Marks this chat, not yet written, as one-shot (`viy exec`).
+    pub fn mark_exec(&mut self) {
+        if let Some(log) = lock(&self.session).as_mut() {
+            log.mark_exec();
+        }
+    }
+
+    /// The redactor CHAT_REDACT asks for, for a log opened outside.
+    pub fn redactor(&self) -> Option<Redactor> {
+        self.redactor.clone()
     }
 
     /// `/rename [title]`: names the chat, or says its name and id.
@@ -482,8 +505,8 @@ impl Chat {
             notice(
                 ctx,
                 NoticeLevel::Warn,
-                "autosave_off",
-                "autosave is off (CHAT_AUTOSAVE=0); nothing to name",
+                "not_saved",
+                "this chat is not saved; nothing to name",
             );
             return;
         };
@@ -529,8 +552,8 @@ impl Chat {
             notice(
                 ctx,
                 NoticeLevel::Warn,
-                "autosave_off",
-                "autosave is off (CHAT_AUTOSAVE=0); there is nothing to fork",
+                "not_saved",
+                "this chat is not saved; there is nothing to fork",
             );
             return;
         }

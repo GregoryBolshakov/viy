@@ -100,6 +100,9 @@ fn the_layers_merge_as_rpctl_merges_them() {
             .unwrap()
             .iter()
             .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
+            // rp's default only: no case sets it, and viy always saves
+            // chats, as Codex (kb d083).
+            .filter(|(k, _)| k != "CHAT_AUTOSAVE")
             .collect();
         if name == "global_file_syntax" {
             // Python's strip() removes U+001F, Rust's trim() keeps it
@@ -120,10 +123,13 @@ fn the_layers_merge_as_rpctl_merges_them() {
     }
 }
 
+/// rpctl's 111 keys but CHAT_AUTOSAVE: viy always saves chats, as Codex
+/// (kb d083).
 #[test]
-fn defaults_are_rpctls_111_keys() {
-    assert_eq!(DEFAULTS.len(), 111);
-    assert_eq!(Config::defaults().iter().count(), 111);
+fn defaults_are_rpctls_keys_but_chat_autosave() {
+    assert_eq!(DEFAULTS.len(), 110);
+    assert_eq!(Config::defaults().iter().count(), 110);
+    assert!(Config::defaults().get("CHAT_AUTOSAVE").is_none());
 }
 
 #[test]

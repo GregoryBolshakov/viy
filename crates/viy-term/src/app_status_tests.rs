@@ -294,3 +294,26 @@ fn ctrl_c_while_a_line_is_admitted_gives_it_back() {
     assert_eq!(f.app.composer.text(), "hello");
     assert!(!f.screen().iter().any(|l| l.contains("interrupted")));
 }
+
+/// A draft taller than the screen shows the rows around the cursor: the
+/// footer stays (a pasted 268 KB message pushed it off, seen live).
+#[test]
+fn a_tall_draft_leaves_the_footer_on_screen() {
+    let mut f = fixture(60, 10);
+    f.app.event(EventMsg::EffortChanged(EffortChangedEvent {
+        effort: "medium".into(),
+    }));
+    let draft: Vec<String> = (1..=100).map(|n| format!("line {n}")).collect();
+    f.app.composer.set_text(&draft.join("\n"));
+    let screen = f.screen();
+    assert_eq!(
+        screen.last().map(String::as_str),
+        Some("effort medium"),
+        "{screen:#?}"
+    );
+    // The cursor, at the end, is on screen with the last rows.
+    assert!(
+        screen.iter().any(|l| l.contains("line 100▮")),
+        "{screen:#?}"
+    );
+}

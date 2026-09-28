@@ -831,12 +831,23 @@ impl App {
     {
         let size = term.size();
         let width = size.width.max(4);
-        let (input_rows, input_cursor) = self.composer.layout(width - 2);
+        let (mut input_rows, mut input_cursor) = self.composer.layout(width - 2);
         // The live region may take all but two rows; the transcript the
         // rest. The question box keeps its rows longest, then the queued
         // messages and the popup; of the activity, the answer's oldest
         // rows give way first, then the activity line above them.
         let room = usize::from(size.height.saturating_sub(2)).max(2);
+        // A draft taller than that shows the rows around the cursor, as
+        // Codex's composer scrolls, so the footer stays on screen (a pasted
+        // 268 KB message pushed it off, seen live 2026-07-18).
+        let cap = room.saturating_sub(1).max(1);
+        if input_rows.len() > cap {
+            let at = usize::from(input_cursor.y);
+            let start = (at + 1).saturating_sub(cap).min(input_rows.len() - cap);
+            input_rows.drain(..start);
+            input_rows.truncate(cap);
+            input_cursor.y = u16::try_from(at - start).unwrap_or(0);
+        }
         let fixed = input_rows.len() + 1;
         let (question, whole) =
             self.questions

@@ -642,3 +642,50 @@ async fn the_plain_chat_waits_for_a_pod_command() {
     let out = String::from_utf8(out).unwrap();
     assert!(out.contains("vllm:      ready"), "{out}");
 }
+
+#[test]
+fn the_footer_names_the_gpu_short() {
+    assert_eq!(
+        short_gpu("NVIDIA RTX PRO 6000 Blackwell Server Edition, 12.0"),
+        "RTX PRO 6000 Blackwell Server Edition"
+    );
+    assert_eq!(short_gpu("NVIDIA A100-SXM4-80GB, 8.0"), "A100-SXM4-80GB");
+    assert_eq!(short_gpu("H100"), "H100");
+}
+
+/// vLLM's server closes an idle kept-alive connection after 5 s, and a
+/// probe can go out on one just closed (seen live 2026-07-18): a probe
+/// that got no answer is asked once more before the pod counts as not
+/// answering, and a line goes through.
+#[tokio::test(start_paused = true)]
+async fn a_probe_lost_on_a_closed_connection_is_asked_again() {
+    let probes = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&probes);
+    let mut rig = rig(Some(tracked()), move |r| {
+        if r.url.ends_with("/health") && seen.fetch_add(1, Ordering::SeqCst).is_multiple_of(2) {
+            return Reply::Fail(viy_http::HttpError::Network(
+                "connection closed before message completed".into(),
+            ));
+        }
+        vllm(r).unwrap_or_else(|| no_runpod(r))
+    });
+    rig.pod_state(PodState::Ready).await;
+    let events = rig.line("what is 2+2").await;
+    assert!(refused(&events).is_none(), "{events:#?}");
+    // A pod that does not answer twice is not answering.
+    let mut down = rig_down();
+    let events = down.line("what is 2+2").await;
+    assert_eq!(
+        refused(&events).unwrap().message,
+        "the pod is not answering: /status says why, /up brings it back."
+    );
+}
+
+fn rig_down() -> Rig {
+    rig(Some(tracked()), |r| {
+        if r.url.ends_with("/health") {
+            return Reply::Fail(viy_http::HttpError::Network("connection refused".into()));
+        }
+        no_runpod(r)
+    })
+}

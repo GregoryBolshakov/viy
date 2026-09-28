@@ -251,14 +251,25 @@ impl PodServer {
 
     /// Whether vLLM at `base` answers `/health`, as `viy status` asks it.
     async fn healthy(&self, base: &str) -> bool {
-        let request = Request::new(Method::GET, format!("{base}/health"))
-            .header("User-Agent", user_agent::RP_REQUESTS)
-            .header("Accept", "*/*")
-            .timeouts(HEALTH_TIMEOUT, HEALTH_TIMEOUT);
-        matches!(
-            viy_http::send(self.parts.http.as_ref(), request).await,
-            Ok(response) if matches!(response.status, 200 | 401)
-        )
+        let request = || {
+            Request::new(Method::GET, format!("{base}/health"))
+                .header("User-Agent", user_agent::RP_REQUESTS)
+                .header("Accept", "*/*")
+                .timeouts(HEALTH_TIMEOUT, HEALTH_TIMEOUT)
+        };
+        // Asked twice when the first never got an answer: vLLM's server
+        // closes an idle kept-alive connection after 5 s, and through the
+        // tunnel a probe can go out on one it has just closed (seen live
+        // 2026-07-18, every other probe 5 s apart); the second goes on a
+        // new connection.
+        for _ in 0..2 {
+            match viy_http::send(self.parts.http.as_ref(), request()).await {
+                Ok(response) => return matches!(response.status, 200 | 401),
+                Err(viy_http::HttpError::Timeout) => return false,
+                Err(_) => {}
+            }
+        }
+        false
     }
 
     /// The pod's status as the footer shows it.
@@ -324,7 +335,7 @@ impl PodServer {
             .iter()
             .rev()
             .find(|row| row["pod_id"].as_str() == Some(pod_id))
-            .and_then(|row| row["gpu"].as_str().map(str::to_string))?;
+            .and_then(|row| row["gpu"].as_str().map(short_gpu))?;
         *lock(&self.gpu) = Some((pod_id.to_string(), gpu.clone()));
         Some(gpu)
     }
@@ -666,6 +677,14 @@ impl PodServer {
             job.presses.send_modify(|n| *n += 1);
         }
     }
+}
+
+/// A boot record's GPU as the footer names it: without the vendor and the
+/// compute capability after the comma ("NVIDIA RTX PRO 6000 Blackwell
+/// Server Edition, 12.0" is "RTX PRO 6000 Blackwell Server Edition").
+fn short_gpu(name: &str) -> String {
+    let name = name.split(',').next().unwrap_or(name).trim();
+    name.strip_prefix("NVIDIA ").unwrap_or(name).to_string()
 }
 
 /// The state `holder` of the pod lock puts the pod in, unless it is this

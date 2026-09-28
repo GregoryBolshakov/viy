@@ -120,3 +120,73 @@ fn the_chat_opens_without_a_pod_keeps_the_draft_and_notices_one_brought_up() {
     });
     assert!(pty.cooked());
 }
+
+/// What `viy shutdown` and `/shutdown` do to an open chat when they fire:
+/// SIGTERM. The chat saves, ends its session log and gives the terminal
+/// back (rp chat's `_exit_on_signal`). Its log is in the test's own home.
+#[test]
+fn sigterm_saves_and_closes_the_chat() {
+    let mock = MockLlm::start(&json!({
+        "name": "chat-sigterm",
+        "max_model_len": 65536,
+        "responses": [{"stream": [{"content": "the answer is 4"}]}],
+    }))
+    .unwrap();
+    let port = mock.uri().rsplit(':').next().unwrap().to_string();
+    let scratch = ScratchDir::new("chat-sigterm").unwrap();
+    let home = scratch.path().join("home");
+    let project = scratch.path().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let paths = viy_config::Paths::under(&home);
+    std::fs::create_dir_all(paths.pod_state_dir()).unwrap();
+    std::fs::write(
+        paths.pod_state_file(),
+        json!({"pod_id": "pod111", "tunnel_only": true}).to_string(),
+    )
+    .unwrap();
+    let pty = Pty::open(30, 100).unwrap();
+    let mut child = pty
+        .spawn(
+            Command::new(env!("CARGO_BIN_EXE_viy"))
+                .current_dir(&project)
+                .env("HOME", &home)
+                .env_remove("XDG_CONFIG_HOME")
+                .env_remove("XDG_DATA_HOME")
+                .env_remove("XDG_STATE_HOME")
+                .env_remove("RUNPOD_API_KEY")
+                .env_remove("VLLM_BASE_URL")
+                .env_remove("DISPLAY")
+                .env_remove("WAYLAND_DISPLAY")
+                .env("VLLM_API_KEY", "fake-key")
+                .env("TUNNEL", "1")
+                .env("TUNNEL_LOCAL_PORT", &port)
+                .env("CHAT_AUTO_TITLE", "0"),
+        )
+        .unwrap();
+    pty.wait_for("the input box", |s| {
+        s.alternate_screen() && s.contents().contains("› ")
+    });
+    pty.send(b"what is 2+2").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    pty.send(b"\r").unwrap();
+    pty.wait_for("the answer", |s| s.contents().contains("the answer is 4"));
+    let pid = libc::pid_t::try_from(child.id()).unwrap();
+    // SAFETY: a plain signal to our own child.
+    assert_eq!(unsafe { libc::kill(pid, libc::SIGTERM) }, 0);
+    let status = wait_exit(&mut child).unwrap();
+    assert!(status.success(), "{status}");
+    pty.wait_for("the terminal given back", |s| !s.alternate_screen());
+    assert!(pty.cooked());
+    let log = std::fs::read_dir(paths.sessions_dir())
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .find(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .unwrap();
+    let last = std::fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .last()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .unwrap();
+    assert_eq!(last["t"], "end", "{last}");
+}

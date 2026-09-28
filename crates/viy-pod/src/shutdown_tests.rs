@@ -182,6 +182,56 @@ async fn finds_chats_saves_them_and_kills_stuck_ones() {
     }
 }
 
+/// Not in rp's tests: viy's chats opened bare and with `resume` and
+/// `fork` (kb d067, d083) are found, told to save and closed, their
+/// command lines exactly as the real ones (nothing after a bare `viy`).
+#[tokio::test]
+async fn viys_bare_resume_and_fork_chats_are_found_and_closed() {
+    let dir = ScratchDir::new("shutdown-viy-chats").unwrap();
+    let spawn = |args: &[&str], out: &str| {
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(r#"trap 'echo saved > "$OUT"; exit 0' TERM; while :; do sleep 0.1; done"#)
+            .arg(dir.path().join("viy"))
+            .args(args)
+            .env("OUT", dir.path().join(out))
+            .spawn()
+            .unwrap()
+    };
+    let mut chats = [
+        spawn(&[], "bare.out"),
+        spawn(&["resume", "--last"], "resume.out"),
+        spawn(&["fork", "20260718-135451-84e1"], "fork.out"),
+    ];
+    let mut exec = FakeChat::spawn(dir.path(), "viy", "exec");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let found = find_chats();
+    let pids: Vec<u32> = chats.iter().map(std::process::Child::id).collect();
+    for pid in &pids {
+        assert!(found.contains(pid), "{pid} not in {found:?}");
+    }
+    assert!(!found.contains(&exec.id()), "{found:?}");
+    let done = close_chats(&pids, Duration::from_secs(2)).await;
+    for chat in &mut chats {
+        chat.wait().unwrap();
+    }
+    exec.0.kill().unwrap();
+    assert_eq!(
+        done,
+        Closed {
+            closed: pids.clone(),
+            killed: vec![],
+            failed: vec![],
+        }
+    );
+    for out in ["bare.out", "resume.out", "fork.out"] {
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(out)).unwrap(),
+            "saved\n"
+        );
+    }
+}
+
 #[tokio::test]
 async fn a_pid_not_ours_is_a_failure_and_a_gone_one_is_closed() {
     // pid 1 is init's: SIGTERM is refused.

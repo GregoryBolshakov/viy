@@ -69,40 +69,10 @@ pub fn run(
     let deadline = {
         let printer = Printer::new(&mut *out, terminal, &exec);
         let report = |r| printer.report(r);
-        let say = |text: &str| {
-            report(Report::Notice(viy_pod::notice::Notice::new(
-                Tone::Plain,
-                text,
-            )))
-        };
-        if args.cancel {
-            runtime
-                .block_on(shutdown::cancel(paths, false, &report))
-                .map_err(|e| Failure::from(e.to_string()))?;
-            return Ok(());
+        match runtime.block_on(arrange(args, &host, &cfg, &exe, &report))? {
+            Some(deadline) => deadline,
+            None => return Ok(()),
         }
-        let Some(when) = args.when.as_deref().filter(|_| !args.status) else {
-            shutdown::status(&host, &report);
-            if args.when.is_none() && !args.status {
-                say("schedule one with: viy shutdown 90m   (or 1h30m, 23:30)");
-            }
-            return Ok(());
-        };
-        let deadline = runtime
-            .block_on(shutdown::schedule(
-                &host,
-                &cfg,
-                when,
-                poweroff,
-                args.foreground,
-                &report,
-            ))
-            .map_err(|e| Failure::from(e.to_string()))?;
-        if !args.foreground {
-            return shutdown::start_runner(&host, &exe, deadline, poweroff, &report)
-                .map_err(|e| Failure::from(e.to_string()));
-        }
-        deadline
     };
     Scheduled {
         pid: std::process::id(),
@@ -112,6 +82,47 @@ pub fn run(
     .save(paths)
     .map_err(|e| Failure::from(e.to_string()))?;
     runtime.block_on(countdown(&host, cfg, deadline, poweroff, true, reload, out))
+}
+
+/// What `viy shutdown` does short of a countdown in this process, the
+/// same in the terminal and the chat (kb d068): cancels, shows, or
+/// schedules the shutdown and starts its detached runner. With
+/// `--foreground`, the deadline, for the countdown in this terminal.
+pub(crate) async fn arrange(
+    args: &ShutdownArgs,
+    host: &Host<'_>,
+    cfg: &Config,
+    exe: &std::path::Path,
+    report: viy_pod::notice::Reporter<'_>,
+) -> Result<Option<f64>, Failure> {
+    let say = |text: &str| {
+        report(Report::Notice(viy_pod::notice::Notice::new(
+            Tone::Plain,
+            text,
+        )))
+    };
+    if args.cancel {
+        shutdown::cancel(host.paths, false, report)
+            .await
+            .map_err(|e| Failure::from(e.to_string()))?;
+        return Ok(None);
+    }
+    let Some(when) = args.when.as_deref().filter(|_| !args.status) else {
+        shutdown::status(host, report);
+        if args.when.is_none() && !args.status {
+            say("schedule one with: viy shutdown 90m   (or 1h30m, 23:30)");
+        }
+        return Ok(None);
+    };
+    let deadline = shutdown::schedule(host, cfg, when, args.poweroff(), args.foreground, report)
+        .await
+        .map_err(|e| Failure::from(e.to_string()))?;
+    if args.foreground {
+        return Ok(Some(deadline));
+    }
+    shutdown::start_runner(host, exe, deadline, args.poweroff(), report)
+        .map_err(|e| Failure::from(e.to_string()))?;
+    Ok(None)
 }
 
 /// Waits for `deadline` and fires, writing to `out`: the log, for the

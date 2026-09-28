@@ -33,6 +33,18 @@ pub enum Op {
     /// answers its kind (rp's `_shift_tab`); a question the user was not
     /// looking at is never answered this way.
     CycleMode { question: Option<String> },
+    /// `viy resume` and `viy fork` (kb d083): go on in saved chat `id`, or
+    /// without one in the chat picked from the saved chats, as Codex's
+    /// resume picker; in a copy of it with `fork`. `all`: every project's
+    /// chats in the pick; `include_exec`: the one-shot chats of `viy exec`
+    /// too. The engine answers with [`crate::EventMsg::CommandComplete`]
+    /// for `/resume`.
+    OpenSession {
+        id: Option<String>,
+        all: bool,
+        include_exec: bool,
+        fork: bool,
+    },
     /// Leave the chat; the engine answers with
     /// [`crate::EventMsg::ShutdownComplete`].
     Shutdown,

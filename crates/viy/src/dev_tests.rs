@@ -340,7 +340,10 @@ fn dev_chat_in_plain_answers_each_line_then_closes() {
             }
             drop(lines);
         };
-        let (chat, ()) = tokio::join!(super::plain_chat(&mut engine, rx, &mut out), feed);
+        let (chat, ()) = tokio::join!(
+            super::plain_chat(&mut engine, Vec::new(), rx, &mut out),
+            feed
+        );
         chat.unwrap();
     });
     assert_eq!(

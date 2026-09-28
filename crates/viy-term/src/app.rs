@@ -130,6 +130,8 @@ pub struct App {
     turn: Option<Turn>,
     /// Messages sent that have not started yet, oldest first.
     queued: VecDeque<String>,
+    /// The start of the input box that lines not sent were put back as.
+    given_back: String,
     /// The questions the engine waits on, oldest first.
     questions: Questions,
     /// Your messages `/rewind` can go back to: their cell and text, since
@@ -174,6 +176,7 @@ impl App {
             composer: Composer::new(history),
             turn: None,
             queued: VecDeque::new(),
+            given_back: String::new(),
             questions: Questions::default(),
             points: Vec::new(),
             picking: None,
@@ -334,9 +337,24 @@ impl App {
                     self.push(Cell::lines(vec![Line::from(format!("✗ {message}").red())]));
                 }
             }
+            // Stopped before it started (Ctrl-C while it was admitted):
+            // the line was never sent, so it goes back to the input box.
+            EventMsg::TurnAborted(_) if self.turn.is_none() => {
+                if let Some(text) = self.queued.pop_front() {
+                    self.give_back(&text);
+                }
+            }
             EventMsg::TurnAborted(_) => {
                 self.end_turn();
                 self.push(Cell::lines(vec![Line::from("■ interrupted".yellow())]));
+            }
+            // Nothing answers yet (kb d041): the line goes back into the
+            // input box and the chat says why; nothing of it is in the
+            // transcript.
+            EventMsg::TurnRefused(e) => {
+                self.queued.pop_front();
+                self.give_back(&e.text);
+                self.push(Cell::lines(vec![Line::from(e.message.yellow())]));
             }
             EventMsg::Notice(notice) => self.push(Cell::notice(&notice)),
             EventMsg::ToolCallBegin(e) => {
@@ -480,7 +498,15 @@ impl App {
             KeyCode::Char('c') if ctrl => {
                 // A question not yet taking keys: stop the work that asked
                 // it, a turn or a command; the engine closes the question.
-                if self.turn.is_some() || self.questions.front().is_some() {
+                // With no turn, a pod command running beside the chat (kb
+                // d041) is stopped first, as Ctrl-C stops it in a terminal.
+                // A line sent and not yet started is being admitted: it is
+                // stopped, and comes back.
+                if self.turn.is_some()
+                    || self.questions.front().is_some()
+                    || !self.queued.is_empty()
+                    || (self.composer.is_empty() && self.status.pod_work())
+                {
                     let _ = self.ops.send(Op::Interrupt);
                 } else if !self.composer.is_empty() {
                     self.composer.clear();
@@ -534,6 +560,31 @@ impl App {
         };
         let _ = self.ops.send(op);
         self.view.end();
+    }
+
+    /// Puts a line that was not sent back into the input box: after the
+    /// lines given back before it, so several come back in the order they
+    /// were sent, and ahead of anything typed since.
+    fn give_back(&mut self, text: &str) {
+        let draft = self.composer.text().to_string();
+        let earlier = if !self.given_back.is_empty() && draft.starts_with(&self.given_back) {
+            std::mem::take(&mut self.given_back)
+        } else {
+            String::new()
+        };
+        let typed = draft[earlier.len()..].trim_start_matches('\n');
+        let back = if earlier.is_empty() {
+            text.to_string()
+        } else {
+            format!("{earlier}\n{text}")
+        };
+        let whole = if typed.is_empty() {
+            back.clone()
+        } else {
+            format!("{back}\n{typed}")
+        };
+        self.composer.set_text(&whole);
+        self.given_back = back;
     }
 
     /// Nothing runs or waits: no turn, no queued line, no question.

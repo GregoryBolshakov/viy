@@ -8,8 +8,8 @@ fn texts(input: &str) -> Vec<String> {
 
 #[test]
 fn names_complete_from_their_start() {
-    assert_eq!(texts("/re"), ["/rename ", "/rewind ", "/resume "]);
-    assert_eq!(texts("/sta"), ["/stats"]);
+    assert_eq!(texts("/re"), ["/rename ", "/rewind ", "/resume ", "/reap "]);
+    assert_eq!(texts("/sta"), ["/stats", "/status"]);
     assert_eq!(texts("/stats"), Vec::<String>::new(), "typed out");
     assert_eq!(texts("hello"), Vec::<String>::new());
     assert_eq!(completions("/").len(), COMMANDS.len());

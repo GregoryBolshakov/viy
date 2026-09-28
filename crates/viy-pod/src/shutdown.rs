@@ -293,19 +293,25 @@ pub fn notify_problems(host: &Host<'_>) -> Vec<String> {
 
 // --------------------------------------------------------------- open chats
 
-/// Whether a command line is an `rp chat` or a `viy chat`: the first
-/// argument naming rp or viy is followed, past its options, by `chat`.
+/// Whether a command line is an `rp chat` or a viy chat: the first
+/// argument naming rp or viy is followed, past its options, by `chat`; for
+/// viy also by `resume` or `fork`, or by nothing, as bare `viy` opens the
+/// chat (kb d067, d083), where rp's `_is_chat` knows only `viy chat`.
 pub fn is_chat(argv: &[Vec<u8>]) -> bool {
-    let names_tool = |a: &[u8]| {
-        a.ends_with(b"/rp") || a.ends_with(b"/viy") || [&b"rp"[..], b"viy", b"rpctl"].contains(&a)
-    };
+    let is_viy = |a: &[u8]| a.ends_with(b"/viy") || a == b"viy";
+    let names_tool =
+        |a: &[u8]| a.ends_with(b"/rp") || is_viy(a) || [&b"rp"[..], b"rpctl"].contains(&a);
     let Some(i) = argv.iter().position(|a| names_tool(a)) else {
         return false;
     };
-    argv[i + 1..]
+    let viy = is_viy(&argv[i]);
+    match argv[i + 1..]
         .iter()
         .find(|a| !a.is_empty() && !a.starts_with(b"-"))
-        .is_some_and(|a| a == b"chat")
+    {
+        Some(sub) => sub == b"chat" || (viy && (sub == b"resume" || sub == b"fork")),
+        None => viy,
+    }
 }
 
 /// What [`Chats::close`] did with each pid.

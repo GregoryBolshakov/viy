@@ -23,8 +23,8 @@
 //!
 //! `viy dev chat --url URL` opens the chat in viy's terminal UI (the shell
 //! of WP 3.6) against the model server at URL, with viy's own config and
-//! TOOLS_ENABLED off until phase 4 brings the tools; `viy chat` itself
-//! waits for the chat without a pod (WP 3.13). Without a terminal, or with
+//! TOOLS_ENABLED off until phase 4 brings the tools, and no pod: `viy chat`
+//! ([`crate::chat`]) is the chat on the pod. Without a terminal, or with
 //! `--plain`, it is the plain renderer: one message per line of stdin, and
 //! the chat closes once the last has been answered.
 
@@ -193,7 +193,7 @@ fn chat_ui(
         let turns = Arc::new(ChatTurns::new(chat));
         let mut engine = Engine::spawn(turns.clone());
         if plain {
-            plain_chat(&mut engine, stdin_lines(), &mut *out).await?;
+            plain_chat(&mut engine, Vec::new(), stdin_lines(), &mut *out).await?;
         } else {
             let project = Project::find(&start).map_err(|e| Failure::from(e.to_string()))?;
             let tab = tab_title(&cfg);
@@ -215,7 +215,11 @@ pub(crate) fn tab_title(cfg: &Config) -> bool {
 
 /// The chat in the terminal UI, the engine's events and the UI's ops
 /// passed between them by a task; with `tab`, the tab title too.
-async fn tui_chat(mut engine: Engine, history: History, tab: bool) -> Result<(), Failure> {
+pub(crate) async fn tui_chat(
+    mut engine: Engine,
+    history: History,
+    tab: bool,
+) -> Result<(), Failure> {
     let terminal = |e| Failure::from(format!("the terminal: {e}"));
     let mut tui = Tui::init().map_err(terminal)?;
     if tab {
@@ -254,17 +258,26 @@ async fn tui_chat(mut engine: Engine, history: History, tab: bool) -> Result<(),
 /// as one), and once they have run and `lines` has ended, the chat closes.
 pub(crate) async fn plain_chat(
     engine: &mut Engine,
+    first: Vec<Op>,
     mut lines: mpsc::UnboundedReceiver<String>,
     out: &mut (dyn Write + Send),
 ) -> Result<(), Failure> {
     let failed = |e: std::io::Error| Failure::from(e.to_string());
     let mut plain = Plain::new(out);
     let mut reading = true;
-    // Lines and commands sent that have not finished.
+    // Lines and commands sent that have not finished, `first` included.
     let mut running = 0usize;
+    for op in first {
+        if engine.submit(op).is_ok() {
+            running += 1;
+        }
+    }
+    // Pod commands running beside the chat (kb d041): the chat waits for
+    // them, as a terminal waits for the subcommand.
+    let mut pod_work = std::collections::HashSet::new();
     let mut closing = false;
     loop {
-        if !reading && running == 0 && !closing {
+        if !reading && running == 0 && pod_work.is_empty() && !closing {
             closing = true;
             let _ = engine.submit(Op::Shutdown);
         }
@@ -293,7 +306,21 @@ pub(crate) async fn plain_chat(
                     EventMsg::ShutdownComplete => return Ok(()),
                     EventMsg::TurnComplete(_)
                     | EventMsg::TurnAborted(_)
+                    | EventMsg::TurnRefused(_)
                     | EventMsg::CommandComplete(_) => running = running.saturating_sub(1),
+                    EventMsg::Background(b) => {
+                        if let viy_protocol::BackgroundTask::Pod { job, .. } = b.task {
+                            if matches!(
+                                b.state,
+                                viy_protocol::BackgroundState::Done
+                                    | viy_protocol::BackgroundState::Failed
+                            ) {
+                                pod_work.remove(&job);
+                            } else {
+                                pod_work.insert(job);
+                            }
+                        }
+                    }
                     _ => {}
                 }
                 if let Some(op) = plain.event(&event.msg).map_err(failed)? {
@@ -305,7 +332,7 @@ pub(crate) async fn plain_chat(
 }
 
 /// Stdin's lines, read by a thread.
-fn stdin_lines() -> mpsc::UnboundedReceiver<String> {
+pub(crate) fn stdin_lines() -> mpsc::UnboundedReceiver<String> {
     let (tx, rx) = mpsc::unbounded_channel();
     std::thread::spawn(move || {
         for line in std::io::stdin().lines() {

@@ -31,6 +31,10 @@ pub enum Reply {
     Fail(io::ErrorKind),
     /// [`ExecBackend::spawn`] starts this instead, with the same streams.
     StandIn(Command),
+    /// [`ExecBackend::spawn`] starts nothing and returns a child that has
+    /// exited with this code: no fork, so no other test's locked file is
+    /// held open by a child between fork and exec.
+    Exited(i32),
 }
 
 impl Reply {
@@ -122,7 +126,9 @@ impl ExecBackend for FakeExec {
                     stderr: stderr.into_bytes(),
                 }),
                 Reply::Fail(kind) => Err(io::Error::new(kind, format!("{}: scripted", argv[0]))),
-                Reply::StandIn(_) => panic!("FakeExec: a stand-in scripted for run {argv:?}"),
+                Reply::StandIn(_) | Reply::Exited(_) => {
+                    panic!("FakeExec: a spawn reply scripted for run {argv:?}")
+                }
             }
         })
     }
@@ -132,9 +138,32 @@ impl ExecBackend for FakeExec {
         let argv = command.argv();
         match self.next(command) {
             Reply::StandIn(stand_in) => SystemExec.spawn(stand_in, how),
+            Reply::Exited(code) => Ok(Box::new(Exited(exit_status(code)))),
             Reply::Fail(kind) => Err(io::Error::new(kind, format!("{}: scripted", argv[0]))),
             Reply::Exit { .. } => panic!("FakeExec: an exit scripted for spawn {argv:?}"),
         }
+    }
+}
+
+/// A child that never ran, already exited.
+struct Exited(ExitStatus);
+
+impl Child for Exited {
+    fn id(&self) -> u32 {
+        0
+    }
+
+    fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        Ok(Some(self.0))
+    }
+
+    fn wait(&mut self) -> BoxFuture<'_, io::Result<ExitStatus>> {
+        let status = self.0;
+        Box::pin(async move { Ok(status) })
+    }
+
+    fn terminate(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 

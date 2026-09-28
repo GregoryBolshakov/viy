@@ -21,6 +21,10 @@ pub enum EventMsg {
     TurnComplete(TurnCompleteEvent),
     /// The turn stopped before it ended on its own (Ctrl-C).
     TurnAborted(TurnAbortedEvent),
+    /// A line that did not start a turn, because nothing answers yet (no
+    /// ready pod, kb d041): nothing of it reached the history or the
+    /// session, and the frontend gives it back to edit and send.
+    TurnRefused(TurnRefusedEvent),
     /// One model request within a turn.
     RoundStarted(RoundStartedEvent),
     ReasoningContentDelta(DeltaEvent),
@@ -95,6 +99,14 @@ pub enum TurnOutcome {
     Failed {
         message: String,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TurnRefusedEvent {
+    /// The line, as the user entered it.
+    pub text: String,
+    /// Why, for the user.
+    pub message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -285,6 +297,13 @@ pub enum BackgroundTask {
     /// The explore workflow's helper number `n`.
     Helper {
         n: u32,
+    },
+    /// A pod command running beside the chat (`/up`, `/logs -f`; kb d041,
+    /// d068): its name, without the `/`, and which run of it, as two of one
+    /// name may run at once.
+    Pod {
+        command: String,
+        job: u64,
     },
 }
 

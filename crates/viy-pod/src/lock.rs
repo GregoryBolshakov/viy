@@ -152,6 +152,17 @@ impl PodLock {
     }
 }
 
+impl PodLock {
+    /// Who holds the lock, read without taking it, so a chat watching the
+    /// pod (kb d041) never makes an `up` elsewhere find it busy: the holder
+    /// the file names, while that pid lives as rp or viy. The file outlives
+    /// its holder, so a dead or foreign pid holds nothing.
+    pub fn holder(paths: &Paths) -> Option<Holder> {
+        let mut file = File::open(paths.pod_lock_file()).ok()?;
+        read_holder(&mut file).filter(|h| h.tool.is_some() && process::pid_alive(h.pid))
+    }
+}
+
 fn preempt_within(
     paths: &Paths,
     deadline: Duration,

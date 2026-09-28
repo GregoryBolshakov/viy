@@ -59,7 +59,7 @@ fn url(cfg: &Config) -> String {
 
 /// The tracked pid, if it is still the vllm viy or rp started: a reused
 /// pid is someone else's.
-fn alive(paths: &Paths) -> Option<u32> {
+pub fn alive(paths: &Paths) -> Option<u32> {
     let state: Value =
         serde_json::from_str(&fs::read_to_string(paths.local_state_file()).ok()?).ok()?;
     let pid = u32::try_from(state.get("pid")?.as_u64()?).ok()?;

@@ -240,3 +240,27 @@ fn down_never_kills_itself() {
     assert!(done.killed.is_empty());
     assert_eq!(notices, [PreemptNotice::GaveUp]);
 }
+
+/// Not in rp's tests: the chat reads who holds the lock without taking it
+/// (kb d041); a holder gone, or a pid that is neither tool, holds nothing.
+#[test]
+fn the_holder_is_read_without_taking_the_lock() {
+    let (dir, paths) = scratch();
+    assert_eq!(PodLock::holder(&paths), None);
+    let rp = python_as(dir.path(), "rp");
+    let mut child = holder(&rp, &paths.pod_lock_file(), "up", &[]);
+    let held = PodLock::holder(&paths).unwrap();
+    assert_eq!(
+        (held.tool, held.verb.as_str(), held.pid),
+        (Some(Tool::Rp), "up", child.id())
+    );
+    // Reading took nothing: the holder still has it.
+    assert!(!PodLock::is_free(&paths).unwrap());
+    drop(child.stdin.take());
+    child.wait().unwrap();
+    // The file still names it, but it is gone.
+    assert_eq!(PodLock::holder(&paths), None);
+    // This test binary is neither tool.
+    let _mine = soon(|| PodLock::exclusive(&paths, "up").ok());
+    assert_eq!(PodLock::holder(&paths), None);
+}

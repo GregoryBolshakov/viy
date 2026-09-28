@@ -76,6 +76,7 @@ impl<W: Write> Plain<W> {
                 self.end_line()?;
                 self.line("■ interrupted")?;
             }
+            EventMsg::TurnRefused(e) => self.line(&format!("not sent: {}", e.message))?,
             EventMsg::Notice(notice) => self.line(&notice.message)?,
             EventMsg::ToolCallBegin(e) => self.line(&format!("▸ {}  {}", e.tool, e.summary))?,
             // rp prints a command's output after it, then its result.

@@ -249,7 +249,14 @@ pub struct ShutdownArgs {
     pub run_at: Option<String>,
 }
 
-#[derive(Debug, Args)]
+impl ShutdownArgs {
+    /// Whether the shutdown powers this PC off (not `--no-poweroff`).
+    pub fn poweroff(&self) -> bool {
+        !self.no_poweroff
+    }
+}
+
+#[derive(Debug, Clone, Args)]
 pub struct TunnelArgs {
     #[arg(short, long, help = "detach instead of holding the terminal")]
     pub background: bool,

@@ -54,30 +54,37 @@ fn help_exits_0_on_stdout_with_rps_descriptions() {
     );
 }
 
-/// `viy` alone opens the chat (kb d067), so until phase 3 it says what
-/// `viy chat` says.
+/// `viy` alone opens the chat (kb d067), as `viy chat` does.
 #[test]
 fn viy_alone_is_the_chat() {
-    let (code, out, err) = run_capture(&[]);
-    assert_eq!((code, out.as_str()), (1, ""));
-    assert_eq!(err, "viy chat: not ported yet (ROADMAP phase 3)\n");
+    let cli = cli::parse(Vec::<OsString>::new()).unwrap();
+    assert!(matches!(cli.command, Command::Chat(_)));
+    let opening = chat_opening(&cli.command);
+    assert!(opening.session.is_none() && opening.url.is_none());
+}
+
+/// A chat named that is not there ends viy before the chat opens, in
+/// Codex's words (kb d083).
+#[test]
+fn resume_and_fork_of_a_chat_not_there_say_so() {
+    for action in ["resume", "fork"] {
+        let (code, out, err) = run_capture(&[action, "20990101-000000-0000"]);
+        assert_eq!((code, out.as_str()), (1, ""), "{action}");
+        assert_eq!(
+            err,
+            format!(
+                "No saved session found with ID 20990101-000000-0000. Run `viy {action}` \
+                 without an ID to choose from existing sessions.\n"
+            )
+        );
+    }
 }
 
 #[test]
 fn commands_still_to_come_say_so() {
-    for (args, phase) in [
-        (&["resume", "--last"][..], 3),
-        (&["fork"], 3),
-        (&["trace"], 7),
-    ] {
-        let (code, out, err) = run_capture(args);
-        assert_eq!(code, 1, "{args:?}");
-        assert_eq!(out, "");
-        assert_eq!(
-            err,
-            format!("viy {}: not ported yet (ROADMAP phase {phase})\n", args[0])
-        );
-    }
+    let (code, out, err) = run_capture(&["trace"]);
+    assert_eq!((code, out.as_str()), (1, ""));
+    assert_eq!(err, "viy trace: not ported yet (ROADMAP phase 7)\n");
 }
 
 /// Only what neither schedules nor runs anything: these go to this

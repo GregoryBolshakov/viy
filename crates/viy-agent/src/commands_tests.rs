@@ -421,7 +421,11 @@ async fn settings_commands_say_what_they_set() {
             "no such file: /nonexistent/x.png",
         ),
         ("/tools on", "/tools comes with phase 4"),
-        ("/up", "/up comes with WP 3.13"),
+        // No pod in a chat on a given address (viy dev chat).
+        (
+            "/up",
+            "/up: this chat talks to the address it was given; viy chat runs the pod commands",
+        ),
         // rp's transcripts are not kept (kb d082).
         ("/save", "unknown command: /save  (try /help)"),
         ("/load x", "unknown command: /load  (try /help)"),
@@ -462,4 +466,110 @@ async fn an_attached_image_goes_with_the_next_message() {
     let said = notices(&d.events());
     assert_eq!(said[1], "  1. data:image/gif;base64,R0lGOA==");
     let _ = &d.mock;
+}
+
+impl Direct {
+    /// [`Chat::open_session`] with the pick answered `answer`, if it asks:
+    /// the question and the events.
+    async fn open_answering(
+        &mut self,
+        open: crate::OpenSession,
+        answer: Answer,
+    ) -> (Option<Question>, Vec<EventMsg>) {
+        let ctx = self.ctx.clone();
+        let (mut asked, mut seen) = (None, Vec::new());
+        {
+            let opening = self.chat.open_session(&ctx, &open);
+            tokio::pin!(opening);
+            loop {
+                tokio::select! {
+                    () = &mut opening => break,
+                    Some(event) = self.rx.recv() => match event.msg {
+                        EventMsg::QuestionRequest(q) => {
+                            ctx.answer(&q.question_id, answer);
+                            asked = Some(q.question);
+                        }
+                        other => seen.push(other),
+                    },
+                }
+            }
+        }
+        seen.extend(self.events());
+        (asked, seen)
+    }
+}
+
+/// `viy resume ID` and `viy fork ID` (kb d083): the chat named opens
+/// whole, or a copy of it.
+#[tokio::test]
+async fn opening_a_saved_chat_resumes_it_or_forks_it() {
+    let mut d = direct(ok(1), &[]);
+    d.send("apples are red").await;
+    let first = d.id();
+    d.cmd("/new").await;
+    d.events();
+    let open = |fork| crate::OpenSession {
+        id: Some(first.clone()),
+        fork,
+        ..crate::OpenSession::default()
+    };
+    let (asked, events) = d.open_answering(open(false), Answer::No).await;
+    assert!(asked.is_none());
+    assert_eq!(d.id(), first);
+    assert_eq!(
+        rewritten(&events),
+        Some((
+            RewriteReason::Resume,
+            vec![user("apples are red"), agent("ok")]
+        ))
+    );
+    d.cmd("/new").await;
+    let (_, events) = d.open_answering(open(true), Answer::No).await;
+    assert_ne!(d.id(), first);
+    assert_eq!(d.chat.messages().len(), 2);
+    assert!(rewritten(&events).is_some());
+}
+
+/// `viy resume` without a chat named: a pick of this project's chats,
+/// one-shot ones left out; none picked, or none to pick, leaves the new
+/// chat as it is.
+#[tokio::test]
+async fn opening_without_a_chat_named_picks_one() {
+    let mut d = direct(ok(1), &[]);
+    let fresh = d.id();
+    let (asked, events) = d
+        .open_answering(crate::OpenSession::default(), Answer::Pick(0))
+        .await;
+    assert!(asked.is_none());
+    assert_eq!(
+        notices(&events),
+        ["no saved chats in this project; this is a new one"]
+    );
+    assert_eq!(d.id(), fresh);
+    d.send("one").await;
+    let first = d.id();
+    d.cmd("/new").await;
+    let mut one_shot = d.store.create(d.chat.project.as_deref(), Some("m"));
+    one_shot.mark_exec();
+    one_shot
+        .sync(None, &[json!({"role": "user", "content": "exec"})], false)
+        .unwrap();
+    one_shot.close("exec").unwrap();
+    let new = d.id();
+    let (asked, _) = d
+        .open_answering(crate::OpenSession::default(), Answer::No)
+        .await;
+    assert_eq!(asked.unwrap().options.len(), 1);
+    assert_eq!(d.id(), new);
+    let (asked, _) = d
+        .open_answering(crate::OpenSession::default(), Answer::Pick(0))
+        .await;
+    assert_eq!(asked.unwrap().options.len(), 1);
+    assert_eq!(d.id(), first);
+    let with_exec = crate::OpenSession {
+        include_exec: true,
+        ..crate::OpenSession::default()
+    };
+    let (asked, _) = d.open_answering(with_exec, Answer::No).await;
+    assert_eq!(asked.unwrap().options.len(), 2);
 }

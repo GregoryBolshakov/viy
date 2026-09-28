@@ -349,3 +349,143 @@ fn questions_left_open_are_closed_in_the_order_asked() {
     drop(asking);
     assert!(rx.try_recv().is_err());
 }
+
+/// A stand-in whose lines saying "offline" are refused, whose commands
+/// start a background job asking a question, and which counts the
+/// interrupts that reached it.
+#[derive(Default)]
+struct Gated {
+    interrupts: std::sync::atomic::AtomicUsize,
+}
+
+impl Turns for Gated {
+    fn turn(self: Arc<Self>, ctx: TurnContext, text: String) -> BoxFuture<'static, TurnOutcome> {
+        Arc::new(StandIn).turn(ctx, text)
+    }
+
+    fn admit(self: Arc<Self>, _ctx: TurnContext) -> BoxFuture<'static, Result<(), String>> {
+        Box::pin(async { Err("no pod is running".to_string()) })
+    }
+
+    fn command(self: Arc<Self>, ctx: TurnContext, _text: String) -> BoxFuture<'static, ()> {
+        let job = ctx.background();
+        tokio::spawn(async move {
+            let answer = job.ask(&Question::yes_no(None, "Try the backup?")).await;
+            job.emit(delta(format!("job answered {answer:?}")));
+        });
+        Box::pin(async {})
+    }
+
+    fn open_session(
+        self: Arc<Self>,
+        ctx: TurnContext,
+        open: OpenSession,
+    ) -> BoxFuture<'static, ()> {
+        Box::pin(async move { ctx.emit(delta(format!("open {open:?}"))) })
+    }
+
+    fn interrupt(&self) {
+        self.interrupts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[tokio::test]
+async fn a_line_not_admitted_is_refused_before_it_is_a_turn() {
+    let mut engine = Engine::spawn(Arc::new(Gated::default()));
+    let id = engine.submit(Op::UserTurn { text: "hi".into() }).unwrap();
+    let events = until(&mut engine, |e| matches!(e.msg, EventMsg::TurnRefused(_))).await;
+    assert_eq!(
+        msgs(&events),
+        [EventMsg::TurnRefused(TurnRefusedEvent {
+            text: "hi".into(),
+            message: "no pod is running".into()
+        })]
+    );
+    assert_eq!(events[0].id, id);
+    // The queue goes on.
+    let next = engine.submit(Op::Command { text: "/x".into() }).unwrap();
+    until(&mut engine, |e| {
+        e.id == next && matches!(e.msg, EventMsg::CommandComplete(_))
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn background_work_keeps_its_question_after_its_command_ends() {
+    let mut engine = Engine::spawn(Arc::new(Gated::default()));
+    let id = engine.submit(Op::Command { text: "/up".into() }).unwrap();
+    let events = until(&mut engine, |e| {
+        matches!(e.msg, EventMsg::QuestionRequest(_))
+    })
+    .await;
+    let Some(EventMsg::QuestionRequest(asked)) = events.last().map(|e| e.msg.clone()) else {
+        panic!("{events:?}");
+    };
+    assert_eq!(events.last().unwrap().id, format!("{id}b"));
+    // Its command has ended, and the question is still open.
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e.msg, EventMsg::CommandComplete(_)))
+    );
+    engine
+        .submit(Op::QuestionAnswer {
+            id: asked.question_id,
+            answer: Answer::Yes,
+        })
+        .unwrap();
+    let rest = until(&mut engine, |e| {
+        matches!(e.msg, EventMsg::AgentMessageContentDelta(_))
+    })
+    .await;
+    assert_eq!(rest.last().unwrap().msg, delta("job answered Yes"));
+    assert!(
+        !rest
+            .iter()
+            .any(|e| matches!(e.msg, EventMsg::QuestionResolved(_)))
+    );
+}
+
+#[tokio::test]
+async fn an_interrupt_with_no_turn_reaches_the_background_work() {
+    let gated = Arc::new(Gated::default());
+    let mut engine = Engine::spawn(gated.clone());
+    engine.submit(Op::Interrupt).unwrap();
+    let id = engine.submit(Op::Command { text: "/x".into() }).unwrap();
+    until(&mut engine, |e| {
+        e.id == id && matches!(e.msg, EventMsg::CommandComplete(_))
+    })
+    .await;
+    assert_eq!(
+        gated.interrupts.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+}
+
+#[tokio::test]
+async fn opening_a_saved_chat_runs_in_the_queue_as_resume() {
+    let mut engine = Engine::spawn(Arc::new(Gated::default()));
+    let id = engine
+        .submit(Op::OpenSession {
+            id: None,
+            all: true,
+            include_exec: false,
+            fork: true,
+        })
+        .unwrap();
+    let events = until(&mut engine, |e| {
+        matches!(e.msg, EventMsg::CommandComplete(_))
+    })
+    .await;
+    assert_eq!(
+        msgs(&events),
+        [
+            delta("open OpenSession { id: None, all: true, include_exec: false, fork: true }"),
+            EventMsg::CommandComplete(CommandCompleteEvent {
+                command: "/resume".into()
+            })
+        ]
+    );
+    assert!(events.iter().all(|e| e.id == id));
+}

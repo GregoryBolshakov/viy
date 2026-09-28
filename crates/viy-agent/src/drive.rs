@@ -146,6 +146,7 @@ async fn follow<'a>(
             match &event.msg {
                 EventMsg::TurnComplete(_)
                 | EventMsg::TurnAborted(_)
+                | EventMsg::TurnRefused(_)
                 | EventMsg::CommandComplete(_)
                 | EventMsg::ShutdownComplete => ended = true,
                 EventMsg::Background(b) if b.task == BackgroundTask::Title => {

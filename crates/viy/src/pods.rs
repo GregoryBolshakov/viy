@@ -194,12 +194,7 @@ pub fn run(
 ) -> Result<(), Failure> {
     let backend = match command {
         Command::Boots(args) => return boots(paths, args, out),
-        // RunPod's own, whatever BACKEND says; reap looks itself.
-        Command::Backup { .. }
-        | Command::Volume(_)
-        | Command::Reap { .. }
-        | Command::CaptureBoot { .. } => Backend::Runpod,
-        _ => Backend::resolve(&cfg)?,
+        _ => backend_for(command, &cfg)?,
     };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -246,44 +241,67 @@ async fn pod_command(
         time: &time,
         exe,
     };
-    if backend != Backend::Runpod {
-        return other_backend(command, backend, &env, &mut cfg, &interrupt, &report)
+    if let Command::CaptureBoot { boot_id, pod_id } = command {
+        let rp = commands::connect(&env, &cfg).map_err(|e| failure(e, printer))?;
+        return wait::capture_boot(&env.ssh(&cfg), &rp, boot_id, pod_id)
             .await
-            .map_err(|error| failure(error, printer));
+            .map_err(|e| Failure::from(e.to_string()));
     }
-    let result = match command {
+    work(command, backend, &env, &mut cfg, &interrupt, &report, &ask)
+        .await
+        .map_err(|error| failure(error, printer))
+}
+
+/// The backend a pod command is for: RunPod's own commands whatever
+/// BACKEND says (reap looks itself), else BACKEND's.
+pub(crate) fn backend_for(command: &Command, cfg: &Config) -> Result<Backend, String> {
+    match command {
+        Command::Backup { .. }
+        | Command::Volume(_)
+        | Command::Reap { .. }
+        | Command::CaptureBoot { .. } => Ok(Backend::Runpod),
+        _ => Backend::resolve(cfg),
+    }
+}
+
+/// A pod command's work, the same for the terminal and the chat (kb
+/// d068): the library call of its name, reporting and asking through
+/// `report` and `ask`, ended by `interrupt` as Ctrl-C ends it.
+pub(crate) async fn work(
+    command: &Command,
+    backend: Backend,
+    env: &Env<'_>,
+    cfg: &mut Config,
+    interrupt: &Interrupt,
+    report: Reporter<'_>,
+    ask: viy_pod::notice::Asker<'_>,
+) -> Result<(), CommandError> {
+    if backend != Backend::Runpod {
+        return other_backend(command, backend, env, cfg, interrupt, report).await;
+    }
+    match command {
         Command::Up { timeout } => {
             let timeout = Duration::from_secs(*timeout);
-            commands::up(&env, &mut cfg, timeout, &interrupt, &report, &ask).await
+            commands::up(env, cfg, timeout, interrupt, report, ask).await
         }
         Command::Logs { follow } => {
-            commands::logs(&env, &cfg, *follow, interrupt.next(), &report).await
+            commands::logs(env, cfg, *follow, interrupt.next(), report).await
         }
-        Command::Tunnel(args) => {
-            return tunnel_command(&env, &cfg, args, &interrupt, &report)
-                .await
-                .map_err(|failure| ended(failure, printer));
-        }
-        Command::CaptureBoot { boot_id, pod_id } => {
-            let rp = commands::connect(&env, &cfg).map_err(|e| failure(e, printer))?;
-            return wait::capture_boot(&env.ssh(&cfg), &rp, boot_id, pod_id)
-                .await
-                .map_err(|e| Failure::from(e.to_string()));
-        }
+        Command::Tunnel(args) => tunnel_command(env, cfg, args, interrupt, report).await,
         other => {
             let work = async {
                 match other {
-                    Command::Status => commands::status(&env, &cfg, &report).await,
-                    Command::Stop => commands::stop(&env, &cfg, &report).await,
-                    Command::Down => commands::down(&env, &cfg, false, &report).await,
+                    Command::Status => commands::status(env, cfg, report).await,
+                    Command::Stop => commands::stop(env, cfg, report).await,
+                    Command::Down => commands::down(env, cfg, false, report).await,
                     Command::Reap { install: true, .. } => {
                         let path = std::env::var_os("PATH");
                         let viy = viy_config::vault::find_executable(path.as_deref(), "viy");
-                        idle::install(paths, env.exec, viy.as_deref(), &report).await
+                        idle::install(env.paths, env.exec, viy.as_deref(), report).await
                     }
-                    Command::Reap { quiet, .. } => idle::reap(&env, &cfg, *quiet, &report).await,
+                    Command::Reap { quiet, .. } => idle::reap(env, cfg, *quiet, report).await,
                     Command::Backup { samples } => {
-                        regions::backup(&env, &cfg, *samples, &report).await
+                        regions::backup(env, cfg, *samples, report).await
                     }
                     Command::Volume(args) => {
                         let action = match args.action {
@@ -292,7 +310,7 @@ async fn pod_command(
                             VolumeArg::Delete => VolumeAction::Delete,
                         };
                         let id = args.volume_id.as_deref();
-                        commands::volume(&env, &mut cfg, action, id, &report, &ask).await
+                        commands::volume(env, cfg, action, id, report, ask).await
                     }
                     _ => Err(CommandError::Exit(format!(
                         "viy {}: not a pod command",
@@ -306,8 +324,7 @@ async fn pod_command(
                 result = work => result,
             }
         }
-    };
-    result.map_err(|error| failure(error, printer))
+    }
 }
 
 /// The commands for a backend other than RunPod, or rpctl's
@@ -378,8 +395,8 @@ async fn tunnel_command(
     cfg: &Config,
     args: &TunnelArgs,
     interrupt: &Interrupt,
-    report: &(dyn Fn(Report) + Send + Sync),
-) -> Result<(), Failure> {
+    report: Reporter<'_>,
+) -> Result<(), CommandError> {
     let action = if args.forget_key {
         Action::ForgetKey
     } else if args.stop {
@@ -400,24 +417,29 @@ async fn tunnel_command(
     let work = tunnel::command(&ssh, action, connect, interrupt.next(), &mut say);
     let result = tokio::select! {
         biased;
-        () = interrupt.after(presses) => return Err(Failure::silent(130)),
+        () = interrupt.after(presses) => return Err(CommandError::Interrupted),
         result = work => result,
     };
     match result {
         Ok(()) => Ok(()),
-        Err(TunnelError::Failed) => Err(Failure::silent(1)),
-        Err(TunnelError::Exit(message)) => Err(Failure::from(message)),
-        Err(TunnelError::Io(error)) => Err(Failure::from(error.to_string())),
+        Err(TunnelError::Failed) => Err(CommandError::Failed),
+        Err(TunnelError::Exit(message)) => Err(CommandError::Exit(message)),
+        Err(TunnelError::Io(error)) => Err(CommandError::Io(error)),
+    }
+}
+
+/// `viy boots [list|show] [BOOT] [-n N]`'s text.
+pub(crate) fn boots_text(paths: &Paths, args: &BootsArgs) -> Result<String, String> {
+    let records = Records::new(paths);
+    match args.action {
+        BootsAction::List => Ok(bootreport::history_table(&records, args.n)),
+        BootsAction::Show => bootreport::show(&records, args.boot.as_deref()),
     }
 }
 
 /// `viy boots [list|show] [BOOT] [-n N]`.
 fn boots(paths: &Paths, args: &BootsArgs, out: &mut (dyn Write + Send)) -> Result<(), Failure> {
-    let records = Records::new(paths);
-    let text = match args.action {
-        BootsAction::List => bootreport::history_table(&records, args.n),
-        BootsAction::Show => bootreport::show(&records, args.boot.as_deref())?,
-    };
+    let text = boots_text(paths, args)?;
     writeln!(out, "{text}").map_err(|e: io::Error| Failure::from(e.to_string()))
 }
 

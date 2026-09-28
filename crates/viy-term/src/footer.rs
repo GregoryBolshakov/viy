@@ -88,6 +88,13 @@ impl Status {
         true
     }
 
+    /// Whether a pod command runs in the background (kb d041).
+    pub fn pod_work(&self) -> bool {
+        self.background
+            .iter()
+            .any(|(task, _)| matches!(task, BackgroundTask::Pod { .. }))
+    }
+
     /// When the idle countdown next changes what it shows, if one runs.
     pub fn next_change(&self, now: Instant) -> Option<Instant> {
         let left = self.idle_left(now)?;
@@ -160,6 +167,7 @@ impl Status {
                         BackgroundTask::Title => "naming the chat".to_string(),
                         BackgroundTask::Compaction => "compacting".to_string(),
                         BackgroundTask::Helper { n } => format!("explore {n}"),
+                        BackgroundTask::Pod { command, .. } => format!("/{command}"),
                         _ => "working".to_string(),
                     };
                     match progress {

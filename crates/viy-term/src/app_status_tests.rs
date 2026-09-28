@@ -194,3 +194,103 @@ fn a_hostile_title_is_cleaned_before_the_tab_shows_it() {
         );
     }
 }
+
+/// Enter without a ready pod (kb d041): the engine refuses the line, and
+/// it is back in the input box, ahead of anything typed since; nothing of
+/// it is in the transcript but the reason.
+#[test]
+fn a_refused_line_goes_back_into_the_input_box() {
+    let mut f = fixture(70, 8);
+    f.type_text("what is 2+2");
+    f.key(KeyCode::Enter);
+    assert_eq!(
+        f.ops(),
+        [Op::UserTurn {
+            text: "what is 2+2".into()
+        }]
+    );
+    f.type_text("and");
+    f.app
+        .event(EventMsg::TurnRefused(viy_protocol::TurnRefusedEvent {
+            text: "what is 2+2".into(),
+            message: "no pod is running: /up starts one.".into(),
+        }));
+    let screen = f.screen();
+    assert!(
+        screen.contains(&"no pod is running: /up starts one.".to_string()),
+        "{screen:#?}"
+    );
+    assert!(
+        !screen.iter().any(|l| l.starts_with("you ›")),
+        "{screen:#?}"
+    );
+    assert!(screen.contains(&"› what is 2+2".to_string()), "{screen:#?}");
+    assert!(screen.contains(&"  and▮".to_string()), "{screen:#?}");
+    // Nothing is queued any more.
+    assert!(!f.screen().last().unwrap().contains("queued"));
+}
+
+/// Ctrl-C with no turn stops a pod command running beside the chat; only
+/// with nothing running does it close the chat.
+#[test]
+fn ctrl_c_stops_pod_work_before_it_closes_the_chat() {
+    let mut f = fixture(70, 8);
+    let up = BackgroundTask::Pod {
+        command: "up".into(),
+        job: 1,
+    };
+    let background = |state| {
+        EventMsg::Background(BackgroundEvent {
+            task: up.clone(),
+            state,
+            progress: None,
+        })
+    };
+    f.app.event(background(BackgroundState::Started));
+    assert!(f.screen().last().unwrap().contains("⟳ /up"));
+    f.ctrl('c');
+    assert_eq!(f.ops(), [Op::Interrupt]);
+    f.app.event(background(BackgroundState::Failed));
+    f.ctrl('c');
+    assert_eq!(f.ops(), [Op::Shutdown]);
+}
+
+/// Lines refused one after another come back in the order they were sent,
+/// ahead of what was typed since.
+#[test]
+fn refused_lines_come_back_in_order() {
+    let mut f = fixture(70, 10);
+    for line in ["first", "second"] {
+        f.type_text(line);
+        f.key(KeyCode::Enter);
+    }
+    f.type_text("third");
+    let refused = |text: &str| {
+        EventMsg::TurnRefused(viy_protocol::TurnRefusedEvent {
+            text: text.into(),
+            message: "no pod is running: /up starts one.".into(),
+        })
+    };
+    f.app.event(refused("first"));
+    f.app.event(refused("second"));
+    assert_eq!(f.app.composer.text(), "first\nsecond\nthird");
+}
+
+/// Ctrl-C while a line is admitted (sent, not started) stops it, and the
+/// line comes back to the input box.
+#[test]
+fn ctrl_c_while_a_line_is_admitted_gives_it_back() {
+    let mut f = fixture(70, 8);
+    f.type_text("hello");
+    f.key(KeyCode::Enter);
+    f.ops();
+    f.ctrl('c');
+    assert_eq!(f.ops(), [Op::Interrupt]);
+    f.app
+        .event(EventMsg::TurnAborted(viy_protocol::TurnAbortedEvent {
+            turn_id: "1".into(),
+            reason: viy_protocol::TurnAbortReason::Interrupted,
+        }));
+    assert_eq!(f.app.composer.text(), "hello");
+    assert!(!f.screen().iter().any(|l| l.contains("interrupted")));
+}

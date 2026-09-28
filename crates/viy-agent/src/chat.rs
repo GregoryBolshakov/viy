@@ -73,6 +73,7 @@ use crate::payload::title_pair;
 use crate::payload::with_notice;
 use crate::payload::without_reasoning;
 use crate::prompt::SystemPrompt;
+use crate::server::Server;
 use crate::sessions;
 use crate::sessions::SessionError;
 use crate::sessions::SessionLog;
@@ -151,6 +152,8 @@ pub struct Chat {
     end_reason: &'static str,
     /// What the round in progress has streamed of its answer.
     partial: String,
+    /// Whether the log had been written when its session last ended.
+    closed_saved: bool,
     /// The name last sent as [`EventMsg::TitleChanged`]; empty at first,
     /// as the frontend starts with no name. Shared with the background
     /// title request, which sends the title it gets.
@@ -215,6 +218,7 @@ impl Chat {
             pending_images: Vec::new(),
             end_reason: "exit",
             partial: String::new(),
+            closed_saved: false,
             label_sent: Arc::default(),
         })
     }
@@ -384,8 +388,16 @@ impl Chat {
         self.checkpoint(ctx);
         self.await_title().await;
         if let Some(log) = lock(&self.session).as_mut() {
+            self.closed_saved = log.exists();
             let _ = log.close(reason);
         }
+    }
+
+    /// Whether the log was written when the chat last ended its session,
+    /// for what the chat says on quit (rp's `saved`, taken before
+    /// `_end_session`).
+    pub fn closed_saved(&self) -> bool {
+        self.closed_saved
     }
 
     /// Starts a fresh chat (`/new`): the current one is closed, not erased.
@@ -658,6 +670,21 @@ impl Chat {
             self.prompt_budget(),
             self.settings.max_tokens
         )
+    }
+
+    /// Sends the next turn to `ready`: a new address or model is asked for
+    /// its context length again before the turn (kb d041).
+    pub fn connect(&mut self, ready: crate::server::Ready) {
+        if self.endpoint.base != ready.base || self.settings.model != ready.model {
+            self.endpoint.base = ready.base;
+            self.settings.model = ready.model;
+            self.discovered = false;
+        }
+    }
+
+    /// The model id requests name.
+    pub fn model(&self) -> &str {
+        &self.settings.model
     }
 
     /// Asks the server what context it was launched with: MAX_MODEL_LEN is
@@ -1096,6 +1123,9 @@ pub struct ChatTurns {
     slot: Arc<Mutex<Option<Chat>>>,
     /// The chat is being closed: what a cancelled turn says it was.
     closing: Arc<AtomicBool>,
+    /// Where turns go and who runs the pod commands; without one, the
+    /// chat's own address, always taken to answer.
+    server: Option<Arc<dyn Server>>,
 }
 
 impl ChatTurns {
@@ -1103,6 +1133,15 @@ impl ChatTurns {
         Self {
             slot: Arc::new(Mutex::new(Some(chat))),
             closing: Arc::default(),
+            server: None,
+        }
+    }
+
+    /// The chat with `server` asked before each turn (kb d041).
+    pub fn with_server(chat: Chat, server: Arc<dyn Server>) -> Self {
+        Self {
+            server: Some(server),
+            ..Self::new(chat)
         }
     }
 
@@ -1170,8 +1209,47 @@ impl Turns for ChatTurns {
         })
     }
 
+    fn admit(self: Arc<Self>, ctx: TurnContext) -> BoxFuture<'static, Result<(), String>> {
+        let _ = ctx;
+        Box::pin(async move {
+            let Some(server) = self.server.clone() else {
+                return Ok(());
+            };
+            let ready = server.ready().await?;
+            self.with_chat(|chat| chat.connect(ready));
+            Ok(())
+        })
+    }
+
+    fn open_session(
+        self: Arc<Self>,
+        ctx: TurnContext,
+        open: crate::OpenSession,
+    ) -> BoxFuture<'static, ()> {
+        Box::pin(async move {
+            if let Some(mut lease) = Lease::take(&self, &ctx)
+                && let Some(chat) = lease.chat.as_mut()
+            {
+                chat.open_session(&ctx, &open).await;
+            }
+        })
+    }
+
+    fn interrupt(&self) {
+        if let Some(server) = &self.server {
+            server.interrupt();
+        }
+    }
+
     fn command(self: Arc<Self>, ctx: TurnContext, text: String) -> BoxFuture<'static, ()> {
         Box::pin(async move {
+            let rest = text.strip_prefix('/').unwrap_or(&text);
+            let (name, args) = rest.split_once(' ').unwrap_or((rest, ""));
+            if let Some(server) = self.server.clone()
+                && server.command(&ctx, name, args.trim())
+            {
+                return;
+            }
             if let Some(mut lease) = Lease::take(&self, &ctx)
                 && let Some(chat) = lease.chat.as_mut()
             {
@@ -1182,15 +1260,21 @@ impl Turns for ChatTurns {
 
     fn opened(&self, ctx: &TurnContext) {
         self.with_chat(|chat| chat.opened(ctx));
+        if let Some(server) = &self.server {
+            Arc::clone(server).opened(ctx);
+        }
     }
 
     fn closing(&self) {
         self.closing.store(true, Ordering::SeqCst);
     }
 
-    /// Saves the chat and releases its session log.
+    /// Stops the pod commands, saves the chat and releases its session log.
     fn shutdown(self: Arc<Self>, ctx: TurnContext) -> BoxFuture<'static, ()> {
         Box::pin(async move {
+            if let Some(server) = self.server.clone() {
+                server.shutdown().await;
+            }
             if let Some(mut lease) = Lease::take(&self, &ctx)
                 && let Some(chat) = lease.chat.as_mut()
             {
@@ -1203,6 +1287,7 @@ impl Turns for ChatTurns {
 
 #[path = "commands.rs"]
 mod commands;
+pub use commands::POD_COMMANDS;
 pub use commands::history_items;
 pub use commands::render_content;
 

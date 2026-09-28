@@ -84,6 +84,22 @@ const HELP: &str = "  /help              show this
                      sandbox (encrypted, local only): its branches, set it
                      up, bring branches into yours as sandbox/*, or start over
   /stats             last response timing
+
+  The pod, as its viy subcommands, in the background (Ctrl-C stops them):
+  /up [--timeout S]  create/resume the pod and wait for vLLM
+  /status            pod state, GPU, hourly cost, vLLM readiness
+  /stop              stop the pod (resumable; ends GPU billing)
+  /down              terminate the pod (weights stay on the volume)
+  /logs [-f]         read platform and container logs
+  /tunnel [--stop|--status|--forget-key]  SSH forward to vLLM
+  /boots [list|show] [boot] [-n N]  stage timings of recent boots
+  /backup [--samples N]  primary and backup region, A100 stock per region
+  /volume [list|create|delete] [id]  manage the weights network volume
+  /reap [--quiet]    viy down if nothing streamed for IDLE_TTL_MIN +
+                     REAP_GRACE_MIN
+  /shutdown [when] [--status|--cancel] [--no-poweroff]  close open chats,
+                     viy down, power off this PC
+
   /redraw            draw the screen again (Ctrl-L)
   /exit              quit  (the pod keeps running - use viy stop)
 
@@ -96,11 +112,15 @@ fn later(cmd: &str) -> Option<&'static str> {
         "search" | "sources" => "phase 5",
         "compact" | "autocompact" => "phase 6",
         "consult" | "toolbox" => "phase 7",
-        "up" | "stop" | "down" | "status" | "logs" | "tunnel" | "boots" | "backup" | "volume"
-        | "reap" | "shutdown" => "WP 3.13",
         _ => return None,
     })
 }
+
+/// The pod's commands (kb d041, d068), which the chat's server runs.
+pub const POD_COMMANDS: [&str; 11] = [
+    "up", "stop", "down", "status", "logs", "tunnel", "boots", "backup", "volume", "reap",
+    "shutdown",
+];
 
 /// How a replayed tool call is labelled, as the live chat shows it: the
 /// tool's name to its label and the argument shown (rp's `_REPLAY_TOOLS`).
@@ -446,6 +466,13 @@ impl Chat {
                     format!("/{cmd}: the chat's screen handles it"),
                 );
             }
+            // A chat on an address it was given (`viy dev chat`) has no pod.
+            _ if POD_COMMANDS.contains(&cmd) => warn(
+                "no_pod_commands",
+                format!(
+                    "/{cmd}: this chat talks to the address it was given; viy chat runs the pod commands"
+                ),
+            ),
             _ => match later(cmd) {
                 Some(when) => warn("not_ported", format!("/{cmd} comes with {when}")),
                 None => warn(
@@ -591,6 +618,48 @@ impl Chat {
         };
         if row.id != current {
             self.resume_id(ctx, &row.id).await;
+        }
+    }
+
+    /// `viy resume` and `viy fork` (kb d083): saved chat `id`, or without
+    /// one a pick of this project's chats, or every project's with `all`,
+    /// the one-shot ones only with `include_exec`; the chat is resumed, or
+    /// forked with `fork`. Nothing picked leaves the new chat as it is.
+    pub async fn open_session(&mut self, ctx: &TurnContext, open: &crate::OpenSession) {
+        let Some(store) = self.sessions.clone() else {
+            return;
+        };
+        let id = match &open.id {
+            Some(id) => id.clone(),
+            None => {
+                let project = if open.all {
+                    None
+                } else {
+                    self.project.as_deref()
+                };
+                let mut rows = store.find("", project);
+                if !open.include_exec {
+                    rows = interactive(rows);
+                }
+                if rows.is_empty() {
+                    let place = if open.all { "" } else { " in this project" };
+                    notice(
+                        ctx,
+                        NoticeLevel::Info,
+                        "pick_session",
+                        format!("no saved chats{place}; this is a new one"),
+                    );
+                    return;
+                }
+                let current = self.session_id().unwrap_or_default();
+                match self.pick_row(ctx, &rows, open.all, &current).await {
+                    Some(row) => row.id,
+                    None => return,
+                }
+            }
+        };
+        if self.resume_id(ctx, &id).await && open.fork {
+            self.fork_session(ctx, "").await;
         }
     }
 

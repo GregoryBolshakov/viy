@@ -13,6 +13,13 @@
 //! nothing waits for any more, because the work that asked it stopped or
 //! dropped it, is closed with [`EventMsg::QuestionResolved`], so the UI
 //! takes its box away (Codex's `ServerRequestResolved`).
+//!
+//! A line is admitted before its turn starts ([`Turns::admit`]): one that
+//! nothing could answer, because no pod is ready (kb d041), is refused with
+//! [`EventMsg::TurnRefused`] and never becomes a turn. Work that runs
+//! beside the queue, a pod command, takes a [`TurnContext::background`] of
+//! its own, whose questions stay open after the command that started it;
+//! Ctrl-C with no turn running reaches it through [`Turns::interrupt`].
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -43,6 +50,7 @@ use viy_protocol::TurnAbortReason;
 use viy_protocol::TurnAbortedEvent;
 use viy_protocol::TurnCompleteEvent;
 use viy_protocol::TurnOutcome;
+use viy_protocol::TurnRefusedEvent;
 use viy_protocol::TurnStartedEvent;
 
 /// A boxed future, as the engine's traits return.
@@ -58,6 +66,28 @@ pub trait Turns: Send + Sync + 'static {
     /// Runs a slash command; the engine says when it is done
     /// ([`EventMsg::CommandComplete`]).
     fn command(self: Arc<Self>, ctx: TurnContext, text: String) -> BoxFuture<'static, ()>;
+
+    /// Whether the line may start a turn now; `Err` says why not, and the
+    /// engine refuses it ([`EventMsg::TurnRefused`]) before anything of it
+    /// is shown as a turn.
+    fn admit(self: Arc<Self>, ctx: TurnContext) -> BoxFuture<'static, Result<(), String>> {
+        let _ = ctx;
+        Box::pin(async { Ok(()) })
+    }
+
+    /// [`Op::OpenSession`]: go on in a saved chat, named or picked.
+    fn open_session(
+        self: Arc<Self>,
+        ctx: TurnContext,
+        open: OpenSession,
+    ) -> BoxFuture<'static, ()> {
+        let _ = (ctx, open);
+        Box::pin(async {})
+    }
+
+    /// Ctrl-C with no turn or command running: for the work running beside
+    /// the queue (a pod command).
+    fn interrupt(&self) {}
 
     /// Once, when the engine starts, before any submission: what the
     /// frontend shows from the start (the footer's statuses), tagged with
@@ -102,6 +132,18 @@ impl TurnContext {
     /// future resolves when its answer comes in.
     pub fn ask(&self, question: &Question) -> Asking {
         self.questions.ask(&self.events, &self.sub_id, question)
+    }
+
+    /// A context for work that goes on after this submission has ended (a
+    /// pod command in the background): the same channels, a submission id
+    /// of its own, so the end of this one closes none of its questions; a
+    /// question it asked closes when its future goes.
+    pub fn background(&self) -> Self {
+        Self {
+            sub_id: format!("{}b", self.sub_id),
+            events: self.events.clone(),
+            questions: self.questions.clone(),
+        }
     }
 
     /// [`TurnContext::ask`] in the shape the pod commands take questions in
@@ -292,11 +334,23 @@ impl Engine {
     }
 }
 
+/// [`Op::OpenSession`]'s fields: the saved chat to go on in, or how to
+/// pick one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OpenSession {
+    pub id: Option<String>,
+    pub all: bool,
+    pub include_exec: bool,
+    pub fork: bool,
+}
+
 /// What a running task is.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum Work {
     Turn,
     Command,
+    /// [`Op::OpenSession`], shown as `/resume`.
+    Open(OpenSession),
 }
 
 struct Running {
@@ -320,7 +374,9 @@ impl Running {
                 reason: TurnAbortReason::Interrupted,
             }),
             // A command stopped half way has still stopped running.
-            Work::Command => EventMsg::CommandComplete(CommandCompleteEvent { command: self.text }),
+            Work::Command | Work::Open(_) => {
+                EventMsg::CommandComplete(CommandCompleteEvent { command: self.text })
+            }
         };
         emit(events, &self.sub_id, msg);
     }
@@ -357,7 +413,9 @@ async fn submission_loop(
                     return;
                 };
                 match sub.op {
-                    Op::UserTurn { .. } | Op::Command { .. } => queued.push_back(sub),
+                    Op::UserTurn { .. } | Op::Command { .. } | Op::OpenSession { .. } => {
+                        queued.push_back(sub);
+                    }
                     Op::QuestionAnswer { id, answer } => questions.answer(&id, answer),
                     // The modes are phase 4's (modes.py, kb d024); until then
                     // Shift+Tab says so.
@@ -370,11 +428,10 @@ async fn submission_loop(
                             message: "Shift+Tab: the chat modes come with phase 4".into(),
                         }),
                     ),
-                    Op::Interrupt => {
-                        if let Some(task) = running.take() {
-                            task.cancel(&questions, &events).await;
-                        }
-                    }
+                    Op::Interrupt => match running.take() {
+                        Some(task) => task.cancel(&questions, &events).await,
+                        None => turns.interrupt(),
+                    },
                     Op::Shutdown => {
                         turns.closing();
                         if let Some(task) = running.take() {
@@ -417,15 +474,39 @@ fn start(
     let (work, text) = match sub.op {
         Op::UserTurn { text } => (Work::Turn, text),
         Op::Command { text } => (Work::Command, text),
+        Op::OpenSession {
+            id,
+            all,
+            include_exec,
+            fork,
+        } => (
+            Work::Open(OpenSession {
+                id,
+                all,
+                include_exec,
+                fork,
+            }),
+            "/resume".to_string(),
+        ),
         _ => return None,
     };
     let turns = Arc::clone(turns);
     let done = done.clone();
     let sub_id = sub.id.clone();
     let shown = text.clone();
+    // What cancelling it says: a turn aborted, or a command ended.
+    let kind = match work {
+        Work::Turn => Work::Turn,
+        _ => Work::Command,
+    };
     let task = tokio::spawn(async move {
         match work {
             Work::Turn => {
+                if let Err(message) = Arc::clone(&turns).admit(ctx.clone()).await {
+                    ctx.emit(EventMsg::TurnRefused(TurnRefusedEvent { text, message }));
+                    let _ = done.send(ctx.sub_id);
+                    return;
+                }
                 ctx.emit(EventMsg::TurnStarted(TurnStartedEvent {
                     turn_id: ctx.sub_id.clone(),
                     user_text: text.clone(),
@@ -442,12 +523,18 @@ fn start(
                     command: text,
                 }));
             }
+            Work::Open(open) => {
+                turns.open_session(ctx.clone(), open).await;
+                ctx.emit(EventMsg::CommandComplete(CommandCompleteEvent {
+                    command: text,
+                }));
+            }
         }
         let _ = done.send(ctx.sub_id);
     });
     Some(Running {
         sub_id,
-        work,
+        work: kind,
         text: shown,
         task,
     })

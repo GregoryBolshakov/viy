@@ -3,8 +3,8 @@
 //! above the input as Codex's `bottom_pane/command_popup.rs` does.
 //!
 //! The commands and their values are rp chat's `HELP` (rpctl b6de7f1
-//! chat.py 534-595), aliases left out. Running them is the engine's (WP
-//! 3.12); the pod commands join with WP 3.13 (kb d068).
+//! chat.py 534-595), aliases left out, then viy's pod commands (kb d041,
+//! d068) in their subcommands' words. Running them is the engine's.
 
 /// A slash command as `/help` lists it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +122,68 @@ pub const COMMANDS: &[Command] = &[
         &["init", "import", "reset"],
     ),
     cmd("stats", "", "last response timing", &[]),
+    // The pod's commands (kb d041, d068), with their subcommands' words.
+    cmd(
+        "up",
+        "[--timeout S]",
+        "create/resume the pod and wait for vLLM",
+        &[],
+    ),
+    cmd(
+        "status",
+        "",
+        "pod state, GPU, hourly cost, vLLM readiness",
+        &[],
+    ),
+    cmd(
+        "stop",
+        "",
+        "stop the pod (resumable; ends GPU billing)",
+        &[],
+    ),
+    cmd(
+        "down",
+        "",
+        "terminate the pod (weights stay on the volume)",
+        &[],
+    ),
+    cmd("logs", "[-f]", "read platform and container logs", &["-f"]),
+    cmd(
+        "tunnel",
+        "[--stop|--status|--forget-key]",
+        "SSH forward to vLLM",
+        &["--stop", "--status", "--forget-key"],
+    ),
+    cmd(
+        "boots",
+        "[list|show] [boot] [-n N]",
+        "stage timings of recent boots",
+        &["list", "show"],
+    ),
+    cmd(
+        "backup",
+        "[--samples N]",
+        "primary and backup region, A100 stock",
+        &[],
+    ),
+    cmd(
+        "volume",
+        "[list|create|delete] [id]",
+        "manage the weights network volume",
+        &["list", "create", "delete"],
+    ),
+    cmd(
+        "reap",
+        "[--quiet]",
+        "viy down if nothing streamed for a while",
+        &[],
+    ),
+    cmd(
+        "shutdown",
+        "[when] [--status|--cancel] [--no-poweroff]",
+        "close chats, viy down, power off later",
+        &["--status", "--cancel"],
+    ),
     cmd("exit", "", "quit", &[]),
 ];
 

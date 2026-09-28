@@ -4,6 +4,7 @@
 //! package has not come yet say so and exit 1. The pod commands are in
 //! [`pods`], `viy shutdown` in [`shutdown`].
 
+pub mod chat;
 pub mod cli;
 pub mod dev;
 pub mod exec;
@@ -11,6 +12,7 @@ pub mod hardening;
 pub mod init;
 pub mod migrate;
 pub mod model;
+pub mod pod_server;
 pub mod pods;
 pub mod sessions_cli;
 pub mod shutdown;
@@ -66,6 +68,13 @@ impl Failure {
             message: None,
             code,
         }
+    }
+}
+
+impl Failure {
+    /// Its message, if it has one.
+    pub fn message(&self) -> Option<&str> {
+        self.message.as_deref()
     }
 }
 
@@ -200,9 +209,42 @@ fn dispatch(
             };
             sessions_cli::cmd_delete(args, &paths()?, asking, out)
         }
-        // They open the chat, which comes with WP 3.13.
-        Command::Chat(_) | Command::Resume(_) | Command::Fork(_) => not_ported(3),
+        Command::Chat(_) | Command::Resume(_) | Command::Fork(_) => {
+            let paths = paths()?;
+            let cfg = config(&paths)?;
+            let opening = chat_opening(command);
+            chat::cmd_chat(&opening, &paths, cfg, &cwd()?, out, terminal)
+        }
         Command::Trace(_) | Command::Toolbox(_) => not_ported(7),
+    }
+}
+
+/// What `viy chat`, `viy resume` or `viy fork` opens.
+fn chat_opening(command: &Command) -> chat::Opening {
+    let wanted = |pick: &cli::Pick, include_exec: bool, fork: bool| chat::Wanted {
+        id: pick.session_id.clone(),
+        last: pick.last,
+        all: pick.all,
+        include_exec,
+        fork,
+    };
+    match command {
+        Command::Chat(args) => chat::Opening {
+            url: args.url.clone(),
+            system: args.system.clone(),
+            session: None,
+        },
+        Command::Resume(args) => chat::Opening {
+            url: args.url.clone(),
+            system: None,
+            session: Some(wanted(&args.pick, args.include_non_interactive, false)),
+        },
+        Command::Fork(args) => chat::Opening {
+            url: args.url.clone(),
+            system: None,
+            session: Some(wanted(&args.pick, false, true)),
+        },
+        _ => chat::Opening::default(),
     }
 }
 

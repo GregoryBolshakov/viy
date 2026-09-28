@@ -32,6 +32,8 @@ viy-term = { workspace = true }
 viy-time = { workspace = true }
 
 [dev-dependencies]
+chrono = { workspace = true }
 pretty_assertions = { workspace = true }
 viy-testkit = { workspace = true }
 vt100 = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "signal", "sync", "test-util", "time"] }

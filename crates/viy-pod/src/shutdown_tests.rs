@@ -100,6 +100,19 @@ fn viy_chats_too() {
     assert!(!is_chat(&argv(&["/x/viyx", "chat"])));
 }
 
+/// Not in rp's tests: viy's chat opens bare and with `resume` and `fork`
+/// (kb d067, d083), which rp's `_is_chat` does not know.
+#[test]
+fn viy_opens_its_chat_bare_and_with_resume_and_fork() {
+    assert!(is_chat(&argv(&["/home/u/.cargo/bin/viy"])));
+    assert!(is_chat(&argv(&["viy", "--x"])));
+    assert!(is_chat(&argv(&["viy", "resume", "--last"])));
+    assert!(is_chat(&argv(&["/x/viy", "fork", "20260718-135451-84e1"])));
+    assert!(!is_chat(&argv(&["viy", "exec", "resume", "--last"])));
+    assert!(!is_chat(&argv(&["python", "/x/bin/rp"])));
+    assert!(!is_chat(&argv(&["rp", "resume"])));
+}
+
 // ---------------------------------------------------------- CloseChatsTests
 
 /// A stand-in chat: `sh` with `<dir>/<tool> <sub> <out>` in its command
@@ -1087,6 +1100,21 @@ mod oracle {
         }
     }
 
+    /// Whether `args` is bare viy, past its options: viy's chat, which rp's
+    /// `_is_chat` does not count (kb d067).
+    fn viy_alone(args: &[&str]) -> bool {
+        let tool = |a: &&str| {
+            ["rp", "rpctl", "viy"].contains(a) || a.ends_with("/rp") || a.ends_with("/viy")
+        };
+        let Some(i) = args.iter().position(tool) else {
+            return false;
+        };
+        (args[i] == "viy" || args[i].ends_with("/viy"))
+            && args[i + 1..]
+                .iter()
+                .all(|a| a.is_empty() || a.starts_with('-'))
+    }
+
     /// The same answer as rpctl's `_is_chat` for every command line.
     #[test]
     fn is_chat_matches_rpctl() {
@@ -1116,6 +1144,10 @@ mod oracle {
         for case in 0..4000 {
             let args: Vec<&str> = (0..g.below(6)).map(|_| pick(&mut g, &pieces)).collect();
             let ours = is_chat(&argv(&args));
+            if viy_alone(&args) {
+                // viy's own chats rp does not know (kb d067).
+                continue;
+            }
             let theirs = oracle
                 .call("shutdown.is_chat", json!([args]), json!({}))
                 .unwrap()

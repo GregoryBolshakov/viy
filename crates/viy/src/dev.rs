@@ -54,6 +54,8 @@ use viy_protocol::Answer;
 use viy_protocol::EventMsg;
 use viy_protocol::Op;
 use viy_term::app::App;
+use viy_term::header::Colors;
+use viy_term::header::Header;
 use viy_term::history::History;
 use viy_term::plain::Plain;
 use viy_term::tabtitle;
@@ -197,7 +199,8 @@ fn chat_ui(
         } else {
             let project = Project::find(&start).map_err(|e| Failure::from(e.to_string()))?;
             let tab = tab_title(&cfg);
-            tui_chat(engine, History::load(project.history_file()), tab).await?;
+            let history = History::load(project.history_file());
+            tui_chat(engine, history, tab, chat_header(&cfg)).await?;
         }
         Ok::<_, Failure>(turns.with_chat(|c| c.session_id()).flatten())
     })?;
@@ -213,12 +216,39 @@ pub(crate) fn tab_title(cfg: &Config) -> bool {
     cfg.get("CHAT_TAB_TITLE").unwrap_or("1") == "1"
 }
 
+/// The centipede header for the chat's transcript, with viy's version
+/// and the chat's directory under the art: on unless CHAT_HEADER is set
+/// to anything but `1` (viy's own key) or NO_COLOR is set.
+pub(crate) fn chat_header(cfg: &Config) -> Option<Header> {
+    let on = cfg.get("CHAT_HEADER").unwrap_or("1") == "1";
+    let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
+    let directory = std::env::current_dir().unwrap_or_default();
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    (on && !no_color).then(|| Header {
+        colors: Colors::detect(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        directory: home_relative(&directory, home.as_deref()),
+    })
+}
+
+/// `directory` with the home directory written `~`, as Codex's session
+/// header shows it.
+pub(crate) fn home_relative(directory: &std::path::Path, home: Option<&std::path::Path>) -> String {
+    match home.and_then(|h| directory.strip_prefix(h).ok()) {
+        Some(rest) if rest.as_os_str().is_empty() => "~".to_string(),
+        Some(rest) => format!("~/{}", rest.display()),
+        None => directory.display().to_string(),
+    }
+}
+
 /// The chat in the terminal UI, the engine's events and the UI's ops
-/// passed between them by a task; with `tab`, the tab title too.
+/// passed between them by a task; with `tab`, the tab title too, and
+/// `header` first in the transcript.
 pub(crate) async fn tui_chat(
     mut engine: Engine,
     history: History,
     tab: bool,
+    header: Option<Header>,
 ) -> Result<(), Failure> {
     let terminal = |e| Failure::from(format!("the terminal: {e}"));
     let mut tui = Tui::init().map_err(terminal)?;
@@ -246,6 +276,9 @@ pub(crate) async fn tui_chat(
         }
     });
     let mut app = App::new(ops, history);
+    if let Some(header) = header {
+        app.header(header);
+    }
     if tab {
         app.tab_title(tabtitle::Encoding::detect());
     }

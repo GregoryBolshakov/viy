@@ -136,7 +136,13 @@ pub fn cmd_chat(
                 let _ = engine.submit(op);
             }
             let history = History::load(project.history_file());
-            dev::tui_chat(engine, history, dev::tab_title(&cfg)).await?;
+            dev::tui_chat(
+                engine,
+                history,
+                dev::tab_title(&cfg),
+                dev::chat_header(&cfg),
+            )
+            .await?;
         }
         let saved = turns
             .with_chat(|c| c.closed_saved().then(|| c.tab_label(None)))

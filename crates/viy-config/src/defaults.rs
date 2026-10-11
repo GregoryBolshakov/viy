@@ -62,6 +62,10 @@ pub const DEFAULTS: &[(&str, &str)] = &[
     // in progress (model thinking or writing, tools running) and shows a
     // static mark when it waits for you. 0 leaves the title alone.
     ("CHAT_TAB_TITLE", "1"),
+    // Client-side, viy only. viy chat draws the centipede header at the top
+    // of the transcript (it scrolls away with it), on a terminal at least 60
+    // columns wide, unless NO_COLOR is set. 0 leaves it out.
+    ("CHAT_HEADER", "1"),
     // Client-side. 1 masks API tokens (known key formats, and the values of
     // this config's own secrets) before a chat is written to disk. Off by
     // default because it is lossy: a resumed chat sees the mask, not the token.

@@ -368,3 +368,32 @@ fn the_tab_title_follows_the_config() {
     cfg.set("CHAT_TAB_TITLE", "1");
     assert!(super::tab_title(&cfg));
 }
+
+/// CHAT_HEADER, viy's own key: the header unless it is set to anything
+/// but `1` (NO_COLOR, from the environment, is not set in tests).
+#[test]
+fn chat_header_follows_its_key() {
+    let mut cfg = viy_config::Config::defaults();
+    if std::env::var_os("NO_COLOR").is_none() {
+        assert!(crate::dev::chat_header(&cfg).is_some());
+    }
+    cfg.set("CHAT_HEADER", "0");
+    assert!(crate::dev::chat_header(&cfg).is_none());
+}
+
+/// The directory under the header's title, as Codex writes it.
+#[test]
+fn the_headers_directory_is_written_from_home() {
+    use std::path::Path;
+    let home = Some(Path::new("/home/me"));
+    assert_eq!(crate::dev::home_relative(Path::new("/home/me"), home), "~");
+    assert_eq!(
+        crate::dev::home_relative(Path::new("/home/me/Projects/x"), home),
+        "~/Projects/x"
+    );
+    assert_eq!(
+        crate::dev::home_relative(Path::new("/home/meadow"), home),
+        "/home/meadow"
+    );
+    assert_eq!(crate::dev::home_relative(Path::new("/srv"), None), "/srv");
+}

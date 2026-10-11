@@ -58,6 +58,10 @@ pub enum Cell {
     },
     Reasoning(Reasoning),
     Tool(ToolCard),
+    /// The centipede header, the largest built-in size that fits the
+    /// width, centred, never wrapped, with viy's title and the directory
+    /// under it ([`crate::header`]), and a blank row after.
+    Header(crate::header::Header),
 }
 
 /// The reasoning trace of a round.
@@ -161,6 +165,19 @@ impl Cell {
             Self::Answer { source, markdown } => answer_rows(source, *markdown, width),
             Self::Reasoning(reasoning) => reasoning.rows(width, expanded),
             Self::Tool(card) => card.rows(width, expanded, None),
+            Self::Header(header) => {
+                let mut rows: Vec<Row> = header
+                    .lines(width)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, line)| Row {
+                        line,
+                        key: (i + 1, 0),
+                    })
+                    .collect();
+                rows.push(blank_row());
+                rows
+            }
         }
     }
 }

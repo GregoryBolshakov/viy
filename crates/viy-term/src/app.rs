@@ -130,6 +130,8 @@ pub struct App {
     turn: Option<Turn>,
     /// Messages sent that have not started yet, oldest first.
     queued: VecDeque<String>,
+    /// The centipede header, first in the transcript (CHAT_HEADER).
+    header: Option<crate::header::Header>,
     /// The start of the input box that lines not sent were put back as.
     given_back: String,
     /// The questions the engine waits on, oldest first.
@@ -176,6 +178,7 @@ impl App {
             composer: Composer::new(history),
             turn: None,
             queued: VecDeque::new(),
+            header: None,
             given_back: String::new(),
             questions: Questions::default(),
             points: Vec::new(),
@@ -281,6 +284,18 @@ impl App {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         }
+    }
+
+    /// Draws `header` first in the transcript, now and after every
+    /// repaint (CHAT_HEADER).
+    pub fn header(&mut self, header: crate::header::Header) {
+        self.cells.insert(0, Cell::Header(header.clone()));
+        self.header = Some(header);
+        for (cell, _) in &mut self.points {
+            *cell += 1;
+        }
+        self.view.reset();
+        self.dirty = true;
     }
 
     /// Takes in one engine event.
@@ -397,6 +412,9 @@ impl App {
                 self.picking = None;
                 self.cells.clear();
                 self.points.clear();
+                if let Some(header) = &self.header {
+                    self.cells.push(Cell::Header(header.clone()));
+                }
                 for item in &e.items {
                     match item {
                         HistoryItem::User { text } => {

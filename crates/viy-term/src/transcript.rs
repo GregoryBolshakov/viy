@@ -142,12 +142,15 @@ impl TranscriptView {
 
     /// Draws `cells` into `area`: the page at the reading position, or the
     /// last rows; a transcript shorter than the area sits at its bottom,
-    /// right above the live region, as a shell's output does.
+    /// right above the live region, as a shell's output does, but one that
+    /// opens with the centipede header sits at the top, the header being
+    /// the top of the chat, until it fills the area and scrolls.
     pub fn render(&mut self, cells: &[Cell], area: Rect, buf: &mut Buffer) {
         self.prepare(cells, area.width, area.height);
         let top = self.top();
         let end = (top + self.page).min(self.total());
-        let gap = self.page - (end - top);
+        let headed = matches!(cells.first(), Some(Cell::Header(_)));
+        let gap = if headed { 0 } else { self.page - (end - top) };
         let y = (area.y..area.bottom()).skip(gap);
         for (y, row) in y.zip(self.rows(top, end)) {
             buf.set_line(area.x, y, row, area.width);

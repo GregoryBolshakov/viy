@@ -317,3 +317,34 @@ fn a_tall_draft_leaves_the_footer_on_screen() {
         "{screen:#?}"
     );
 }
+
+/// The centipede header (CHAT_HEADER): first in the transcript, at the
+/// top of the screen, and first again after a repaint.
+#[test]
+fn the_header_tops_the_transcript_and_survives_a_repaint() {
+    let mut f = fixture(80, 40);
+    let header = crate::header::Header {
+        colors: crate::header::Colors::True,
+        version: "0.1.0".into(),
+        directory: "~/project".into(),
+    };
+    f.app.header(header.clone());
+    let screen = f.screen();
+    let art: Vec<String> = header
+        .lines(80)
+        .iter()
+        .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+        .collect();
+    assert!(art.len() > 3);
+    assert_eq!(art[art.len() - 2], "  >_ viy (v0.1.0)");
+    assert_eq!(art[art.len() - 1], "     ~/project");
+    assert_eq!(screen[..art.len()], art[..], "{screen:#?}");
+    f.app.event(EventMsg::HistoryRewritten(
+        viy_protocol::HistoryRewrittenEvent {
+            reason: viy_protocol::RewriteReason::New,
+            items: vec![],
+        },
+    ));
+    assert_eq!(f.screen()[..art.len()], art[..]);
+    assert!(matches!(f.app.cells[0], Cell::Header(_)));
+}

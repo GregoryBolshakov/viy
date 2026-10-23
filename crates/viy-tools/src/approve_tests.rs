@@ -3,6 +3,7 @@ use std::path::Path;
 use pretty_assertions::assert_eq;
 use viy_testkit::scratch::ScratchDir;
 
+use super::literal::Literal;
 use super::*;
 
 // ---------------------------------------- rpctl test_features.py, ported
@@ -131,6 +132,52 @@ fn real_tmp_or_unsandboxed_asks() {
     assert!(destructive_reason("rm -rf /tmp/x", None).is_some());
 }
 
+/// DestructiveSpellingTests: rm and git spelled the ways honest commands
+/// spell them still ask (rpctl 40cb811, from viy's flags F49).
+#[test]
+fn rm_and_git_spellings_ask() {
+    for cmd in [
+        "\\rm -rf build",
+        "/bin/rm -rf build",
+        "rm build -rf",
+        "rm -v -rf build",
+        "cd x && /usr/bin/rm build -r",
+        "git -C sub clean -fd",
+        "git --no-pager reset --hard",
+        "git -c core.x=y -C sub checkout -- .",
+        "git -P stash drop",
+    ] {
+        assert!(destructive_reason(cmd, None).is_some(), "{cmd}");
+        // The literal view alone, as rpctl's patterns.
+        assert!(Literal::new(cmd).rm() || Literal::new(cmd).git(), "{cmd}");
+    }
+}
+
+#[test]
+fn flags_of_other_commands_do_not_ask() {
+    for cmd in [
+        "rm x && ls -rf",
+        "rm x; grep -r y .",
+        "rm x | sort -r",
+        "rm x\ngrep -r y",
+        "rm -i x",
+        "rm -- x",
+        "farm -rf",
+        "git -C sub status",
+        "git -c core.x=y log -- src",
+        "git --no-pager checkout main",
+    ] {
+        assert_eq!(destructive_reason(cmd, None), None, "{cmd:?}");
+    }
+}
+
+#[test]
+fn tmp_deletes_by_path_still_run() {
+    for cmd in ["cd /tmp && /bin/rm -rf build", "/usr/bin/rm -rf /tmp/x"] {
+        assert_eq!(in_sandbox(cmd, "/home/user/p"), None, "{cmd}");
+    }
+}
+
 // --------------------------------------- rpctl test_sandboxgit.py, ported
 
 /// ApproverTests: git commands that rewrite the working tree ask.
@@ -252,7 +299,6 @@ fn harmless_commands_do_not_ask() {
     for cmd in [
         "rm x",
         "rm -i x",
-        "rm -- -rf",
         "ls -rf",
         "cargo build --release",
         "git commit -m 'tidy up'",
@@ -521,6 +567,12 @@ mod oracle {
         "my-git",
         "a.git",
         "findx",
+        "-C",
+        "--no-pager",
+        "-P",
+        "\\rm",
+        "/usr/bin/rm",
+        "sub",
         "-Rf",
         "2",
         "rpx",

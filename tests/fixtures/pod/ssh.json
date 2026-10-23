@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "b6de7f146b6f26eb15cbbbad96ea19db66623da4",
+ "rpctl_commit": "40cb811dd54629c7e3e944700f12993c9f263977",
  "generator": "tools/fixtures.py pod/ssh",
  "about": "rpctl's ssh and tunnel functions in pod.py: per case the call and its args, pod.json, known_hosts and tunnel.log before, config keys over DEFAULTS and {'NETWORK_VOLUME_ID': 'vol222', 'TUNNEL_LOCAL_PORT': '18001', 'VLLM_PORT': '8000'} with POD_NAME='qwen-pod', the answers its commands (`runs`) and RunPod requests (`replies`) get in order, whether the local end accepts (`listening`), whether pid 4242 is a live ssh (`live`) and what the tunnel's ssh does (`popen`); out: the commands run, the requests sent, what rpctl printed with its colour, the signals sent, the result or the SystemExit, and pod.json and known_hosts after. The state directory is <STATE>. Run by the installed rp's interpreter in a temporary HOME",
  "cases": [

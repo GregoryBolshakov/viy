@@ -132,44 +132,89 @@ impl Literal {
 
     // ---------------------------------------------------------- DESTRUCTIVE
 
-    /// `(^|[;&|(\s'"])rm\s+(-\w*[rRf]|--recursive|--force)`
+    /// `(^|[;&|(\s'"\\/])rm\s+([^;&|\n]*\s)?(-\w*[rRf]|--recursive|--force)`
     pub(super) fn rm(&self) -> bool {
         (0..self.tokens.len()).any(|i| {
             let t = &self.tokens[i];
-            t.is("rm") && self.after(t, ";&|('\"") && self.word_after(i).is_some_and(rm_flag)
+            ((t.is("rm") && self.after(t, ";&|('\"\\")) || t.ends_with("/rm"))
+                && self.later_in_list(i, rm_flag)
         })
     }
 
-    /// `\bgit\s+(clean|reset\s+--hard|restore\b|stash\s+(drop|clear)|checkout\s+…|switch\s+…)`
+    /// `\bgit\s+(-[Cc]\s+\S+\s+|-[^\sCc]\S*\s+)*(clean|reset\s+--hard|restore\b|stash\s+(drop|clear)|checkout\s+…|switch\s+…)`
     pub(super) fn git(&self) -> bool {
         (0..self.tokens.len()).any(|i| {
-            if !self.tokens[i].ends_with_word("git") {
+            let t = &self.tokens[i];
+            if !t.ends_with_word("git") || !self.space_after(t) {
                 return false;
             }
-            let Some(sub) = self.word_after(i) else {
+            let p = self.past_git_options(self.skip_space(t.end));
+            let Some(j) = self.tokens.iter().position(|u| u.start == p) else {
                 return false;
             };
-            let then = |w: &str| self.word_after(i + 1).is_some_and(|u| u.starts_with(w));
+            let sub = &self.tokens[j];
+            let then = |w: &str| self.word_after(j).is_some_and(|u| u.starts_with(w));
+            let flag_in = |words: &'static [&'static str]| {
+                self.later_in_list(j, |u: &Token| {
+                    words.iter().any(|w| u.is(w)) && self.space_or_end_after(u)
+                })
+            };
             (sub.starts_with("clean"))
                 || (sub.is("reset") && then("--hard"))
                 || sub.starts_with_word("restore")
                 || (sub.is("stash") && (then("drop") || then("clear")))
-                || (sub.is("checkout") && self.later_in_list(i + 1, &["--", "-f", "--force", "."]))
-                || (sub.is("switch")
-                    && self.later_in_list(i + 1, &["-f", "--force", "--discard-changes"]))
+                || (sub.is("checkout") && flag_in(&["--", "-f", "--force", "."]))
+                || (sub.is("switch") && flag_in(&["-f", "--force", "--discard-changes"]))
         })
     }
 
-    /// `<token i>\s+([^;&|\n]*\s)?(<one of words>)(\s|$)`
-    fn later_in_list(&self, i: usize, words: &[&str]) -> bool {
+    /// Past `(-[Cc]\s+\S+\s+|-[^\sCc]\S*\s+)*` from `p`: git's own options.
+    fn past_git_options(&self, mut p: usize) -> usize {
+        let at = |k: usize| self.chars.get(k).copied();
+        while at(p) == Some('-') {
+            let end = match at(p + 1) {
+                Some('C' | 'c') => {
+                    let value = self.skip_space(p + 2);
+                    let end = self.skip_word(value);
+                    if value == p + 2 || end == value {
+                        break;
+                    }
+                    end
+                }
+                Some(c) if !is_py_space(c) => self.skip_word(p + 1),
+                _ => break,
+            };
+            let next = self.skip_space(end);
+            if next == end {
+                break;
+            }
+            p = next;
+        }
+        p
+    }
+
+    fn skip_space(&self, mut p: usize) -> usize {
+        while self.chars.get(p).is_some_and(|c| is_py_space(*c)) {
+            p += 1;
+        }
+        p
+    }
+
+    /// Past a run of non-whitespace (`\S*`).
+    fn skip_word(&self, mut p: usize) -> usize {
+        while self.chars.get(p).is_some_and(|c| !is_py_space(*c)) {
+            p += 1;
+        }
+        p
+    }
+
+    /// `<token i>\s+([^;&|\n]*\s)?X` for a token X that `is_x` accepts.
+    fn later_in_list(&self, i: usize, is_x: impl Fn(&Token) -> bool) -> bool {
         let t = &self.tokens[i];
         if !self.space_after(t) {
             return false;
         }
-        let mut from = t.end;
-        while from < self.chars.len() && is_py_space(self.chars[from]) {
-            from += 1;
-        }
+        let from = self.skip_space(t.end);
         // The run may not cross a list operator or a newline, but the one
         // whitespace character that ends it may be a newline.
         self.tokens[i + 1..]
@@ -180,11 +225,7 @@ impl Literal {
                         .iter()
                         .any(|c| ";&|\n".contains(*c))
             })
-            .any(|u| {
-                words.iter().any(|w| u.is(w))
-                    && self.prev(u).is_some_and(is_py_space)
-                    && self.space_or_end_after(u)
-            })
+            .any(|u| (u.start == from || self.prev(u).is_some_and(is_py_space)) && is_x(u))
     }
 
     /// `\bfind\b.*\s-delete\b`

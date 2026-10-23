@@ -13,5 +13,14 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+# The oracle tests need python3 and the rpctl snapshot; off in the pre-commit hook.
+oracle = ["viy-testkit/oracle"]
+
 [dependencies]
 serde_json = { workspace = true }
+shlex = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+viy-testkit = { workspace = true }

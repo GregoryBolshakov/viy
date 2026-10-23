@@ -68,6 +68,20 @@ def shutdown_is_chat(argv):
     return shutdown._is_chat([a.encode() for a in argv])
 
 
+def approve_parse_rules(text):
+    """approve.load_rules() over a rules file holding `text`: the one I/O
+    entry, a scratch file in the oracle's own temporary home."""
+    from rpctl import approve
+    path = pathlib.Path(tempfile.mkdtemp()) / "approval.rules"
+    path.write_text(text)
+    saved, approve.RULES_PATH = approve.RULES_PATH, path
+    try:
+        return approve.load_rules()
+    finally:
+        approve.RULES_PATH = saved
+        shutil.rmtree(path.parent)
+
+
 # The callable functions: request name -> (module, attribute), or a function
 # defined above. Add entries as work packages need them; every rpctl entry
 # must be free of I/O (plan 5.4).
@@ -75,8 +89,13 @@ FUNCTIONS = {
     # rpctl
     "approve.destructive_reason": ("rpctl.approve", "destructive_reason"),
     "approve.net_ask_reason": ("rpctl.approve", "net_ask_reason"),
+    "approve.parse_rules": approve_parse_rules,
+    "approve.pipes_program_into_interpreter": ("rpctl.approve", "pipes_program_into_interpreter"),
     "approve.plain_pipeline": ("rpctl.approve", "plain_pipeline"),
     "approve.prefix_for": ("rpctl.approve", "prefix_for"),
+    "approve.rules_allow_net": ("rpctl.approve", "rules_allow_net"),
+    # Resolves the workspace and /tmp (file system reads, no writes).
+    "approve.sandbox_tmp_rm": ("rpctl.approve", "sandbox_tmp_rm"),
     "idle.decide": ("rpctl.idle", "decide"),
     "idle.limits": ("rpctl.idle", "limits"),
     "redact.any_pattern": redact_any_pattern,

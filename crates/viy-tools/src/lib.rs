@@ -5,7 +5,10 @@
 //! `egress.py`, `netguard.py`, `webfetch.py`, `search.py`, `untrusted.py` and
 //! `mounts.py` (ROADMAP phases 4 and 5).
 //!
-//! So far the schemas of the internet tools ([`web`]), which the chat offers
-//! from phase 3 on.
+//! So far the command approver's parsers and policy ([`approve`]), the
+//! lenient path resolution the guards share ([`resolve`]), and the schemas
+//! of the internet tools ([`web`]), which the chat offers from phase 3 on.
 
+pub mod approve;
+pub mod resolve;
 pub mod web;

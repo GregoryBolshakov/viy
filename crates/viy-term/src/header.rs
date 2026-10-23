@@ -1,13 +1,14 @@
-//! The centipede header at the top of the chat's transcript: Gregory's
-//! terminal art (`terminal-art/render-header.py`, with the additions in
-//! `tools/header_art.py`), the whole scene scaled to each width in
-//! [`WIDTHS`] and built in as sextant cells: 2x3 solid blocks, each with a
+//! The centipede header at the top of the chat's transcript: a flat,
+//! stylized centipede (`tools/header-art/centipede.py`, through
+//! `tools/header_art.py`), 11 rows high and built in at twenty widths,
+//! every 12 columns from 80 to 308, its body half a wave longer at each, as sextant cells: 2x3 solid blocks, each with a
 //! foreground and a background colour. The largest that fits the terminal
-//! is drawn, centred, and under it, as Codex's session header, `>_ viy
-//! (vX)` and the chat's directory. It is the first entry of the transcript
-//! and scrolls away with it. Where the scene is empty the terminal's own background
-//! shows. Without truecolor (`COLORTERM`) the colours are the nearest of
-//! the 256 xterm colours.
+//! is drawn, its leftmost block in the column where the title starts, and
+//! under it, as Codex's session header, `>_ viy (vX)` and the chat's
+//! directory. It is the first entry of the transcript
+//! and scrolls away with it. Where the art is empty the terminal's own
+//! background shows. Without truecolor (`COLORTERM`) the colours are the
+//! nearest of the 256 xterm colours.
 //!
 //! Regenerate after changing the art: `python3 tools/header_art.py`.
 //!
@@ -40,9 +41,9 @@ macro_rules! arts {
     };
 }
 
-// Keep in step with WIDTHS in tools/header_art.py.
-arts!(64 72 80 88 96 104 112 120 128 136 144 152 160 168 176 184 192
-      200 208 216 224 232 240 248 256 264 272 280 288 296 304 312 320);
+// Keep in step with WIDTHS in tools/header_art.py: every 12 columns from
+// the default 80-column window to a large monitor's full screen.
+arts!(80 92 104 116 128 140 152 164 176 188 200 212 224 236 248 260 272 284 296 308);
 
 /// The widths the art is built in at, narrowest first.
 pub fn widths() -> impl Iterator<Item = usize> {
@@ -50,7 +51,11 @@ pub fn widths() -> impl Iterator<Item = usize> {
 }
 
 /// Narrower than this, the header is left out (the smallest art).
-pub const MIN_WIDTH: usize = 64;
+pub const MIN_WIDTH: usize = 80;
+
+/// Where the title starts, and the art's leftmost block with it. Every art
+/// is drawn narrower than its width by at least this (the tests hold it).
+const INDENT: usize = 2;
 
 /// How the terminal takes colours.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,7 +95,7 @@ impl Header {
         let mut lines = self.art(width);
         lines.push(Line::default());
         lines.push(Line::from(vec![
-            Span::raw("  "),
+            Span::raw(" ".repeat(INDENT)),
             Span::styled(">_ ", Style::new().fg(Color::Cyan)),
             Span::styled("viy", Style::new().add_modifier(Modifier::BOLD)),
             Span::styled(
@@ -108,17 +113,17 @@ impl Header {
         lines
     }
 
-    /// The largest art that fits `width`, centred; none below [`MIN_WIDTH`].
+    /// The largest art that fits `width`, [`INDENT`] columns in, under
+    /// the title's start; none below [`MIN_WIDTH`].
     fn art(&self, width: usize) -> Vec<Line<'static>> {
-        let Some((art_width, art)) = pick(width) else {
+        let Some((_, art)) = pick(width) else {
             return Vec::new();
         };
-        let margin = (width - art_width) / 2;
         art.iter()
             .map(|row| {
                 let mut spans: Vec<Span<'static>> = Vec::new();
-                if margin > 0 && !row.is_empty() {
-                    spans.push(Span::raw(" ".repeat(margin)));
+                if !row.is_empty() {
+                    spans.push(Span::raw(" ".repeat(INDENT)));
                 }
                 let mut text = String::new();
                 let mut style = Style::new();

@@ -22,22 +22,29 @@ fn is_sextant_cell(ch: char) -> bool {
         || ('\u{1fb00}'..='\u{1fb3b}').contains(&ch)
 }
 
-/// Every width from 64 to 320 in steps of 8, the scene whole in each: no
-/// row wider than its width, the height in proportion (26 rows at 320, as
-/// the script's master), sextant characters only, every block coloured.
+/// Twenty widths, every 12 columns from 80 to 308, the centipede 11 rows
+/// high in each, as wide as its width (its tail near the right edge, no
+/// row wider than the width less the indent, its head at the left edge),
+/// sextant characters only, every block coloured.
 #[test]
-fn the_art_is_built_in_at_every_eighth_width_as_coloured_sextants() {
+fn the_art_is_built_in_at_twenty_widths_as_coloured_sextants() {
     assert_eq!(
         widths().collect::<Vec<_>>(),
-        (64..=320).step_by(8).collect::<Vec<_>>()
+        (80..=308).step_by(12).collect::<Vec<_>>()
     );
     for width in widths() {
         let (w, art) = pick(width).unwrap();
         assert_eq!(w, width);
-        // The generator's Python round(): halves to even.
-        let rows = ((width * 104) as f64 / 320.0 / 4.0).round_ties_even() as usize;
-        assert_eq!(art.len(), rows.max(1), "w{width}");
-        assert!(art.iter().all(|row| row.len() <= width), "w{width}");
+        assert_eq!(art.len(), 11, "w{width}");
+        assert!(
+            art.iter().all(|row| row.len() + INDENT <= width),
+            "w{width}"
+        );
+        assert!(
+            art.iter()
+                .any(|row| row.first().is_some_and(|c| c.0 != ' ')),
+            "w{width}"
+        );
         assert!(art.iter().any(|row| row.len() > width * 9 / 10), "w{width}");
         for row in art {
             for &(ch, fg, _) in row {
@@ -46,38 +53,88 @@ fn the_art_is_built_in_at_every_eighth_width_as_coloured_sextants() {
             }
         }
     }
-    assert_eq!(pick(320).unwrap().1.len(), 26);
 }
 
-/// The largest that fits, centred with blank margins; nothing below 64.
+/// The largest that fits, its leftmost block in the column where the
+/// title's `>_` starts; nothing below 80.
 #[test]
-fn the_largest_art_that_fits_is_drawn_centred() {
+fn the_largest_art_that_fits_starts_where_the_title_does() {
     let h = header(Colors::True);
-    let (_, art168) = pick(168).unwrap();
+    let (_, art164) = pick(164).unwrap();
     let plain = |row: &[ArtCell]| row.iter().map(|c| c.0).collect::<String>();
-    // 175 columns: the 168 art, (175 - 168) / 2 = 3 blank columns before it.
+    // 175 columns: the 164 art, two blank columns before it, as the title.
     let lines = h.art(175);
-    assert_eq!(lines.len(), art168.len());
-    for (line, row) in lines.iter().zip(art168) {
+    assert_eq!(lines.len(), art164.len());
+    for (line, row) in lines.iter().zip(art164) {
         let want = if row.is_empty() {
             String::new()
         } else {
-            format!("   {}", plain(row))
+            format!("  {}", plain(row))
         };
         assert_eq!(text(line), want);
     }
-    assert_eq!(h.art(168).len(), 14);
-    assert_eq!(h.art(400).len(), 26);
-    assert_eq!(h.art(64).len(), pick(64).unwrap().1.len());
-    assert!(h.art(63).is_empty());
+    assert_eq!(pick(91).unwrap().0, 80);
+    assert_eq!(pick(92).unwrap().0, 92);
+    assert_eq!(pick(175).unwrap().0, 164);
+    assert_eq!(pick(400).unwrap().0, 308);
+    assert_eq!(h.art(400).len(), 11);
+    assert_eq!(h.art(80).len(), 11);
+    assert!(h.art(79).is_empty());
+    let title = text(&h.lines(175)[art164.len() + 1]);
+    assert_eq!(title.find('>'), Some(2));
     for width in [64, 100, 167, 200, 333] {
         assert!(h.lines(width).iter().all(|l| l.width() <= width), "{width}");
     }
 }
 
+/// The sextants (1 2 / 3 4 / 5 6, bit n-1) a cell lights: its block's, or
+/// all six when it has a background.
+fn lit(&(ch, _, bg): &ArtCell) -> u8 {
+    if bg.is_some() {
+        return 63;
+    }
+    match ch {
+        ' ' => 0,
+        '\u{2588}' => 63,
+        '\u{258c}' => 21,
+        '\u{2590}' => 42,
+        _ => {
+            // U+1FB00.. counts 1..=62 with 21 and 42 left out.
+            let n = ch as u32 - 0x1fb00 + 1;
+            (n + u32::from(n >= 21) + u32::from(n >= 41)) as u8
+        }
+    }
+}
+
+/// Drawn from the top of the screen, the art's highest lit pixel is as far
+/// below the top edge as its leftmost one is right of the left edge
+/// ([`INDENT`] columns in): one row, as two columns, a cell being twice as
+/// tall as it is wide.
+#[test]
+fn the_art_is_as_far_from_the_top_as_from_the_left() {
+    for width in widths() {
+        let (_, art) = pick(width).unwrap();
+        let mut top = usize::MAX;
+        let mut left = usize::MAX;
+        for (r, row) in art.iter().enumerate() {
+            for (c, cell) in row.iter().enumerate() {
+                let bits = lit(cell);
+                for k in 0..6 {
+                    if bits >> k & 1 == 1 {
+                        top = top.min(r * 3 + k / 2);
+                        left = left.min(c * 2 + k % 2);
+                    }
+                }
+            }
+        }
+        // In a 12 x 24 cell a sextant is 6 wide and 8 tall.
+        assert_eq!(top * 8, (INDENT * 2 + left) * 6, "w{width}");
+    }
+}
+
 #[test]
 fn colours_are_the_arts_or_the_nearest_of_256() {
-    let (_, art) = pick(168).unwrap();
+    let (_, art) = pick(160).unwrap();
     let (row, column, fg, bg) = art
         .iter()
         .enumerate()
@@ -92,13 +149,13 @@ fn colours_are_the_arts_or_the_nearest_of_256() {
         })
         .expect("a block with both colours");
     let style_at = |colors: Colors| {
-        let line = &header(colors).art(168)[row];
+        let line = &header(colors).art(160)[row];
         let mut x = 0;
         line.spans
             .iter()
             .find(|s| {
                 let n = s.content.chars().count();
-                let hit = (x..x + n).contains(&column);
+                let hit = (x..x + n).contains(&(column + INDENT));
                 x += n;
                 hit
             })

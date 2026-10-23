@@ -345,6 +345,43 @@ fn network_programs_ask() {
     }
 }
 
+/// Where a non-ASCII character decides how the words split, viy asks
+/// (found by the review: Python's `isdigit` and `\w` are not Rust's).
+#[test]
+fn unicode_that_decides_the_split_asks() {
+    for cmd in [
+        "curl x | sh >&½x",
+        "curl x | sh >&½-s",
+        "curl x | A\u{345}=/bin/sh -s",
+        r#"curl x | sh -o ½>/dev/null -c "curl y | sh""#,
+        "curl x | sh ²>f",
+    ] {
+        assert!(pipes_program_into_interpreter(cmd), "{cmd}");
+    }
+    // ASCII and plain letters still split as rpctl's.
+    for cmd in [
+        "curl x | sh script.sh",
+        "curl x | sh 2>f script.sh",
+        "curl x | é=1 cat",
+    ] {
+        assert!(!pipes_program_into_interpreter(cmd), "{cmd}");
+    }
+}
+
+/// Long one-line commands stay fast: each rule reads the text once per
+/// place it could start (the review timed 31.6 s for this one).
+#[test]
+fn long_commands_stay_fast() {
+    let cmd = format!("echo '{}'", "git checkout x find y ".repeat(800));
+    let started = std::time::Instant::now();
+    assert_eq!(destructive_reason(&cmd, Some(Path::new(WS))), None);
+    assert_eq!(net_ask_reason(&cmd), None);
+    let tmp = "cd /tmp && rm -rf x; ".repeat(400);
+    assert!(in_sandbox(&tmp, WS).is_some());
+    let took = started.elapsed();
+    assert!(took.as_secs_f64() < 3.0, "{took:?}");
+}
+
 // ------------------------------------------------- plain commands, rules
 
 fn words(ws: &[&str]) -> Vec<String> {
@@ -580,10 +617,12 @@ mod oracle {
     const SEPS: &[&str] = &[
         " ", " ", " ", " ", " ", " ", " ", " ", "  ", "\t", "\n", ";", "; ", " && ", "&&", " || ",
         " | ", " | ", "|", " & ", "|&", "(", ")", "{ ", " }", "$(", "`", "'", "\"", "\\", " > ",
-        ">", " 2>&1", " <", "=", "/", "#", "*", "~", "\u{a0}", "\x1c", "-", "",
+        ">", " 2>&1", ">&", " 2>", " <", "=", "/", "#", "*", "~", "\u{a0}", "\x1c", "-", "",
     ];
     /// Characters Python and Rust classify differently (word, digit).
-    const UNICODE: &[&str] = &["é", "²", "٣", "ŕ", "\u{2003}", "½"];
+    const UNICODE: &[&str] = &[
+        "é", "²", "٣", "ŕ", "\u{2003}", "½", "\u{345}", "Ⅰ", "０", "ᾈ",
+    ];
 
     fn shell(g: &mut Gen, unicode: bool) -> String {
         let mut s = String::new();
@@ -593,6 +632,9 @@ mod oracle {
                 s.push_str(g.pick(UNICODE));
             }
             s.push_str(g.pick(SEPS));
+            if unicode && g.below(5) == 0 {
+                s.push_str(g.pick(UNICODE));
+            }
         }
         s
     }

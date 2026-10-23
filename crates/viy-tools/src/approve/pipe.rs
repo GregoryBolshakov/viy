@@ -6,17 +6,20 @@
 //!
 //! A port of rpctl's hand-written parser, which is already structural: the
 //! command is split at unquoted operators, each piece into words with
-//! redirections dropped, and the interpreter's options are walked. The
-//! character classes are chosen so that viy asks wherever rpctl does: a digit
-//! or a word character is anything Python could count as one.
+//! redirections dropped, and the interpreter's options are walked. Where a
+//! non-ASCII character decides how the words split (a digit before `>`, a
+//! word character in `NAME=`), Python and Rust may class it differently, so
+//! the command asks rather than guess (`chars`).
 
 use std::path::Path;
 
+use super::chars::all_digits;
+use super::chars::assignment;
 use super::chars::is_ascii_word;
-use super::chars::is_broad_word;
 use super::chars::is_py_space;
+use super::chars::is_wide_digit;
 
-const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "ksh"];
+pub(super) const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "ksh"];
 const STDIN_PATHS: [&str; 4] = ["-", "/dev/stdin", "/dev/fd/0", "/proc/self/fd/0"];
 /// Programs that run their arguments as a command: `| env sh` is still `| sh`.
 const WRAPPERS: [&str; 13] = [
@@ -162,9 +165,19 @@ pub fn split_shell(cmd: &str) -> Option<Vec<(bool, String)>> {
     Some(parts)
 }
 
-/// The words of one simple command with redirections dropped, or `None` if
-/// it has expansions, input redirects or heredocs this check cannot follow.
-fn words(text: &str) -> Option<Vec<String>> {
+/// Why `words` gave no words.
+enum Unread {
+    /// Expansions, input redirects or heredocs this check cannot follow:
+    /// rpctl's fallback pattern decides.
+    Opaque,
+    /// A non-ASCII character decides how the text splits into words, and
+    /// Python and Rust may class it differently (a digit before `>`): the
+    /// command asks, as rpctl may.
+    Unsure,
+}
+
+/// The words of one simple command with redirections dropped.
+fn words(text: &str) -> Result<Vec<String>, Unread> {
     let s: Vec<char> = text.chars().collect();
     let n = s.len();
     let mut words = Vec::new();
@@ -193,7 +206,7 @@ fn words(text: &str) -> Option<Vec<String>> {
                 if c == '"' {
                     quote = None;
                 } else if c == '$' {
-                    return None;
+                    return Err(Unread::Opaque);
                 } else if c == '\\' && i + 1 < n && "\"\\$`\n".contains(s[i + 1]) {
                     i += 1;
                     cur.push(s[i]);
@@ -212,29 +225,42 @@ fn words(text: &str) -> Option<Vec<String>> {
                     }
                     quoted = true;
                 } else if c == '$' {
-                    return None;
+                    return Err(Unread::Opaque);
                 } else if c == '&' && s.get(i + 1) == Some(&'>') {
                     flush(&mut words, &mut cur, &mut quoted); // &>file
                     i += 1;
                     continue;
                 } else if c == '<' {
-                    return None;
+                    return Err(Unread::Opaque);
                 } else if c == '>' {
-                    if !cur.is_empty() && !quoted && cur.chars().all(is_py_digit) {
+                    let fd = if cur.is_empty() || quoted {
+                        Some(false)
+                    } else {
+                        all_digits(&cur)
+                    };
+                    if fd.is_none() {
+                        return Err(Unread::Unsure);
+                    }
+                    if fd == Some(true) {
                         cur.clear(); // 2>file
                     } else {
                         flush(&mut words, &mut cur, &mut quoted);
                     }
                     if skip_next {
-                        return None;
+                        return Err(Unread::Opaque);
                     }
                     let mut j = i;
                     while j < n && (s[j] == '>' || s[j] == '&') {
                         j += 1;
                     }
                     let mut k = j;
-                    while k < n && (is_py_digit(s[k]) || s[k] == '-') {
+                    while k < n && (s[k].is_ascii_digit() || s[k] == '-') {
                         k += 1;
+                    }
+                    if s.get(k)
+                        .is_some_and(|c| all_digits(&c.to_string()).is_none())
+                    {
+                        return Err(Unread::Unsure);
                     }
                     if s[j - 1] == '&' && k > j {
                         i = k; // >&2, 2>&1
@@ -262,26 +288,32 @@ fn words(text: &str) -> Option<Vec<String>> {
         i += 1;
     }
     if quote.is_some() {
-        return None;
+        return Err(Unread::Opaque);
     }
     if skip_next {
         if cur.is_empty() && !quoted {
-            return None;
+            return Err(Unread::Opaque);
         }
         cur.clear();
         quoted = false;
     }
     flush(&mut words, &mut cur, &mut quoted);
-    Some(words)
+    Ok(words)
 }
 
 fn reads_program_from_stdin(text: &str) -> bool {
-    let Some(words) = words(text) else {
-        return pipe_fallback(&format!("|{text}"));
+    let words = match words(text) {
+        Ok(words) => words,
+        Err(Unread::Opaque) => return pipe_fallback(&format!("|{text}")),
+        Err(Unread::Unsure) => return true,
     };
     let mut words: &[String] = &words;
-    while words.first().is_some_and(|w| is_assignment(w)) {
-        words = &words[1..]; // FOO=1 python3
+    while let Some(w) = words.first() {
+        match assignment(w) {
+            Some(true) => words = &words[1..], // FOO=1 python3
+            Some(false) => break,
+            None => return true,
+        }
     }
     let Some(first) = words.first() else {
         return true; // `| (sh)`: a subshell follows the pipe
@@ -380,7 +412,7 @@ fn pipe_fallback(text: &str) -> bool {
             Some(
                 end + s[end..]
                     .iter()
-                    .take_while(|c| is_py_digit(**c) || **c == '.')
+                    .take_while(|c| is_wide_digit(**c) || **c == '.')
                     .count(),
             )
         } else {
@@ -401,31 +433,10 @@ fn pipe_fallback(text: &str) -> bool {
     })
 }
 
-/// `NAME=value` with no newline in the value, as rpctl's
-/// `[A-Za-z_]\w*=.*`, where `\w` is anything Python could count as a word
-/// character (so viy skips at least what rpctl skips).
-fn is_assignment(word: &str) -> bool {
-    let Some((name, value)) = word.split_once('=') else {
-        return false;
-    };
-    let mut chars = name.chars();
-    chars
-        .next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && chars.all(is_broad_word)
-        && !value.contains('\n')
-}
-
 /// `python[\d.]*`, with any Unicode digit.
 pub(super) fn is_python(prog: &str) -> bool {
     prog.strip_prefix("python")
-        .is_some_and(|rest| rest.chars().all(|c| is_py_digit(c) || c == '.'))
-}
-
-/// A digit to Python's `isdigit` or `\d`, widened to every Unicode numeric
-/// character so viy never treats less as a digit than rpctl does.
-fn is_py_digit(c: char) -> bool {
-    c.is_numeric()
+        .is_some_and(|rest| rest.chars().all(|c| is_wide_digit(c) || c == '.'))
 }
 
 /// The last component of a program path, as pathlib's `.name` (empty for

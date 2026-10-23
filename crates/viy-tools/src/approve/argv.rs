@@ -10,13 +10,13 @@
 //! skips: the literal view still checks that text, so skipping only ever
 //! means asking as rpctl does.
 
+use super::chars::assignment;
+use super::pipe::SHELLS;
 use super::pipe::basename;
 use super::pipe::split_shell;
 
 /// How deep wrappers and `sh -c` scripts are followed (Codex's limit).
 const MAX_DEPTH: usize = 8;
-
-const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "ksh"];
 
 /// The simple commands `cmd` runs, wrappers removed.
 pub(super) fn commands(cmd: &str) -> Vec<Vec<String>> {
@@ -185,13 +185,10 @@ fn unwrap(words: &[String], depth: usize, out: &mut Vec<Vec<String>>) {
     out.push(w.to_vec());
 }
 
+/// `NAME=value`; one whose name holds a non-ASCII letter counts too (the
+/// argv view only adds questions, so unwrapping more is safe).
 fn is_assignment(word: &str) -> bool {
-    word.split_once('=').is_some_and(|(name, _)| {
-        let mut c = name.chars();
-        c.next()
-            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-            && c.all(|c| c.is_ascii_alphanumeric() || c == '_')
-    })
+    assignment(word) != Some(false)
 }
 
 /// A cluster of short options (`-rf`, `-qf`), not a long one.

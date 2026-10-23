@@ -22,56 +22,61 @@ fn is_sep(c: char) -> bool {
 }
 
 struct Token {
+    /// Char offsets into the command.
     start: usize,
     end: usize,
-    text: Vec<char>,
+    text: String,
 }
 
+/// The rules' words are ASCII, so a byte offset where one matches is a
+/// character boundary.
 impl Token {
     fn is(&self, word: &str) -> bool {
-        self.text.iter().copied().eq(word.chars())
+        self.text == word
     }
 
     fn starts_with(&self, word: &str) -> bool {
-        let w: Vec<char> = word.chars().collect();
-        self.text.starts_with(&w)
+        self.text.starts_with(word)
     }
 
     fn ends_with(&self, word: &str) -> bool {
-        let w: Vec<char> = word.chars().collect();
-        self.text.ends_with(&w)
+        self.text.ends_with(word)
     }
 
-    /// `\b<word>\b` inside the token: the offsets where it starts.
+    /// `\b<word>\b` inside the token: where it first starts.
     fn word_at(&self, word: &str) -> Option<usize> {
-        let w: Vec<char> = word.chars().collect();
-        (0..=self.text.len().saturating_sub(w.len())).find(|&k| {
-            self.text[k..].starts_with(&w)
-                && (k == 0 || !is_ascii_word(self.text[k - 1]))
-                && self
-                    .text
-                    .get(k + w.len())
-                    .is_none_or(|c| !is_ascii_word(*c))
+        self.text.match_indices(word).map(|(k, _)| k).find(|&k| {
+            self.text[..k]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !is_ascii_word(c))
+                && self.text[k + word.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| !is_ascii_word(c))
         })
     }
 
     /// `\b<word>` at the end of the token.
     fn ends_with_word(&self, word: &str) -> bool {
-        let n = word.chars().count();
-        self.ends_with(word)
-            && (self.text.len() == n || !is_ascii_word(self.text[self.text.len() - n - 1]))
+        self.text
+            .strip_suffix(word)
+            .is_some_and(|before| before.chars().next_back().is_none_or(|c| !is_ascii_word(c)))
     }
 
     /// `<prefix>\b` at the start of the token.
     fn starts_with_word(&self, prefix: &str) -> bool {
-        let n = prefix.chars().count();
-        self.starts_with(prefix) && self.text.get(n).is_none_or(|c| !is_ascii_word(*c))
+        self.text
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.chars().next().is_none_or(|c| !is_ascii_word(c)))
     }
 }
 
 pub(super) struct Literal {
     chars: Vec<char>,
     tokens: Vec<Token>,
+    /// The offset of the last whitespace character, for `mkfs\S*\s`.
+    last_space: Option<usize>,
 }
 
 impl Literal {
@@ -91,10 +96,15 @@ impl Literal {
             tokens.push(Token {
                 start,
                 end: i,
-                text: chars[start..i].to_vec(),
+                text: chars[start..i].iter().collect(),
             });
         }
-        Self { chars, tokens }
+        let last_space = chars.iter().rposition(|c| is_py_space(*c));
+        Self {
+            chars,
+            tokens,
+            last_space,
+        }
     }
 
     fn prev(&self, t: &Token) -> Option<char> {
@@ -149,7 +159,7 @@ impl Literal {
                 return false;
             }
             let p = self.past_git_options(self.skip_space(t.end));
-            let Some(j) = self.tokens.iter().position(|u| u.start == p) else {
+            let Ok(j) = self.tokens.binary_search_by_key(&p, |u| u.start) else {
                 return false;
             };
             let sub = &self.tokens[j];
@@ -216,16 +226,27 @@ impl Literal {
         }
         let from = self.skip_space(t.end);
         // The run may not cross a list operator or a newline, but the one
-        // whitespace character that ends it may be a newline.
-        self.tokens[i + 1..]
-            .iter()
-            .take_while(|u| {
-                u.start == from
-                    || !self.chars[from..u.start - 1]
-                        .iter()
-                        .any(|c| ";&|\n".contains(*c))
-            })
-            .any(|u| (u.start == from || self.prev(u).is_some_and(is_py_space)) && is_x(u))
+        // whitespace character that ends it may be a newline. `clean` is how
+        // far it has been checked, so the text is read once.
+        let mut clean = from;
+        for u in &self.tokens[i + 1..] {
+            if u.start != from {
+                let upto = u.start - 1;
+                if upto > clean {
+                    if self.chars[clean..upto].iter().any(|c| ";&|\n".contains(*c)) {
+                        return false;
+                    }
+                    clean = upto;
+                }
+                if !self.prev(u).is_some_and(is_py_space) {
+                    continue;
+                }
+            }
+            if is_x(u) {
+                return true;
+            }
+        }
+        false
     }
 
     /// `\bfind\b.*\s-delete\b`
@@ -234,12 +255,21 @@ impl Literal {
             let Some(k) = t.word_at("find") else {
                 return false;
             };
-            let end = t.start + k + 4;
-            self.tokens[i + 1..].iter().any(|u| {
-                u.starts_with_word("-delete")
-                    && self.prev(u).is_some_and(is_py_space)
-                    && !self.chars[end..u.start - 1].contains(&'\n')
-            })
+            // `.*` stops at a newline; the `\s` before `-delete` may be one.
+            let mut clean = t.start + t.text[..k].chars().count() + 4;
+            for u in &self.tokens[i + 1..] {
+                let upto = u.start - 1;
+                if upto > clean {
+                    if self.chars[clean..upto].contains(&'\n') {
+                        return false;
+                    }
+                    clean = upto;
+                }
+                if u.starts_with_word("-delete") && self.prev(u).is_some_and(is_py_space) {
+                    return true;
+                }
+            }
+            false
         })
     }
 
@@ -249,7 +279,7 @@ impl Literal {
             self.after(t, ";&|(")
                 && (((t.is("shred") || t.is("truncate") || t.is("dd")) && self.space_after(t))
                     || (t.starts_with("mkfs")
-                        && self.chars[t.start + 4..].iter().any(|c| is_py_space(*c))))
+                        && self.last_space.is_some_and(|last| last >= t.start + 4)))
         })
     }
 
@@ -290,8 +320,8 @@ fn rm_flag(t: &Token) -> bool {
     } else {
         t.starts_with("-")
             && t.text[1..]
-                .iter()
-                .take_while(|c| is_broad_word(**c))
+                .chars()
+                .take_while(|c| is_broad_word(*c))
                 .any(|c| matches!(c, 'r' | 'R' | 'f'))
     }
 }

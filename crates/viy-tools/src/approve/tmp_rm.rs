@@ -37,14 +37,13 @@ pub fn sandbox_tmp_rm(cmd: &str, ws: &Path) -> bool {
             return false;
         }
     }
-    let chars: Vec<char> = cmd.chars().collect();
-    let cuts = (0..chars.len())
-        .filter(|&i| "&|;\n".contains(chars[i]))
-        .chain([chars.len()]);
+    let cuts = cmd
+        .char_indices()
+        .filter(|(_, c)| "&|;\n".contains(*c))
+        .map(|(i, _)| i)
+        .chain([cmd.len()]);
     for i in cuts {
-        let head: String = chars[..i].iter().collect();
-        let tail: String = chars[i..].iter().collect();
-        if tmp_rm_only(&head) && !any_rm(&tail) {
+        if tmp_rm_only(&cmd[..i]) && !any_rm(&cmd[i..]) {
             return true;
         }
     }

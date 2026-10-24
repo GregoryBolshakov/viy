@@ -206,7 +206,8 @@ async fn a_question_nothing_waits_for_is_closed() {
     assert_eq!(
         msgs[asked + 1],
         EventMsg::QuestionResolved(QuestionResolvedEvent {
-            question_id: "q1".into()
+            question_id: "q1".into(),
+            by: None,
         })
     );
     assert_eq!(msgs[asked + 2], delta("echo: drop it"));
@@ -260,7 +261,8 @@ async fn interrupt_ends_the_turn_and_forgets_its_question() {
         msgs(&rest),
         [
             EventMsg::QuestionResolved(QuestionResolvedEvent {
-                question_id: request.question_id.clone()
+                question_id: request.question_id.clone(),
+                by: None,
             }),
             EventMsg::TurnAborted(TurnAbortedEvent {
                 turn_id: id.clone(),
@@ -482,20 +484,21 @@ async fn shift_tab_at_a_question_switches_and_answers() {
     let rest = until(&mut engine, turn_done(&id)).await;
     let m = msgs(&rest);
     assert!(m.contains(&EventMsg::ModeChanged(ModeChangedEvent {
-        mode: "auto-yes".into()
+        mode: "auto-yes".into(),
+        label: "⏵⏵ auto-yes".into(),
     })));
     assert!(
         m.contains(&EventMsg::QuestionResolved(QuestionResolvedEvent {
-            question_id: request.question_id.clone()
+            question_id: request.question_id.clone(),
+            by: Some("auto-yes".into()),
         }))
     );
     assert!(m.contains(&delta("answered Yes")));
+    // The box shows the answer (the UI's cell), so no notice repeats the
+    // question; the turn's count still has it.
     assert_eq!(
         notices_coded(&rest, "auto_yes"),
-        [
-            "  rm -rf build? [y/N] y (auto-yes)",
-            "auto-yes answered 1 question: 1 destructive"
-        ]
+        ["auto-yes answered 1 question: 1 destructive"]
     );
 }
 
@@ -581,7 +584,8 @@ async fn a_chat_started_in_auto_yes_says_so() {
     assert_eq!(
         first.msg,
         EventMsg::ModeChanged(ModeChangedEvent {
-            mode: "auto-yes".into()
+            mode: "auto-yes".into(),
+            label: "⏵⏵ auto-yes".into(),
         })
     );
 }
@@ -746,4 +750,49 @@ async fn opening_a_saved_chat_runs_in_the_queue_as_resume() {
         ]
     );
     assert!(events.iter().all(|e| e.id == id));
+}
+
+/// An interrupted turn's count comes before its TurnAborted, as a finished
+/// turn's comes before TurnComplete (found by the WP 4.3 review).
+#[tokio::test]
+async fn an_interrupted_turn_reports_before_it_ends() {
+    let mut engine = Engine::spawn_with(Arc::new(StandIn), auto(), true);
+    let id = engine
+        .submit(Op::UserTurn {
+            text: "ask hang".into(),
+        })
+        .unwrap();
+    until(
+        &mut engine,
+        |e| matches!(&e.msg, EventMsg::Notice(n) if n.code == "auto_yes"),
+    )
+    .await;
+    engine.submit(Op::Interrupt).unwrap();
+    let rest = until(&mut engine, turn_done(&id)).await;
+    let n = rest.len();
+    assert!(
+        matches!(rest[n - 1].msg, EventMsg::TurnAborted(_)),
+        "{rest:?}"
+    );
+    assert!(
+        matches!(&rest[n - 2].msg, EventMsg::Notice(x) if x.message == "auto-yes answered 1 question: 1 destructive"),
+        "{rest:?}"
+    );
+}
+
+/// An unattended engine says nothing about a mode that answers nothing.
+#[tokio::test]
+async fn an_unattended_chat_does_not_announce_its_mode() {
+    let mut engine = Engine::spawn_with(Arc::new(StandIn), auto(), false);
+    let id = engine
+        .submit(Op::UserTurn {
+            text: "quiet".into(),
+        })
+        .unwrap();
+    let events = until(&mut engine, turn_done(&id)).await;
+    assert!(
+        !msgs(&events)
+            .iter()
+            .any(|m| matches!(m, EventMsg::ModeChanged(_)))
+    );
 }

@@ -22,6 +22,7 @@ fn statuses() -> Vec<EventMsg> {
     vec![
         EventMsg::ModeChanged(ModeChangedEvent {
             mode: "auto-yes".into(),
+            label: "⏵⏵ auto-yes".into(),
         }),
         EventMsg::EffortChanged(EffortChangedEvent {
             effort: "medium".into(),

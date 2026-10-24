@@ -70,7 +70,7 @@ impl Status {
     /// Takes in `msg` if it is a status; true if it was.
     pub fn event(&mut self, msg: &EventMsg, now: Instant) -> bool {
         match msg {
-            EventMsg::ModeChanged(e) => self.mode = Some(e.mode.clone()),
+            EventMsg::ModeChanged(e) => self.mode = Some(e.label.clone()),
             EventMsg::EffortChanged(e) => self.effort = Some(e.effort.clone()),
             EventMsg::TokenCount(e) => self.context = Some(e.clone()),
             EventMsg::PodStatus(e) => self.pod = Some((e.clone(), now)),
@@ -145,9 +145,9 @@ impl Status {
     /// longer.
     fn items(&self, counts: Counts, now: Instant) -> Vec<Item> {
         let mut items = Vec::new();
-        if let Some(mode) = self.mode.as_deref().filter(|m| *m != "normal") {
-            // rp's prompt label for a mode other than normal.
-            items.push(Item::new(8, format!("⏵⏵ {mode}"), Style::new().yellow()));
+        if let Some(label) = self.mode.as_deref().filter(|l| !l.is_empty()) {
+            // rp's prompt label: none for the normal mode.
+            items.push(Item::new(8, label.to_string(), Style::new().yellow()));
         }
         if let Some(effort) = &self.effort {
             items.push(Item::new(2, format!("effort {effort}"), dim()));

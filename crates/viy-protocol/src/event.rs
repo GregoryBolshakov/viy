@@ -70,6 +70,10 @@ pub struct QuestionRequestEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuestionResolvedEvent {
     pub question_id: String,
+    /// The chat mode that answered it yes (Shift+Tab at its box), or none
+    /// when nothing waits for it any more.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -230,6 +234,9 @@ pub struct TokenCountEvent {
 pub struct ModeChangedEvent {
     /// The mode's name (rpctl `modes.MODES`).
     pub mode: String,
+    /// What the prompt shows for it (rp's label); empty shows nothing.
+    #[serde(default)]
+    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

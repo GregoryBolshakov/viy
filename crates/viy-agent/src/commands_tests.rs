@@ -585,7 +585,8 @@ async fn mode_command() {
     let events = d.events();
     assert!(
         events.contains(&EventMsg::ModeChanged(viy_protocol::ModeChangedEvent {
-            mode: "auto-yes".into()
+            mode: "auto-yes".into(),
+            label: "⏵⏵ auto-yes".into(),
         }))
     );
     assert!(notices(&events)[0].starts_with("⏵⏵ auto-yes -- says yes to destructive commands"));

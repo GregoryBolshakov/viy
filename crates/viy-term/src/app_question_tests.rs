@@ -316,6 +316,7 @@ fn ctrl_c_before_the_box_is_drawn_stops_the_turn() {
     f.app
         .event(EventMsg::QuestionResolved(QuestionResolvedEvent {
             question_id: "q1".into(),
+            by: None,
         }));
     f.app.event(EventMsg::TurnAborted(TurnAbortedEvent {
         turn_id: "1".into(),

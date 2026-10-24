@@ -417,7 +417,13 @@ impl App {
             EventMsg::QuestionRequest(e) => self.questions.push(e.question_id, e.question),
             EventMsg::QuestionResolved(e) => {
                 if let Some(question) = self.questions.resolve(&e.question_id) {
-                    self.push(question.cell(None));
+                    // Answered by the mode (Shift+Tab at the box): rp's
+                    // "y (auto-yes)" where the user's answer would be.
+                    let cell = match &e.by {
+                        Some(mode) => question.cell_by(viy_protocol::Answer::Yes, mode),
+                        None => question.cell(None),
+                    };
+                    self.push(cell);
                 }
             }
             EventMsg::HistoryRewritten(e) => {

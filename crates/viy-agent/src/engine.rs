@@ -233,8 +233,8 @@ struct Open {
     question: Question,
 }
 
-/// A question the mode answered: its asker, id (none when it never went
-/// out) and the question.
+/// A question the mode answered before it went out: its asker, the
+/// question and the mode's name.
 struct AutoYes {
     asker: String,
     question: Question,
@@ -259,10 +259,9 @@ impl Questions {
     /// The mode's yes, when it says yes to `question`'s kind and someone is
     /// there: counted for the turn's report.
     fn auto_yes(state: &mut QuestionsState, asker: &str, question: &Question) -> Option<AutoYes> {
-        let kind = question.kind?;
-        if !state.attended || !state.mode.answers(Some(kind)) {
-            return None;
-        }
+        let kind = question
+            .kind
+            .filter(|_| state.attended && state.mode.answers(question.kind))?;
         state.auto_yessed.push(kind);
         Some(AutoYes {
             asker: asker.to_string(),
@@ -272,25 +271,33 @@ impl Questions {
     }
 
     /// Shift+Tab: the next mode, and the yes to question `id` if the new
-    /// mode says yes to its kind.
+    /// mode says yes to its kind. The question was shown, so its box is
+    /// closed with the mode's answer ([`QuestionResolvedEvent::by`]) rather
+    /// than a notice that would repeat it.
     fn cycle(&self, id: Option<&str>, events: &mpsc::UnboundedSender<Event>, sub_id: &str) {
         let (mode, answered) = {
             let mut state = self.lock();
             state.mode = modes::after(state.mode);
-            let pending = id.and_then(|id| {
-                let open = state.open.get(id)?;
-                let (asker, question) = (open.asker.clone(), open.question.clone());
-                let yes = Self::auto_yes(&mut state, &asker, &question)?;
-                let open = state.open.remove(id)?;
-                Some((id.to_string(), open.answer, yes))
-            });
+            let answers = |open: &Open| state.attended && state.mode.answers(open.question.kind);
+            let pending = id
+                .filter(|id| state.open.get(*id).is_some_and(answers))
+                .and_then(|id| Some((id.to_string(), state.open.remove(id)?)));
+            if let Some(kind) = pending.as_ref().and_then(|(_, open)| open.question.kind) {
+                state.auto_yessed.push(kind);
+            }
             (state.mode, pending)
         };
         emit(events, sub_id, mode_changed(mode));
-        if let Some((id, answer, yes)) = answered {
-            said_yes(events, &yes);
-            let _ = answer.send(Answer::Yes);
-            resolved(events, &yes.asker, &id);
+        if let Some((id, open)) = answered {
+            let _ = open.answer.send(Answer::Yes);
+            emit(
+                events,
+                &open.asker,
+                EventMsg::QuestionResolved(QuestionResolvedEvent {
+                    question_id: id,
+                    by: Some(mode.name.to_string()),
+                }),
+            );
         }
     }
 
@@ -431,6 +438,7 @@ fn said_yes(events: &mpsc::UnboundedSender<Event>, yes: &AutoYes) {
 fn mode_changed(mode: &Mode) -> EventMsg {
     EventMsg::ModeChanged(ModeChangedEvent {
         mode: mode.name.to_string(),
+        label: mode.label.to_string(),
     })
 }
 
@@ -440,6 +448,7 @@ fn resolved(events: &mpsc::UnboundedSender<Event>, sub_id: &str, id: &str) {
         sub_id,
         EventMsg::QuestionResolved(QuestionResolvedEvent {
             question_id: id.to_string(),
+            by: None,
         }),
     );
 }
@@ -476,6 +485,7 @@ pub struct EngineStopped;
 impl Engine {
     /// Starts the engine's loop on the current tokio runtime, with `turns`
     /// running what is submitted.
+    ///
     /// Nobody is there to ask, so no mode answers: `viy exec`, the plain
     /// renderer, tests.
     pub fn spawn(turns: Arc<dyn Turns>) -> Self {
@@ -548,19 +558,14 @@ impl Running {
         questions.forget(events, &self.sub_id);
         let msg = match self.work {
             Work::Turn => {
-                emit(
-                    events,
-                    &self.sub_id,
-                    EventMsg::TurnAborted(TurnAbortedEvent {
-                        turn_id: self.sub_id.clone(),
-                        reason: TurnAbortReason::Interrupted,
-                    }),
-                );
-                // rp reports after "interrupted" too.
-                match questions.report() {
-                    Some(text) => auto_yes_report(text),
-                    None => return,
+                // Before the turn's last event, as a finished turn's.
+                if let Some(text) = questions.report() {
+                    emit(events, &self.sub_id, auto_yes_report(text));
                 }
+                EventMsg::TurnAborted(TurnAbortedEvent {
+                    turn_id: self.sub_id.clone(),
+                    reason: TurnAbortReason::Interrupted,
+                })
             }
             // A command stopped half way has still stopped running.
             Work::Command | Work::Open(_) => {
@@ -577,8 +582,13 @@ async fn submission_loop(
     events: mpsc::UnboundedSender<Event>,
     questions: Questions,
 ) {
-    let start_mode = questions.lock().mode;
-    if start_mode != modes::DEFAULT {
+    // For the footer; with nobody to ask there is no footer, and no mode
+    // answers anything.
+    let (start_mode, attended) = {
+        let state = questions.lock();
+        (state.mode, state.attended)
+    };
+    if attended && start_mode != modes::DEFAULT {
         emit(&events, "0", mode_changed(start_mode));
     }
     turns.opened(&TurnContext {

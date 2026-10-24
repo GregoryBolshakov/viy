@@ -303,7 +303,16 @@ impl QuestionBox {
     /// What the transcript keeps once the box is gone: the reason and the
     /// question as rp leaves them on screen, with the answer after it, or
     /// nothing after it when nobody answered.
+    /// The question as the mode answered it: `y (auto-yes)` after it.
+    pub fn cell_by(&self, answer: Answer, mode: &str) -> Cell {
+        self.cell_with(Some(answer), Some(mode))
+    }
+
     pub fn cell(&self, answer: Option<Answer>) -> Cell {
+        self.cell_with(answer, None)
+    }
+
+    fn cell_with(&self, answer: Option<Answer>, mode: Option<&str>) -> Cell {
         let mut lines: Vec<Line<'static>> = Vec::new();
         for notice in &self.question.reason {
             let style = notice_style(notice.level);
@@ -317,6 +326,9 @@ impl QuestionBox {
         let mut spans = prompt_spans(&self.question);
         if let Some(answer) = answer {
             spans.push(Span::raw(format!(" {}", answer_word(answer))));
+        }
+        if let Some(mode) = mode {
+            spans.push(Span::styled(format!(" ({mode})"), Style::new().dim()));
         }
         lines.push(Line::from(spans));
         Cell::lines(lines)

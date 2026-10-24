@@ -602,11 +602,13 @@ fn shift_tab_asks_for_the_next_mode_and_the_footer_shows_it() {
     f.app
         .event(EventMsg::ModeChanged(viy_protocol::ModeChangedEvent {
             mode: "auto-yes".into(),
+            label: "⏵⏵ auto-yes".into(),
         }));
     assert_eq!(f.screen()[3], "⏵⏵ auto-yes");
     f.app
         .event(EventMsg::ModeChanged(viy_protocol::ModeChangedEvent {
             mode: "normal".into(),
+            label: "".into(),
         }));
     assert_eq!(f.screen()[3], "");
 }

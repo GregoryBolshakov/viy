@@ -37,6 +37,7 @@ fn full(now: Instant) -> Status {
     for msg in [
         EventMsg::ModeChanged(ModeChangedEvent {
             mode: "auto-yes".into(),
+            label: "⏵⏵ auto-yes".into(),
         }),
         EventMsg::EffortChanged(EffortChangedEvent {
             effort: "medium".into(),
@@ -76,6 +77,7 @@ fn an_idle_chat_without_statuses_is_empty() {
     s.event(
         &EventMsg::ModeChanged(ModeChangedEvent {
             mode: "normal".into(),
+            label: "".into(),
         }),
         now,
     );

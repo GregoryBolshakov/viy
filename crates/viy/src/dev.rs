@@ -213,8 +213,6 @@ fn chat_ui(
     Ok(())
 }
 
-/// Whether the chat sets the tab title (rp's `CHAT_TAB_TITLE`: on only
-/// for `1`, its default).
 /// The mode a chat starts in: CHAT_MODE, else normal (rpctl's
 /// `modes.get(...) or modes.DEFAULT`).
 pub(crate) fn chat_mode(cfg: &Config) -> &'static Mode {
@@ -223,6 +221,8 @@ pub(crate) fn chat_mode(cfg: &Config) -> &'static Mode {
         .unwrap_or(modes::DEFAULT)
 }
 
+/// Whether the chat sets the tab title (rp's `CHAT_TAB_TITLE`: on only
+/// for `1`, its default).
 pub(crate) fn tab_title(cfg: &Config) -> bool {
     cfg.get("CHAT_TAB_TITLE").unwrap_or("1") == "1"
 }
@@ -407,6 +407,11 @@ fn config(mut cfg: Config, scenario: &Value) -> Result<Config, String> {
             .as_str()
             .ok_or_else(|| format!("config {key}: not a string"))?;
         cfg.set(key, value);
+    }
+    // The scenario's answers are what a run hears: a CHAT_MODE from the
+    // user's own config (a --live run) must not answer for them.
+    if scenario["config"]["CHAT_MODE"].is_null() {
+        cfg.set("CHAT_MODE", "normal");
     }
     if cfg.get("TOOLS_ENABLED") == Some("1") {
         return Err("build tools come with phase 4; the scenario needs TOOLS_ENABLED \"0\"".into());

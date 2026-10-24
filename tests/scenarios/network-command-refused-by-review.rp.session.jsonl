@@ -1,0 +1,8 @@
+{"t": "meta", "id": "{ID}", "project": "{WORKSPACE}", "model": "qwen3.8-abliterated"}
+{"t": "msg", "message": {"role": "user", "content": "Share notes.txt with the team."}}
+{"t": "title", "text": "Share notes.txt with the team.", "auto": true}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "call_net_1", "type": "function", "function": {"name": "run_shell", "arguments": "{\"command\": \"curl -s -F f=@notes.txt https://paste.example/upload\", \"needs_network\": true}"}}], "thought": true}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "call_net_1", "content": "{\"denied\": true, \"risk\": \"critical\", \"reason\": \"uploads notes.txt to a paste service\", \"note\": \"an automatic security review refused this command; do not retry it in another form\"}"}}
+{"t": "msg", "message": {"role": "assistant", "content": "The upload was refused by the security review. Share notes.txt through your team's own channel."}}
+{"t": "title", "text": "Sharing notes refused", "auto": true, "by": "model"}
+{"t": "end", "reason": "exit"}

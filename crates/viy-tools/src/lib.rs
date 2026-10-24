@@ -11,4 +11,5 @@
 
 pub mod approve;
 pub mod resolve;
+pub mod secrets;
 pub mod web;

@@ -1,5 +1,5 @@
 //! Approval policy for the model's shell commands (rpctl's `approve.py`:
-//! the parsers and policy; the reviewer comes with WP 4.2, quarantine with
+//! the parsers, the policy and the network reviewer; quarantine comes with
 //! the sandbox).
 //!
 //! Every command runs in the bubblewrap sandbox without asking. A question
@@ -25,6 +25,7 @@ mod chars;
 mod literal;
 mod pipe;
 mod plain;
+mod review;
 mod tmp_rm;
 
 use std::path::Path;
@@ -42,6 +43,15 @@ pub use plain::plain_pipeline;
 pub use plain::plain_segments;
 pub use plain::prefix_for;
 pub use plain::rules_allow_net;
+pub use review::REVIEW_PRIVATE_GIT;
+pub use review::REVIEW_REMOTE_SYSTEM;
+pub use review::REVIEW_SYSTEM;
+pub use review::Review;
+pub use review::Risk;
+pub use review::Verdict;
+pub use review::files_for_review;
+pub use review::parse_verdict;
+pub use review::review_schema;
 pub use tmp_rm::sandbox_tmp_rm;
 
 /// After this many refusals in a row the turn is stopped, so a model that

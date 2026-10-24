@@ -1,0 +1,8 @@
+{"t": "meta", "id": "{ID}", "project": "{WORKSPACE}", "model": "qwen3.8-abliterated"}
+{"t": "msg", "message": {"role": "user", "content": "Install the requirements."}}
+{"t": "title", "text": "Install the requirements.", "auto": true}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "call_pip_1", "type": "function", "function": {"name": "run_shell", "arguments": "{\"command\": \"pip install -r requirements.txt\", \"needs_network\": true}"}}]}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "call_pip_1", "content": "{\"declined\": true, \"note\": \"the user declined network access\"}"}}
+{"t": "msg", "message": {"role": "assistant", "content": "You declined network access, so nothing was installed."}}
+{"t": "title", "text": "Install declined", "auto": true, "by": "model"}
+{"t": "end", "reason": "exit"}

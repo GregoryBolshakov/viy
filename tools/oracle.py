@@ -89,7 +89,10 @@ FUNCTIONS = {
     # rpctl
     "approve.destructive_reason": ("rpctl.approve", "destructive_reason"),
     "approve.net_ask_reason": ("rpctl.approve", "net_ask_reason"),
+    # Reads the files a command names under the given workspace.
+    "approve.files_for_review": ("rpctl.approve", "files_for_review"),
     "approve.parse_rules": approve_parse_rules,
+    "approve.parse_verdict": ("rpctl.approve", "parse_verdict"),
     "approve.pipes_program_into_interpreter": ("rpctl.approve", "pipes_program_into_interpreter"),
     "approve.plain_pipeline": ("rpctl.approve", "plain_pipeline"),
     "approve.prefix_for": ("rpctl.approve", "prefix_for"),
@@ -102,6 +105,7 @@ FUNCTIONS = {
     "redact.is_secret_name": ("rpctl.redact", "is_secret_name"),
     "redact.literal_secrets": ("rpctl.redact", "literal_secrets"),
     "redact.text": redact_text,
+    "sandbox.secret_name_reason": ("rpctl.sandbox", "secret_name_reason"),
     "shutdown.fmt": ("rpctl.shutdown", "_fmt"),
     "shutdown.is_chat": shutdown_is_chat,
     "shutdown.parse_when": shutdown_parse_when,

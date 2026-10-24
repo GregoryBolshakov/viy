@@ -22,6 +22,7 @@
 
 mod argv;
 mod chars;
+mod decide;
 mod literal;
 mod pipe;
 mod plain;
@@ -30,6 +31,11 @@ mod tmp_rm;
 
 use std::path::Path;
 
+pub use decide::Decision;
+pub use decide::Facts;
+pub use decide::Hearing;
+pub use decide::Pending;
+pub use decide::decide;
 use literal::Literal;
 pub use pipe::pipes_program_into_interpreter;
 pub use pipe::split_shell;

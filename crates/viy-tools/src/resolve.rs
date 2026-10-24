@@ -2,7 +2,8 @@
 //! `Path.resolve()`: the part that exists is resolved, a missing rest is
 //! kept as written (flags F08, revised: over `Path::components`, `..` pops,
 //! each existing component is checked with `symlink_metadata`, a link is
-//! followed, at most 40 links).
+//! followed, at most 40 links; [`resolve_checked`] refuses a path that
+//! needs more).
 
 use std::env;
 use std::fs;
@@ -10,10 +11,33 @@ use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
-/// Links followed before giving up and keeping the rest as written.
+/// Links followed before giving up.
 const MAX_LINKS: usize = 40;
 
+/// More than [`MAX_LINKS`] symlinks on the way: a loop, or a chain made to
+/// outrun the check. What comes back then may still be a link.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TooManyLinks;
+
+/// `path` resolved; after [`MAX_LINKS`] links the rest is kept as written.
+/// For comparisons that only need a best effort (is this workspace under
+/// `/tmp`?). A guard that then opens the path uses [`resolve_checked`].
 pub fn resolve(path: &Path) -> PathBuf {
+    walk(path).0
+}
+
+/// `path` resolved, or [`TooManyLinks`]. Python 3.10's `Path.resolve()`
+/// raises on a loop and follows any chain; this refuses both past 40 links,
+/// so a caller never checks a name that is still a link.
+pub fn resolve_checked(path: &Path) -> Result<PathBuf, TooManyLinks> {
+    match walk(path) {
+        (out, false) => Ok(out),
+        (_, true) => Err(TooManyLinks),
+    }
+}
+
+/// The path, and whether the link limit was hit.
+fn walk(path: &Path) -> (PathBuf, bool) {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -22,6 +46,7 @@ pub fn resolve(path: &Path) -> PathBuf {
             .join(path)
     };
     let mut links = 0;
+    let mut capped = false;
     let mut out = PathBuf::from("/");
     // Components still to walk, last first.
     let mut todo: Vec<PathBuf> = components(&absolute);
@@ -33,7 +58,12 @@ pub fn resolve(path: &Path) -> PathBuf {
         }
         let next = out.join(&part);
         let is_link = fs::symlink_metadata(&next).is_ok_and(|m| m.file_type().is_symlink());
-        if !is_link || links >= MAX_LINKS {
+        if !is_link {
+            out = next;
+            continue;
+        }
+        if links >= MAX_LINKS {
+            capped = true;
             out = next;
             continue;
         }
@@ -49,7 +79,7 @@ pub fn resolve(path: &Path) -> PathBuf {
         more.reverse();
         todo.extend(more);
     }
-    out
+    (out, capped)
 }
 
 /// The normal and `..` components; `.` and the root are dropped.

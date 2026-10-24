@@ -21,7 +21,7 @@ use viy_http::Request;
 use viy_http::user_agent;
 
 use super::chars::is_py_space;
-use crate::resolve::resolve;
+use crate::resolve::resolve_checked;
 use crate::secrets::is_secret_name;
 
 macro_rules! review_local {
@@ -90,12 +90,6 @@ pub const REVIEW_PRIVATE_GIT: &str = "\n\nGit: the workspace's .git, inside the 
 
 /// Where a command can connect when no proxy describes it.
 const WHOLE_NETWORK: &str = "this machine's whole network, including its own services and the LAN";
-
-/// What a backslash-newline becomes before the `shlex` crate splits a
-/// command for `files_for_review` (`words_like_rpctl`).
-const CONTINUATION: char = '\u{e000}';
-/// And what a `#` becomes.
-const HASH: char = '\u{e001}';
 
 /// Workspace files attached, and the characters kept of each.
 const FILE_LIMIT: usize = 4;
@@ -193,11 +187,15 @@ impl<'a> Review<'a> {
             })
             .collect();
         parts.push(format!("<command>\n{}\n</command>", self.command));
-        let system = if let Some(server) = self.server {
+        // rpctl tests both for truth: an empty text is none.
+        let system = if let Some(server) = self.server.filter(|s| !s.is_empty()) {
             parts.push(format!("<server>\n{server}\n</server>"));
             REVIEW_REMOTE_SYSTEM.to_string()
         } else {
-            let reach = self.network.unwrap_or(WHOLE_NETWORK);
+            let reach = self
+                .network
+                .filter(|n| !n.is_empty())
+                .unwrap_or(WHOLE_NETWORK);
             parts.push(format!("<network>\n{reach}\n</network>"));
             for (name, text) in files_for_review(self.command, self.workspace)? {
                 parts.push(format!("<file path=\"{name}\">\n{text}\n</file>"));
@@ -352,11 +350,19 @@ fn without_think(text: &str) -> String {
 
 /// Workspace files the command names (scripts it runs, requirement files
 /// it installs from), so the reviewer judges their contents, not just a
-/// name. Secret files are never attached. `Err` where rpctl's lookup raises:
-/// a name holding a NUL byte.
+/// name. Secret files are never attached. `Err`, so the user is asked,
+/// where rpctl's lookup raises (a NUL in a name, a symlink loop) and where
+/// viy will not guess: a chain of more than 40 links, a file name that is
+/// not UTF-8.
 pub fn files_for_review(cmd: &str, workspace: &Path) -> Result<Vec<(String, String)>, String> {
-    let ws = resolve(workspace);
-    let words = words_like_rpctl(cmd);
+    const LOOP: &str = "review failed (RuntimeError)";
+    let ws = resolve_checked(workspace).map_err(|_| LOOP.to_string())?;
+    let words = posix_words(cmd).unwrap_or_else(|| {
+        cmd.split(is_py_space)
+            .filter(|w| !w.is_empty())
+            .map(str::to_string)
+            .collect()
+    });
     let mut out = Vec::new();
     let mut seen: Vec<PathBuf> = Vec::new();
     for word in &words {
@@ -366,20 +372,25 @@ pub fn files_for_review(cmd: &str, workspace: &Path) -> Result<Vec<(String, Stri
             word.as_str()
         };
         // An inline program (python3 -c '...') is one word, not a file name.
-        if t.is_empty() || t.starts_with('-') || t.contains(['\n', CONTINUATION]) {
+        if t.is_empty() || t.starts_with('-') || t.contains('\n') {
             continue;
         }
         if t.contains('\0') {
             return Err("review failed (ValueError)".into());
         }
-        let p = resolve(&ws.join(t));
+        // Resolved all the way, so the checks below see the file itself.
+        let p = resolve_checked(&ws.join(t)).map_err(|_| LOOP.to_string())?;
         if seen.contains(&p) || !p.starts_with(&ws) || !p.is_file() {
             continue;
         }
         seen.push(p.clone());
-        if p.file_name()
-            .is_some_and(|n| is_secret_name(&n.to_string_lossy()))
-        {
+        let (Some(name), Some(rel)) = (
+            p.file_name().and_then(|n| n.to_str()),
+            p.strip_prefix(&ws).ok().and_then(|r| r.to_str()),
+        ) else {
+            return Err("review failed (a file name is not UTF-8)".into());
+        };
+        if is_secret_name(name) {
             continue;
         }
         let Some(text) = read_text(&p, FILE_CHARS) else {
@@ -391,12 +402,7 @@ pub fn files_for_review(cmd: &str, workspace: &Path) -> Result<Vec<(String, Stri
         } else {
             clipped
         };
-        let rel = p
-            .strip_prefix(&ws)
-            .unwrap_or(&p)
-            .to_string_lossy()
-            .into_owned();
-        out.push((rel, clipped));
+        out.push((rel.to_string(), clipped));
         if out.len() >= FILE_LIMIT {
             break;
         }
@@ -404,25 +410,67 @@ pub fn files_for_review(cmd: &str, workspace: &Path) -> Result<Vec<(String, Stri
     Ok(out)
 }
 
-/// The words of `cmd` as rpctl's `shlex.split` gives them, else its
-/// whitespace split. Python's shlex reads `#` as a plain character and
-/// keeps a backslash-newline in the word (which then counts as an inline
-/// program); the crate starts a comment at `#` and drops a
-/// backslash-newline. Stand-ins (private-use characters) carry both
-/// through the crate.
-fn words_like_rpctl(cmd: &str) -> Vec<String> {
-    let prepared = (!cmd.contains([CONTINUATION, HASH])).then(|| {
-        cmd.replace("\\\n", &format!("\\{CONTINUATION}"))
-            .replace('#', &HASH.to_string())
-    });
-    match shlex::split(prepared.as_deref().unwrap_or(cmd)) {
-        Some(words) => words.into_iter().map(|w| w.replace(HASH, "#")).collect(),
-        None => cmd
-            .split(is_py_space)
-            .filter(|w| !w.is_empty())
-            .map(str::to_string)
-            .collect(),
+/// rpctl's `shlex.split(cmd)`: Python's POSIX lexer, which the reviewer's
+/// file lookup depends on word for word (the request must equal rpctl's,
+/// kb d031), and which the `shlex` crate does not follow (it splits only
+/// at space, tab and newline, reads `#` as a comment, joins lines at a
+/// backslash-newline and unescapes `\$` in double quotes). Whitespace is
+/// space, tab, CR and LF; `\` escapes the next character outside quotes
+/// and only `"` or `\` inside double quotes; `''` is an empty word. `None`
+/// for an unclosed quote or a trailing `\`, where rpctl falls back to
+/// `cmd.split()`.
+fn posix_words(cmd: &str) -> Option<Vec<String>> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut started = false;
+    let mut chars = cmd.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            ' ' | '\t' | '\r' | '\n' => {
+                if started {
+                    words.push(std::mem::take(&mut word));
+                    started = false;
+                }
+            }
+            '\\' => {
+                word.push(chars.next()?);
+                started = true;
+            }
+            '\'' => {
+                loop {
+                    match chars.next()? {
+                        '\'' => break,
+                        q => word.push(q),
+                    }
+                }
+                started = true;
+            }
+            '"' => {
+                loop {
+                    match chars.next()? {
+                        '"' => break,
+                        '\\' => match chars.next()? {
+                            e @ ('"' | '\\') => word.push(e),
+                            e => {
+                                word.push('\\');
+                                word.push(e);
+                            }
+                        },
+                        q => word.push(q),
+                    }
+                }
+                started = true;
+            }
+            _ => {
+                word.push(c);
+                started = true;
+            }
+        }
     }
+    if started {
+        words.push(word);
+    }
+    Some(words)
 }
 
 /// The start of a file as text: invalid UTF-8 replaced, line ends made

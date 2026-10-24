@@ -25,6 +25,21 @@ fn draws_the_frame_and_places_the_cursor() {
     assert_eq!(term.backend().screen_rows(), ["transcript", "", "› hi▮"]);
 }
 
+/// A frame without a cursor hides it at the top left, not where its last
+/// cell was written: there a terminal made shorter has nothing to scroll
+/// up for.
+#[test]
+fn a_hidden_cursor_rests_at_the_top_left() {
+    let mut term = Terminal::new(VT100Backend::new(20, 3)).unwrap();
+    term.draw(|frame| {
+        frame.render_widget(Paragraph::new("footer"), Rect::new(0, 2, 20, 1));
+    })
+    .unwrap();
+    let screen = term.backend().vt100().screen();
+    assert!(screen.hide_cursor());
+    assert_eq!(screen.cursor_position(), (0, 0));
+}
+
 /// A frame is one flush, inside a synchronized update, and the same frame
 /// again, cursor included, writes nothing.
 #[test]

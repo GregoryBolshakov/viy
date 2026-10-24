@@ -1,6 +1,7 @@
 //! The real terminal for the chat (docs/ui-plan.md 11, Codex's `tui.rs`):
 //! raw mode, so Ctrl-C and Ctrl-Z are keys; the alternate screen, so the
-//! shell's screen and history come back untouched (kb d038); bracketed
+//! shell's screen and history come back untouched (kb d038), with line wrap
+//! off on it (see [`set_modes`]); bracketed
 //! paste; mouse capture for the wheel unless tmux has `mouse off`; and,
 //! when the chat sets the tab title, the shell's title saved on xterm's
 //! title stack (rpctl `termtitle.py`).
@@ -25,6 +26,8 @@ use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableBracketedPaste;
 use crossterm::event::EnableMouseCapture;
 use crossterm::execute;
+use crossterm::terminal::DisableLineWrap;
+use crossterm::terminal::EnableLineWrap;
 use crossterm::terminal::EnterAlternateScreen;
 use crossterm::terminal::LeaveAlternateScreen;
 use ratatui::backend::CrosstermBackend;
@@ -41,6 +44,7 @@ pub type Backend = CrosstermBackend<ScreenWriter>;
 /// reach the [`Tui`]) undoes exactly those.
 static RAW: AtomicBool = AtomicBool::new(false);
 static SCREEN: AtomicBool = AtomicBool::new(false);
+static NOWRAP: AtomicBool = AtomicBool::new(false);
 static PASTE: AtomicBool = AtomicBool::new(false);
 static MOUSE: AtomicBool = AtomicBool::new(false);
 static TITLE: AtomicBool = AtomicBool::new(false);
@@ -124,6 +128,14 @@ fn set_modes(mouse: bool) -> io::Result<()> {
     RAW.store(true, Ordering::SeqCst);
     SCREEN.store(true, Ordering::SeqCst);
     execute!(out, EnterAlternateScreen)?;
+    // Line wrap off (DECAWM): a frame laid out for a wider window can
+    // still be on its way when the window narrows. With wrap on, its rows,
+    // now longer than the screen, wrap onto the next and at the bottom
+    // scroll the whole screen up, and GNOME Terminal's view stays scrolled
+    // (seen 2026-07-20, kb d093). With it off a long row is only cut at the
+    // edge, until the next frame rewrites it.
+    NOWRAP.store(true, Ordering::SeqCst);
+    execute!(out, DisableLineWrap)?;
     PASTE.store(true, Ordering::SeqCst);
     execute!(out, EnableBracketedPaste)?;
     if mouse {
@@ -141,7 +153,7 @@ fn push_title() -> io::Result<()> {
 }
 
 /// Gives the shell its terminal back: its title, mouse and paste modes
-/// off, the main screen with the cursor shown, raw mode off. Each mode is undone only if
+/// off, line wrap on, the main screen with the cursor shown, raw mode off. Each mode is undone only if
 /// it is on, so this may run twice (the panic hook, then the drop). The
 /// first error is returned after every step has been tried.
 pub fn restore() -> io::Result<()> {
@@ -163,6 +175,9 @@ pub fn restore() -> io::Result<()> {
     }
     if PASTE.swap(false, Ordering::SeqCst) {
         step(execute!(out, DisableBracketedPaste));
+    }
+    if NOWRAP.swap(false, Ordering::SeqCst) {
+        step(execute!(out, EnableLineWrap));
     }
     if SCREEN.swap(false, Ordering::SeqCst) {
         step(execute!(out, LeaveAlternateScreen, Show));

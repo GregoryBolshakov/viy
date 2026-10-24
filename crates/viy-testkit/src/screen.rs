@@ -13,12 +13,18 @@ pub struct Recorder {
 impl Recorder {
     /// The events, without viy's own that vt100 does not implement: the
     /// synchronized-output brackets around each frame, the underline
-    /// colour's reset (SGR 59) and crossterm's urxvt mouse encoding (1015).
+    /// colour's reset (SGR 59), the caret's blink and its end (SGR 5, 25),
+    /// line wrap off and on (DECAWM, `?7`) and crossterm's urxvt mouse
+    /// encoding (1015).
     pub fn foreign(&self) -> Vec<String> {
-        const OWN: [&str; 5] = [
+        const OWN: [&str; 9] = [
+            "csi ?[[7]] l",
+            "csi ?[[7]] h",
             "csi ?[[2026]] h",
             "csi ?[[2026]] l",
             "csi [[59]] m",
+            "csi [[5]] m",
+            "csi [[25]] m",
             "csi ?[[1015]] h",
             "csi ?[[1015]] l",
         ];

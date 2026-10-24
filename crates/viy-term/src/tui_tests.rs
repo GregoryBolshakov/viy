@@ -90,6 +90,16 @@ fn assert_title_given_back(bytes: &[u8]) {
     assert!(last(tabtitle::POP) > last("\x1b]0;"));
 }
 
+/// Line wrap is off while viy has the screen and on again after: a frame
+/// laid out for a wider window must not wrap, and scroll the screen, when
+/// the window narrows under it (kb d093).
+fn assert_wrap_given_back(bytes: &[u8]) {
+    let last = |seq: &[u8]| bytes.windows(seq.len()).rposition(|w| w == seq);
+    let off = last(b"\x1b[?7l");
+    assert!(off.is_some(), "line wrap never turned off");
+    assert!(last(b"\x1b[?7h") > off, "line wrap not turned back on");
+}
+
 /// The panic hook alone gives the terminal back (the child never drops its
 /// `Tui`), and before the message, which lands on the shell's screen.
 #[test]
@@ -105,6 +115,7 @@ fn a_panic_gives_the_terminal_back_before_its_message() {
     let parser = emulate(&bytes);
     assert_given_back(parser.screen());
     assert_title_given_back(&bytes);
+    assert_wrap_given_back(&bytes);
     assert!(parser.screen().contents().contains("forced panic"));
     assert!(pty.cooked());
 }
@@ -119,6 +130,7 @@ fn a_normal_exit_gives_the_terminal_back() {
     let parser = emulate(&bytes);
     assert_given_back(parser.screen());
     assert_title_given_back(&bytes);
+    assert_wrap_given_back(&bytes);
     // The exit line is the one thing written to the shell's screen.
     assert!(parser.screen().contents().contains("the exit line"));
     assert!(pty.cooked());

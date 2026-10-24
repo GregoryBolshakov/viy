@@ -206,6 +206,12 @@ where
             if let Some(position) = place {
                 queue!(self.backend, MoveTo(position.x, position.y), Show)?;
                 self.cursor_shown = Some(position);
+            } else if cursor.is_none() {
+                // A hidden cursor rests at the top left, not where the last
+                // cell was written: a terminal made shorter keeps its cursor
+                // in view by scrolling the screen up, and at the top it
+                // has nothing to scroll for.
+                queue!(self.backend, MoveTo(0, 0))?;
             }
             queue!(self.backend, EndSynchronizedUpdate)?;
         }

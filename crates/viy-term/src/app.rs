@@ -36,6 +36,8 @@ use ratatui::backend::Backend;
 use ratatui::layout::Position;
 use ratatui::layout::Rect;
 use ratatui::layout::Size;
+use ratatui::style::Modifier;
+use ratatui::style::Style;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
@@ -80,6 +82,7 @@ const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 const SPINNER_FRAME: Duration = Duration::from_millis(80);
 /// Rows one wheel notch scrolls.
 const WHEEL_ROWS: usize = 3;
+
 /// Queued messages shown above the input at most.
 const QUEUED_ROWS: usize = 3;
 
@@ -157,6 +160,14 @@ pub struct App {
     blind: Option<io::Error>,
     limiter: FrameLimiter,
     last_frame: Option<Instant>,
+    /// Where the caret was drawn in the last frame, if anywhere. viy draws
+    /// its own caret (a blinking reversed block) and keeps the terminal's
+    /// cursor hidden at the top left: a terminal made shorter scrolls its
+    /// screen up to keep its cursor in view before viy repaints (GNOME
+    /// Terminal's VTE does), so with the cursor in the input box at the
+    /// bottom a resize jolted the whole screen up and back. With it at the
+    /// top, the screen's top stays put.
+    caret: Option<Position>,
     dirty: bool,
     /// The next frame rewrites every cell (Ctrl-L).
     repaint: bool,
@@ -192,6 +203,7 @@ impl App {
             blind: None,
             limiter: FrameLimiter::default(),
             last_frame: None,
+            caret: None,
             dirty: true,
             repaint: false,
             expanded: false,
@@ -906,14 +918,18 @@ impl App {
             top_height + u16::try_from(input_top).unwrap_or(0) + input_cursor.y,
         );
         self.write_title(term.backend_mut())?;
+        let caret = (cursor.y < size.height && cursor.x < size.width).then_some(cursor);
         let (cells, view) = (&self.cells, &mut self.view);
         term.draw(|frame| {
             view.render(cells, top, frame.buffer_mut());
             frame.render_widget(Paragraph::new(bottom), live_area);
-            if cursor.y < size.height {
-                frame.set_cursor_position(cursor);
+            if let Some(at) = caret {
+                frame.buffer_mut()[at].set_style(
+                    Style::new().add_modifier(Modifier::REVERSED | Modifier::SLOW_BLINK),
+                );
             }
         })?;
+        self.caret = caret;
         self.questions
             .drawn(now, whole && usize::from(bottom_height) == bottom_rows);
         Ok(())

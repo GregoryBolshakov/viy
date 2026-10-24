@@ -1,14 +1,16 @@
 //! The centipede header at the top of the chat's transcript: a flat,
 //! stylized centipede (`tools/header-art/centipede.py`, through
-//! `tools/header_art.py`), 11 rows high and built in at twenty widths,
-//! every 12 columns from 80 to 308, its body half a wave longer at each, as sextant cells: 2x3 solid blocks, each with a
-//! foreground and a background colour. The largest that fits the terminal
-//! is drawn, its leftmost block in the column where the title starts, and
-//! under it, as Codex's session header, `>_ viy (vX)` and the chat's
-//! directory. It is the first entry of the transcript
-//! and scrolls away with it. Where the art is empty the terminal's own
-//! background shows. Without truecolor (`COLORTERM`) the colours are the
-//! nearest of the 256 xterm colours.
+//! `tools/header_art.py`), 11 rows high and built in at 24 widths: every
+//! 10 columns from 40 to 70, then every 12 from 80 to 308, its body longer
+//! at each, the head in the same place. Below 40 it is its larva
+//! (`tools/header-art/larva.py`, built at 32): the same head in the same
+//! place, a short body curled behind it. All are sextant cells: 2x3 solid blocks, each with a foreground
+//! and a background colour. The largest that fits the terminal is drawn,
+//! its leftmost block in the column where the title starts, and under it,
+//! as Codex's session header, `>_ viy (vX)` and the chat's directory. It is
+//! the first entry of the transcript and scrolls away with it. Where the art
+//! is empty the terminal's own background shows. Without truecolor
+//! (`COLORTERM`) the colours are the nearest of the 256 xterm colours.
 //!
 //! Regenerate after changing the art: `python3 tools/header_art.py`.
 //!
@@ -41,9 +43,11 @@ macro_rules! arts {
     };
 }
 
-// Keep in step with WIDTHS in tools/header_art.py: every 12 columns from
-// the default 80-column window to a large monitor's full screen.
-arts!(80 92 104 116 128 140 152 164 176 188 200 212 224 236 248 260 272 284 296 308);
+// Keep in step with WIDTHS in tools/header_art.py: the larva for the
+// narrowest windows, the centipede every 10 columns for narrow windows,
+// then every 12 from the default 80-column window to a large monitor's
+// full screen.
+arts!(32 40 50 60 70 80 92 104 116 128 140 152 164 176 188 200 212 224 236 248 260 272 284 296 308);
 
 /// The widths the art is built in at, narrowest first.
 pub fn widths() -> impl Iterator<Item = usize> {
@@ -51,7 +55,7 @@ pub fn widths() -> impl Iterator<Item = usize> {
 }
 
 /// Narrower than this, the header is left out (the smallest art).
-pub const MIN_WIDTH: usize = 80;
+pub const MIN_WIDTH: usize = 32;
 
 /// Where the title starts, and the art's leftmost block with it. Every art
 /// is drawn narrower than its width by at least this (the tests hold it).

@@ -37,9 +37,27 @@ fn fixture(width: u16, height: u16) -> Fixture {
 }
 
 impl Fixture {
+    /// The screen's rows, `▮` at viy's caret (the terminal's own cursor
+    /// stays hidden).
     fn screen(&mut self) -> Vec<String> {
         self.app.draw_at(&mut self.term, self.clock);
-        self.term.backend().screen_rows()
+        self.rows()
+    }
+
+    /// The screen as it stands, `▮` at the caret drawn last.
+    fn rows(&self) -> Vec<String> {
+        let mut rows = self.term.backend().screen_rows();
+        if let Some(at) = self.app.caret.filter(|at| usize::from(at.y) < rows.len()) {
+            let row = &mut rows[usize::from(at.y)];
+            let mut chars: Vec<char> = row.chars().collect();
+            let x = usize::from(at.x);
+            if chars.len() <= x {
+                chars.resize(x + 1, ' ');
+            }
+            chars[x] = '▮';
+            *row = chars.into_iter().collect();
+        }
+        rows
     }
 
     fn ops(&mut self) -> Vec<Op> {
@@ -115,6 +133,25 @@ fn numbered(f: &mut Fixture, n: usize) {
 fn an_idle_chat_is_the_input_and_the_footer() {
     let mut f = fixture(30, 5);
     assert_eq!(f.screen(), ["", "", "", "› ▮", ""]);
+}
+
+/// The terminal's cursor stays hidden at the top left, where a terminal
+/// made shorter has nothing to scroll up for (GNOME Terminal scrolls its
+/// screen to keep the cursor in view before viy repaints); the input box
+/// shows viy's own caret, a blinking reversed block.
+#[test]
+fn the_caret_is_drawn_and_the_cursor_waits_at_the_top_left() {
+    let mut f = fixture(30, 5);
+    assert_eq!(f.screen(), ["", "", "", "› ▮", ""]);
+    let screen = f.term.backend().vt100().screen();
+    assert!(screen.hide_cursor());
+    assert_eq!(screen.cursor_position(), (0, 0));
+    let caret = screen.cell(3, 2).unwrap();
+    assert!(caret.inverse());
+    f.term.backend_mut().resize(30, 4);
+    f.input(Input::Resize(30, 4));
+    assert_eq!(f.screen(), ["", "", "› ▮", ""]);
+    assert_eq!(f.term.backend().vt100().screen().cursor_position(), (0, 0));
 }
 
 #[test]
@@ -463,10 +500,7 @@ async fn a_resize_reflows_in_one_frame_without_clearing() {
     };
     let (flow, ()) = tokio::join!(f.app.run(&mut f.term, &mut input, &mut events), driver);
     assert_eq!(flow.unwrap(), Flow::Exit);
-    assert_eq!(
-        f.term.backend().screen_rows(),
-        ["", "aaaa bbbb", "cccc dddd", "› ▮", ""]
-    );
+    assert_eq!(f.rows(), ["", "aaaa bbbb", "cccc dddd", "› ▮", ""]);
     let written = &f.term.backend().written()[before..];
     assert_eq!(
         written.windows(8).filter(|w| w == b"\x1b[?2026h").count(),
@@ -507,10 +541,7 @@ async fn sigterm_closes_the_chat_once_the_engine_has_saved_it() {
     let (flow, ()) = tokio::join!(f.app.run(&mut f.term, &mut input, &mut events), driver);
     assert_eq!(flow.unwrap(), Flow::Exit);
     assert_eq!(f.ops(), [Op::Shutdown]);
-    assert_eq!(
-        f.term.backend().screen_rows(),
-        ["", "", "closing the chat…", "› ▮", ""]
-    );
+    assert_eq!(f.rows(), ["", "", "closing the chat…", "› ▮", ""]);
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]

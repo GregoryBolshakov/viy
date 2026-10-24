@@ -45,11 +45,13 @@ fn the_art_is_built_in_at_25_widths_as_coloured_sextants() {
             art.iter().all(|row| row.len() + INDENT <= width),
             "w{width}"
         );
-        assert!(
-            art.iter()
-                .any(|row| row.first().is_some_and(|c| c.0 != ' ')),
-            "w{width}"
-        );
+        // The centipede's antenna reaches the left edge; the larva's,
+        // shorter, ends 3 columns in, its head where the centipede's is.
+        let first = art
+            .iter()
+            .filter_map(|row| row.iter().position(|c| c.0 != ' ' || c.2.is_some()))
+            .min();
+        assert_eq!(first, Some(if larva { 3 } else { 0 }), "w{width}");
         if !larva {
             assert!(art.iter().any(|row| row.len() > width * 9 / 10), "w{width}");
         }
@@ -122,8 +124,8 @@ fn lit(&(ch, _, bg): &ArtCell) -> u8 {
 }
 
 /// The head is in the same place at every width (the larva's, the same
-/// picture tinted, has the same margins), so resizing a terminal changes
-/// only the body. Drawn from the top of the
+/// picture tinted, with shorter antennae and tusks, has the same top), so
+/// resizing a terminal changes only the body. Drawn from the top of the
 /// screen, from 60 up the legs reach highest, as far below the top edge as
 /// the art's leftmost pixel is right of the left edge ([`INDENT`] columns
 /// in): one row, as two columns, a cell being twice as tall as it is wide.
@@ -153,9 +155,15 @@ fn the_art_is_as_far_from_the_top_as_from_the_left() {
                 }
             }
         }
-        // In a 12 x 24 cell a sextant is 6 wide and 8 tall.
+        // In a 12 x 24 cell a sextant is 6 wide and 8 tall. The larva's
+        // shorter antenna ends 6 sextants (3 columns) further in.
         let lower = if width < 60 { 8 } else { 0 };
-        assert_eq!(top * 8, (INDENT * 2 + left) * 6 + lower, "w{width}");
+        let shorter = if width < 40 { 6 } else { 0 };
+        assert_eq!(
+            top * 8,
+            (INDENT * 2 + left - shorter) * 6 + lower,
+            "w{width}"
+        );
         // The larva's head is the same picture, tinted, so its blocks differ.
         if width >= 40 {
             assert_eq!(head(art), head(art80), "w{width}");

@@ -31,6 +31,8 @@
 use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
+use viy_tools::modes;
+use viy_tools::modes::Mode;
 
 use serde_json::Value;
 use serde_json::json;
@@ -149,7 +151,8 @@ fn drive_scenario(
         chat.discover_max_model_len().await;
         let today = chat.today().to_string();
         let turns = Arc::new(ChatTurns::new(chat));
-        let mut engine = Engine::spawn(turns.clone());
+        // The scenario's answers are a person's, as drive_rp's terminal.
+        let mut engine = Engine::spawn_with(turns.clone(), chat_mode(&cfg), true);
         let run = drive::drive(&mut engine, &steps).await;
         let session = turns
             .with_chat(|c| c.session_id())
@@ -193,7 +196,7 @@ fn chat_ui(
         let mut chat = chat(&cfg, url, http, paths, &start, true)?;
         chat.discover_max_model_len().await;
         let turns = Arc::new(ChatTurns::new(chat));
-        let mut engine = Engine::spawn(turns.clone());
+        let mut engine = Engine::spawn_with(turns.clone(), chat_mode(&cfg), !plain);
         if plain {
             plain_chat(&mut engine, Vec::new(), stdin_lines(), &mut *out).await?;
         } else {
@@ -212,6 +215,14 @@ fn chat_ui(
 
 /// Whether the chat sets the tab title (rp's `CHAT_TAB_TITLE`: on only
 /// for `1`, its default).
+/// The mode a chat starts in: CHAT_MODE, else normal (rpctl's
+/// `modes.get(...) or modes.DEFAULT`).
+pub(crate) fn chat_mode(cfg: &Config) -> &'static Mode {
+    cfg.get("CHAT_MODE")
+        .and_then(modes::get)
+        .unwrap_or(modes::DEFAULT)
+}
+
 pub(crate) fn tab_title(cfg: &Config) -> bool {
     cfg.get("CHAT_TAB_TITLE").unwrap_or("1") == "1"
 }

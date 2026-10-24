@@ -14,6 +14,15 @@
 //! dropped it, is closed with [`EventMsg::QuestionResolved`], so the UI
 //! takes its box away (Codex's `ServerRequestResolved`).
 //!
+//! The chat mode (`viy_tools::modes`, rpctl's `modes.py`) answers some
+//! questions before they reach the UI: a question whose kind the mode says
+//! yes to is answered yes with a notice in its place, only while someone is
+//! there to ask (`attended`; with nobody to ask the UI answers each
+//! question's unattended answer, rp's "no TTY means no"). Shift+Tab
+//! ([`Op::CycleMode`]) steps to the next mode and answers the question it
+//! was pressed at if the new mode says yes to its kind. After a turn, a
+//! notice counts the questions the mode answered.
+//!
 //! A line is admitted before its turn starts ([`Turns::admit`]): one that
 //! nothing could answer, because no pod is ready (kb d041), is refused with
 //! [`EventMsg::TurnRefused`] and never becomes a turn. Work that runs
@@ -39,10 +48,12 @@ use viy_protocol::Asking;
 use viy_protocol::CommandCompleteEvent;
 use viy_protocol::Event;
 use viy_protocol::EventMsg;
+use viy_protocol::ModeChangedEvent;
 use viy_protocol::NoticeEvent;
 use viy_protocol::NoticeLevel;
 use viy_protocol::Op;
 use viy_protocol::Question;
+use viy_protocol::QuestionKind;
 use viy_protocol::QuestionRequestEvent;
 use viy_protocol::QuestionResolvedEvent;
 use viy_protocol::Submission;
@@ -52,6 +63,8 @@ use viy_protocol::TurnCompleteEvent;
 use viy_protocol::TurnOutcome;
 use viy_protocol::TurnRefusedEvent;
 use viy_protocol::TurnStartedEvent;
+use viy_tools::modes;
+use viy_tools::modes::Mode;
 
 /// A boxed future, as the engine's traits return.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -134,6 +147,17 @@ impl TurnContext {
         self.questions.ask(&self.events, &self.sub_id, question)
     }
 
+    /// The chat mode in force.
+    pub fn mode(&self) -> &'static Mode {
+        self.questions.lock().mode
+    }
+
+    /// Switches the chat mode (`/mode <name>`).
+    pub fn set_mode(&self, mode: &'static Mode) {
+        self.questions.lock().mode = mode;
+        self.emit(mode_changed(mode));
+    }
+
     /// A context for work that goes on after this submission has ended (a
     /// pod command in the background): the same channels, a submission id
     /// of its own, so the end of this one closes none of its questions; a
@@ -181,20 +205,125 @@ fn emit(events: &mpsc::UnboundedSender<Event>, id: &str, msg: EventMsg) {
     });
 }
 
-/// The open questions, by id.
-#[derive(Clone, Default)]
+/// The open questions, by id, and the chat mode that may answer them.
+#[derive(Clone)]
 struct Questions(Arc<Mutex<QuestionsState>>);
 
-#[derive(Default)]
+impl Default for Questions {
+    fn default() -> Self {
+        Self::new(modes::DEFAULT, false)
+    }
+}
+
 struct QuestionsState {
     asked: u64,
-    /// Question id to the asking submission and where its answer goes.
-    open: HashMap<String, (String, oneshot::Sender<Answer>)>,
+    /// Question id to the asking submission, where its answer goes and the
+    /// question (Shift+Tab may answer it).
+    open: HashMap<String, Open>,
+    mode: &'static Mode,
+    /// Someone is there to ask: only then does a mode answer yes.
+    attended: bool,
+    /// The kinds the mode said yes to in this turn, in order.
+    auto_yessed: Vec<QuestionKind>,
+}
+
+struct Open {
+    asker: String,
+    answer: oneshot::Sender<Answer>,
+    question: Question,
+}
+
+/// A question the mode answered: its asker, id (none when it never went
+/// out) and the question.
+struct AutoYes {
+    asker: String,
+    question: Question,
+    mode: &'static str,
 }
 
 impl Questions {
+    fn new(mode: &'static Mode, attended: bool) -> Self {
+        Self(Arc::new(Mutex::new(QuestionsState {
+            asked: 0,
+            open: HashMap::new(),
+            mode,
+            attended,
+            auto_yessed: Vec::new(),
+        })))
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, QuestionsState> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The mode's yes, when it says yes to `question`'s kind and someone is
+    /// there: counted for the turn's report.
+    fn auto_yes(state: &mut QuestionsState, asker: &str, question: &Question) -> Option<AutoYes> {
+        let kind = question.kind?;
+        if !state.attended || !state.mode.answers(Some(kind)) {
+            return None;
+        }
+        state.auto_yessed.push(kind);
+        Some(AutoYes {
+            asker: asker.to_string(),
+            question: question.clone(),
+            mode: state.mode.name,
+        })
+    }
+
+    /// Shift+Tab: the next mode, and the yes to question `id` if the new
+    /// mode says yes to its kind.
+    fn cycle(&self, id: Option<&str>, events: &mpsc::UnboundedSender<Event>, sub_id: &str) {
+        let (mode, answered) = {
+            let mut state = self.lock();
+            state.mode = modes::after(state.mode);
+            let pending = id.and_then(|id| {
+                let open = state.open.get(id)?;
+                let (asker, question) = (open.asker.clone(), open.question.clone());
+                let yes = Self::auto_yes(&mut state, &asker, &question)?;
+                let open = state.open.remove(id)?;
+                Some((id.to_string(), open.answer, yes))
+            });
+            (state.mode, pending)
+        };
+        emit(events, sub_id, mode_changed(mode));
+        if let Some((id, answer, yes)) = answered {
+            said_yes(events, &yes);
+            let _ = answer.send(Answer::Yes);
+            resolved(events, &yes.asker, &id);
+        }
+    }
+
+    /// The turn's report of the questions the mode answered, if any, and a
+    /// fresh count.
+    fn report(&self) -> Option<String> {
+        let mut state = self.lock();
+        let kinds = std::mem::take(&mut state.auto_yessed);
+        if kinds.is_empty() {
+            return None;
+        }
+        let mut counts: Vec<(QuestionKind, usize)> = Vec::new();
+        for kind in &kinds {
+            match counts.iter_mut().find(|(k, _)| k == kind) {
+                Some((_, n)) => *n += 1,
+                None => counts.push((*kind, 1)),
+            }
+        }
+        let n = kinds.len();
+        let what: Vec<String> = counts
+            .iter()
+            .map(|(k, c)| format!("{c} {}", modes::kind_words(*k)))
+            .collect();
+        Some(format!(
+            "{} answered {n} question{}: {}",
+            state.mode.name,
+            if n > 1 { "s" } else { "" },
+            what.join(", ")
+        ))
+    }
+
+    fn clear_report(&self) {
+        self.lock().auto_yessed.clear();
     }
 
     fn ask(
@@ -206,9 +335,21 @@ impl Questions {
         let (tx, rx) = oneshot::channel();
         let question_id = {
             let mut state = self.lock();
+            if let Some(yes) = Self::auto_yes(&mut state, sub_id, question) {
+                drop(state);
+                said_yes(events, &yes);
+                return Box::pin(async { Answer::Yes });
+            }
             state.asked += 1;
             let id = format!("q{}", state.asked);
-            state.open.insert(id.clone(), (sub_id.to_string(), tx));
+            state.open.insert(
+                id.clone(),
+                Open {
+                    asker: sub_id.to_string(),
+                    answer: tx,
+                    question: question.clone(),
+                },
+            );
             id
         };
         emit(
@@ -235,8 +376,8 @@ impl Questions {
 
     /// Resolves question `id`; an id that is not open is ignored.
     fn answer(&self, id: &str, answer: Answer) {
-        if let Some((_, tx)) = self.lock().open.remove(id) {
-            let _ = tx.send(answer);
+        if let Some(open) = self.lock().open.remove(id) {
+            let _ = open.answer.send(answer);
         }
     }
 
@@ -250,8 +391,8 @@ impl Questions {
     /// Closes the questions of submission `sub_id`, whose work has ended.
     fn forget(&self, events: &mpsc::UnboundedSender<Event>, sub_id: &str) {
         let mut closed: Vec<String> = Vec::new();
-        self.lock().open.retain(|id, (asker, _)| {
-            let keep = asker != sub_id;
+        self.lock().open.retain(|id, open| {
+            let keep = open.asker != sub_id;
             if !keep {
                 closed.push(id.clone());
             }
@@ -263,6 +404,34 @@ impl Questions {
             resolved(events, sub_id, &id);
         }
     }
+}
+
+/// What rp prints for the mode's yes: the question's reasons, then the
+/// question with `y` and the mode where the user's answer would be.
+fn said_yes(events: &mpsc::UnboundedSender<Event>, yes: &AutoYes) {
+    for reason in &yes.question.reason {
+        emit(events, &yes.asker, EventMsg::Notice(reason.clone()));
+    }
+    emit(
+        events,
+        &yes.asker,
+        EventMsg::Notice(NoticeEvent {
+            level: NoticeLevel::Info,
+            code: "auto_yes".into(),
+            message: format!(
+                "{} {} y ({})",
+                yes.question.prompt,
+                yes.question.hint(),
+                yes.mode
+            ),
+        }),
+    );
+}
+
+fn mode_changed(mode: &Mode) -> EventMsg {
+    EventMsg::ModeChanged(ModeChangedEvent {
+        mode: mode.name.to_string(),
+    })
 }
 
 fn resolved(events: &mpsc::UnboundedSender<Event>, sub_id: &str, id: &str) {
@@ -307,10 +476,19 @@ pub struct EngineStopped;
 impl Engine {
     /// Starts the engine's loop on the current tokio runtime, with `turns`
     /// running what is submitted.
+    /// Nobody is there to ask, so no mode answers: `viy exec`, the plain
+    /// renderer, tests.
     pub fn spawn(turns: Arc<dyn Turns>) -> Self {
+        Self::spawn_with(turns, modes::DEFAULT, false)
+    }
+
+    /// [`Engine::spawn`] in chat `mode` (CHAT_MODE), `attended` when a
+    /// person answers the questions (the terminal UI, a scripted driver).
+    pub fn spawn_with(turns: Arc<dyn Turns>, mode: &'static Mode, attended: bool) -> Self {
         let (submissions, rx_sub) = mpsc::unbounded_channel();
         let (tx_event, events) = mpsc::unbounded_channel();
-        tokio::spawn(submission_loop(turns, rx_sub, tx_event));
+        let questions = Questions::new(mode, attended);
+        tokio::spawn(submission_loop(turns, rx_sub, tx_event, questions));
         Self {
             submissions,
             events,
@@ -369,10 +547,21 @@ impl Running {
         let _ = self.task.await;
         questions.forget(events, &self.sub_id);
         let msg = match self.work {
-            Work::Turn => EventMsg::TurnAborted(TurnAbortedEvent {
-                turn_id: self.sub_id.clone(),
-                reason: TurnAbortReason::Interrupted,
-            }),
+            Work::Turn => {
+                emit(
+                    events,
+                    &self.sub_id,
+                    EventMsg::TurnAborted(TurnAbortedEvent {
+                        turn_id: self.sub_id.clone(),
+                        reason: TurnAbortReason::Interrupted,
+                    }),
+                );
+                // rp reports after "interrupted" too.
+                match questions.report() {
+                    Some(text) => auto_yes_report(text),
+                    None => return,
+                }
+            }
             // A command stopped half way has still stopped running.
             Work::Command | Work::Open(_) => {
                 EventMsg::CommandComplete(CommandCompleteEvent { command: self.text })
@@ -386,8 +575,12 @@ async fn submission_loop(
     turns: Arc<dyn Turns>,
     mut submissions: mpsc::UnboundedReceiver<Submission>,
     events: mpsc::UnboundedSender<Event>,
+    questions: Questions,
 ) {
-    let questions = Questions::default();
+    let start_mode = questions.lock().mode;
+    if start_mode != modes::DEFAULT {
+        emit(&events, "0", mode_changed(start_mode));
+    }
     turns.opened(&TurnContext {
         sub_id: "0".into(),
         events: events.clone(),
@@ -417,17 +610,9 @@ async fn submission_loop(
                         queued.push_back(sub);
                     }
                     Op::QuestionAnswer { id, answer } => questions.answer(&id, answer),
-                    // The modes are phase 4's (modes.py, kb d024); until then
-                    // Shift+Tab says so.
-                    Op::CycleMode { .. } => emit(
-                        &events,
-                        &sub.id,
-                        EventMsg::Notice(NoticeEvent {
-                            level: NoticeLevel::Info,
-                            code: "not_ported".into(),
-                            message: "Shift+Tab: the chat modes come with phase 4".into(),
-                        }),
-                    ),
+                    Op::CycleMode { question } => {
+                        questions.cycle(question.as_deref(), &events, &sub.id);
+                    }
                     Op::Interrupt => match running.take() {
                         Some(task) => task.cancel(&questions, &events).await,
                         None => turns.interrupt(),
@@ -502,6 +687,7 @@ fn start(
     let task = tokio::spawn(async move {
         match work {
             Work::Turn => {
+                ctx.questions.clear_report();
                 if let Err(message) = Arc::clone(&turns).admit(ctx.clone()).await {
                     ctx.emit(EventMsg::TurnRefused(TurnRefusedEvent { text, message }));
                     let _ = done.send(ctx.sub_id);
@@ -512,6 +698,9 @@ fn start(
                     user_text: text.clone(),
                 }));
                 let outcome = turns.turn(ctx.clone(), text).await;
+                if let Some(report) = ctx.questions.report() {
+                    ctx.emit(auto_yes_report(report));
+                }
                 ctx.emit(EventMsg::TurnComplete(TurnCompleteEvent {
                     turn_id: ctx.sub_id.clone(),
                     outcome,
@@ -537,6 +726,15 @@ fn start(
         work: kind,
         text: shown,
         task,
+    })
+}
+
+/// rp's dim line after a turn: how many questions the mode answered.
+fn auto_yes_report(text: String) -> EventMsg {
+    EventMsg::Notice(NoticeEvent {
+        level: NoticeLevel::Info,
+        code: "auto_yes".into(),
+        message: text,
     })
 }
 

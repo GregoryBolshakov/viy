@@ -397,3 +397,14 @@ fn the_headers_directory_is_written_from_home() {
     );
     assert_eq!(crate::dev::home_relative(Path::new("/srv"), None), "/srv");
 }
+
+/// rpctl test_modes CarouselTests.test_start_mode_comes_from_config.
+#[test]
+fn start_mode_comes_from_config() {
+    let mut cfg = viy_config::Config::defaults();
+    assert_eq!(super::chat_mode(&cfg).name, "normal");
+    cfg.set("CHAT_MODE", "Auto-Yes ");
+    assert_eq!(super::chat_mode(&cfg).name, "auto-yes");
+    cfg.set("CHAT_MODE", "bogus");
+    assert_eq!(super::chat_mode(&cfg).name, "normal");
+}

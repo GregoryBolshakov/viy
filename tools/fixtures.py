@@ -3187,6 +3187,40 @@ def gen_chat_sessions(snap):
 
 
 
+# -------------------------------------------------------------- chat/modes
+
+# rpctl's modes.py as data: KINDS, MODES (name, label, colour, blurb, the
+# kinds each says yes to, in KINDS order), DEFAULT, what get() makes of some
+# names and after() of each mode.
+MODES_RUNNER = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import modes
+names = ["normal", "auto-yes", "Auto-Yes ", " NORMAL", "bogus", "", "auto_yes"]
+print(json.dumps({
+    "kinds": list(modes.KINDS),
+    "modes": [{"name": m.name, "label": m.label, "colour": m.colour, "blurb": m.blurb,
+               "auto_yes": [k for k in modes.KINDS if k in m.auto_yes]}
+              for m in modes.MODES],
+    "default": modes.DEFAULT.name,
+    "get": [[n, (modes.get(n).name if modes.get(n) else None)] for n in names],
+    "after": [[m.name, modes.after(m).name] for m in modes.MODES],
+}, ensure_ascii=False))
+"""
+
+
+def gen_chat_modes(snap):
+    out = subprocess.run([sys.executable, "-I", "-c", MODES_RUNNER, str(snap)],
+                         check=True, capture_output=True, text=True,
+                         env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
+                              "HOME": tempfile.gettempdir()})
+    return {
+        "about": "rpctl's modes.py: KINDS, MODES (auto_yes in KINDS order), DEFAULT, get() "
+                 "on some names, after() of each mode",
+        "cases": [{"name": "modes", **json.loads(out.stdout)}],
+    }
+
+
 # ----------------------------------------------------------- approve/review
 
 # The network reviewer: approve.review over a workspace built from the case,
@@ -3432,6 +3466,7 @@ def gen_ui_questions(snap):
 GENERATORS = {
     "approve/review": gen_approve_review,
     "chat/context": gen_chat_context,
+    "chat/modes": gen_chat_modes,
     "chat/sessions": gen_chat_sessions,
     "cli/flags": gen_cli_flags,
     "cli/parse": gen_cli_parse,

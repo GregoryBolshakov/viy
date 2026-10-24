@@ -573,3 +573,43 @@ async fn opening_without_a_chat_named_picks_one() {
     let (asked, _) = d.open_answering(with_exec, Answer::No).await;
     assert_eq!(asked.unwrap().options.len(), 2);
 }
+
+/// rpctl test_modes CarouselTests.test_mode_command: `/mode <name>` picks
+/// one (case and spaces ignored), an unknown name changes nothing, `/mode`
+/// lists them with the current one marked.
+#[tokio::test]
+async fn mode_command() {
+    let mut d = direct(ok(0), &[]);
+    d.cmd("/mode auto-yes").await;
+    assert_eq!(d.ctx.mode().name, "auto-yes");
+    let events = d.events();
+    assert!(
+        events.contains(&EventMsg::ModeChanged(viy_protocol::ModeChangedEvent {
+            mode: "auto-yes".into()
+        }))
+    );
+    assert!(notices(&events)[0].starts_with("⏵⏵ auto-yes -- says yes to destructive commands"));
+
+    d.cmd("/mode nope").await;
+    assert_eq!(d.ctx.mode().name, "auto-yes");
+    assert_eq!(
+        notices(&d.events()),
+        ["no mode nope; the modes are normal, auto-yes"]
+    );
+
+    d.cmd("/mode").await;
+    let listed = notices(&d.events());
+    assert_eq!(listed.len(), 3);
+    assert_eq!(
+        listed[0],
+        "  normal     every question waits for your answer"
+    );
+    assert!(listed[1].starts_with("* auto-yes   says yes to"));
+    assert_eq!(
+        listed[2],
+        "Shift+Tab cycles them; CHAT_MODE sets the one viy chat starts in"
+    );
+
+    d.cmd("/mode Normal ").await;
+    assert_eq!(d.ctx.mode().name, "normal");
+}

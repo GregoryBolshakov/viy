@@ -21,6 +21,7 @@ oracle = ["viy-testkit/oracle"]
 serde_json = { workspace = true }
 shlex = { workspace = true }
 viy-http = { workspace = true }
+viy-protocol = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

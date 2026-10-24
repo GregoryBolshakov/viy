@@ -1,0 +1,84 @@
+{
+ "rpctl_commit": "40cb811dd54629c7e3e944700f12993c9f263977",
+ "generator": "tools/fixtures.py chat/modes",
+ "about": "rpctl's modes.py: KINDS, MODES (auto_yes in KINDS order), DEFAULT, get() on some names, after() of each mode",
+ "cases": [
+  {
+   "name": "modes",
+   "kinds": [
+    "destructive",
+    "secret_read",
+    "consult",
+    "network",
+    "fetch",
+    "protected_write",
+    "unsandboxed",
+    "remote"
+   ],
+   "modes": [
+    {
+     "name": "normal",
+     "label": "",
+     "colour": "",
+     "blurb": "every question waits for your answer",
+     "auto_yes": []
+    },
+    {
+     "name": "auto-yes",
+     "label": "⏵⏵ auto-yes",
+     "colour": "\u001b[33m",
+     "blurb": "says yes to destructive commands, env-file reads, ask_claude, network commands, fetch_url and commands on /ssh servers; the client's own files still ask",
+     "auto_yes": [
+      "destructive",
+      "secret_read",
+      "consult",
+      "network",
+      "fetch",
+      "remote"
+     ]
+    }
+   ],
+   "default": "normal",
+   "get": [
+    [
+     "normal",
+     "normal"
+    ],
+    [
+     "auto-yes",
+     "auto-yes"
+    ],
+    [
+     "Auto-Yes ",
+     "auto-yes"
+    ],
+    [
+     " NORMAL",
+     "normal"
+    ],
+    [
+     "bogus",
+     null
+    ],
+    [
+     "",
+     null
+    ],
+    [
+     "auto_yes",
+     null
+    ]
+   ],
+   "after": [
+    [
+     "normal",
+     "auto-yes"
+    ],
+    [
+     "auto-yes",
+     "normal"
+    ]
+   ]
+  }
+ ]
+}

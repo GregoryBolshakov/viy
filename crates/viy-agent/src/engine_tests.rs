@@ -6,6 +6,7 @@ use viy_protocol::DeltaEvent;
 use viy_protocol::NoticeEvent;
 use viy_protocol::NoticeLevel;
 use viy_protocol::QuestionKind;
+use viy_tools::modes;
 
 use super::*;
 
@@ -25,8 +26,26 @@ impl Turns for StandIn {
             ctx.emit(EventMsg::ReasoningContentDelta(DeltaEvent {
                 delta: "thinking".into(),
             }));
-            if text.contains("ask") {
-                let question = Question::yes_no(Some(QuestionKind::Destructive), "  rm -rf build?");
+            // "askall" asks once per kind, always offered; "askpw" a
+            // protected write; "asknone" a question without a kind; any
+            // other "ask" a destructive command.
+            let kinds: Vec<Option<QuestionKind>> = if text.contains("askall") {
+                modes::KINDS.iter().copied().map(Some).collect()
+            } else if text.contains("askpw") {
+                vec![Some(QuestionKind::ProtectedWrite)]
+            } else if text.contains("asknone") {
+                vec![None]
+            } else if text.contains("ask") {
+                vec![Some(QuestionKind::Destructive)]
+            } else {
+                Vec::new()
+            };
+            for kind in kinds {
+                let question = if text.contains("askall") {
+                    Question::yes_no_always(kind, "  run it?")
+                } else {
+                    Question::yes_no(kind, "  rm -rf build?")
+                };
                 let answer = ctx.ask(&question).await;
                 ctx.emit(delta(format!("answered {answer:?}")));
             }
@@ -311,20 +330,259 @@ async fn an_interrupt_with_nothing_running_changes_nothing() {
     assert!(matches!(events[0].msg, EventMsg::TurnStarted(_)));
 }
 
-/// Shift+Tab's op is answered at once, between turns or during one; until
-/// phase 4 brings the modes, with a notice saying so.
+// ------------------------------------------------------- the modes
+// rpctl tests/test_modes.py ConfirmTests, ported to the engine: the mode
+// answers before a question reaches the UI.
+
+fn auto() -> &'static Mode {
+    modes::get("auto-yes").unwrap()
+}
+
+fn requests(events: &[Event]) -> Vec<Question> {
+    events
+        .iter()
+        .filter_map(|e| match &e.msg {
+            EventMsg::QuestionRequest(r) => Some(r.question.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn notices_coded<'a>(events: &'a [Event], code: &str) -> Vec<&'a str> {
+    events
+        .iter()
+        .filter_map(|e| match &e.msg {
+            EventMsg::Notice(n) if n.code == code => Some(n.message.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Runs `text` as a turn, answering every question that reaches the UI
+/// with `answer`.
+async fn turn_answering(engine: &mut Engine, text: &str, answer: Answer) -> Vec<Event> {
+    let id = engine.submit(Op::UserTurn { text: text.into() }).unwrap();
+    let mut seen = Vec::new();
+    while let Some(event) = engine.next_event().await {
+        if let EventMsg::QuestionRequest(r) = &event.msg {
+            engine
+                .submit(Op::QuestionAnswer {
+                    id: r.question_id.clone(),
+                    answer,
+                })
+                .unwrap();
+        }
+        let done = turn_done(&id)(&event);
+        seen.push(event);
+        if done {
+            break;
+        }
+    }
+    seen
+}
+
 #[tokio::test]
-async fn shift_tab_is_answered_until_the_modes_come() {
-    let mut engine = engine();
-    engine.submit(Op::CycleMode { question: None }).unwrap();
-    let events = until(&mut engine, |e| matches!(e.msg, EventMsg::Notice(_))).await;
-    let Some(EventMsg::Notice(notice)) = events.last().map(|e| &e.msg) else {
-        panic!("{events:?}");
-    };
-    assert_eq!(notice.code, "not_ported");
+async fn auto_yes_answers_its_kinds_without_asking() {
+    let mut engine = Engine::spawn_with(Arc::new(StandIn), auto(), true);
+    let events = turn_answering(&mut engine, "askall", Answer::No).await;
+    // Only the kinds auto-yes leaves alone reach the UI.
+    let asked: Vec<_> = requests(&events).iter().map(|q| q.kind).collect();
     assert_eq!(
-        notice.message,
-        "Shift+Tab: the chat modes come with phase 4"
+        asked,
+        [
+            Some(QuestionKind::ProtectedWrite),
+            Some(QuestionKind::Unsandboxed)
+        ]
+    );
+    let yes = notices_coded(&events, "auto_yes");
+    // One line per answered question, where the answer would be, and the
+    // count after the turn; plain yes, never "always".
+    assert_eq!(yes.len(), auto().auto_yes.len() + 1);
+    assert!(
+        yes.iter()
+            .take(6)
+            .all(|l| *l == "  run it? [y/N/a=always] y (auto-yes)")
+    );
+    assert_eq!(
+        yes[6],
+        "auto-yes answered 6 questions: 1 destructive, 1 secret read, 1 consult, \
+         1 network, 1 fetch, 1 remote"
+    );
+    assert_eq!(
+        msgs(&events)
+            .iter()
+            .filter(|m| **m == delta("answered Yes"))
+            .count(),
+        6
+    );
+    // The report comes before the turn's end and is counted afresh.
+    let report = events
+        .iter()
+        .position(
+            |e| matches!(&e.msg, EventMsg::Notice(n) if n.message.starts_with("auto-yes answered")),
+        )
+        .unwrap();
+    assert!(matches!(events[report + 1].msg, EventMsg::TurnComplete(_)));
+    let again = turn_answering(&mut engine, "quiet", Answer::No).await;
+    assert!(notices_coded(&again, "auto_yes").is_empty());
+}
+
+#[tokio::test]
+async fn auto_yes_still_asks_the_rest() {
+    for text in ["askpw", "asknone"] {
+        let mut engine = Engine::spawn_with(Arc::new(StandIn), auto(), true);
+        let events = turn_answering(&mut engine, text, Answer::No).await;
+        assert_eq!(requests(&events).len(), 1, "{text}");
+        assert!(msgs(&events).contains(&delta("answered No")));
+        assert!(notices_coded(&events, "auto_yes").is_empty());
+    }
+}
+
+#[tokio::test]
+async fn normal_asks_everything() {
+    let mut engine = Engine::spawn_with(Arc::new(StandIn), modes::DEFAULT, true);
+    let events = turn_answering(&mut engine, "askall", Answer::Yes).await;
+    assert_eq!(requests(&events).len(), modes::KINDS.len());
+    assert!(notices_coded(&events, "auto_yes").is_empty());
+}
+
+/// rp's `_confirm` is no without a terminal, whatever the mode: viy's
+/// engine says yes for no one then, and the question goes to the UI, whose
+/// plain renderer answers its unattended answer, no for every approval.
+#[tokio::test]
+async fn no_terminal_means_no() {
+    let mut unattended = Engine::spawn_with(Arc::new(StandIn), auto(), false);
+    let events = turn_answering(&mut unattended, "ask", Answer::No).await;
+    let asked = requests(&events);
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].unattended, Answer::No);
+    assert!(notices_coded(&events, "auto_yes").is_empty());
+    // The plain engine is the unattended one.
+    let mut plain = engine();
+    let events = turn_answering(&mut plain, "askall", Answer::No).await;
+    assert_eq!(requests(&events).len(), modes::KINDS.len());
+}
+
+#[tokio::test]
+async fn shift_tab_at_a_question_switches_and_answers() {
+    let mut engine = Engine::spawn_with(Arc::new(StandIn), modes::DEFAULT, true);
+    let id = engine.submit(Op::UserTurn { text: "ask".into() }).unwrap();
+    let events = until(&mut engine, |e| {
+        matches!(e.msg, EventMsg::QuestionRequest(_))
+    })
+    .await;
+    let EventMsg::QuestionRequest(request) = &events.last().unwrap().msg else {
+        unreachable!()
+    };
+    engine
+        .submit(Op::CycleMode {
+            question: Some(request.question_id.clone()),
+        })
+        .unwrap();
+    let rest = until(&mut engine, turn_done(&id)).await;
+    let m = msgs(&rest);
+    assert!(m.contains(&EventMsg::ModeChanged(ModeChangedEvent {
+        mode: "auto-yes".into()
+    })));
+    assert!(
+        m.contains(&EventMsg::QuestionResolved(QuestionResolvedEvent {
+            question_id: request.question_id.clone()
+        }))
+    );
+    assert!(m.contains(&delta("answered Yes")));
+    assert_eq!(
+        notices_coded(&rest, "auto_yes"),
+        [
+            "  rm -rf build? [y/N] y (auto-yes)",
+            "auto-yes answered 1 question: 1 destructive"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn shift_tab_asks_again_when_the_new_mode_does_not_answer() {
+    let mut engine = Engine::spawn_with(Arc::new(StandIn), modes::DEFAULT, true);
+    let id = engine
+        .submit(Op::UserTurn {
+            text: "askpw".into(),
+        })
+        .unwrap();
+    let events = until(&mut engine, |e| {
+        matches!(e.msg, EventMsg::QuestionRequest(_))
+    })
+    .await;
+    let EventMsg::QuestionRequest(request) = &events.last().unwrap().msg else {
+        unreachable!()
+    };
+    let qid = request.question_id.clone();
+    engine
+        .submit(Op::CycleMode {
+            question: Some(qid.clone()),
+        })
+        .unwrap();
+    let changed = until(&mut engine, |e| matches!(e.msg, EventMsg::ModeChanged(_))).await;
+    assert!(
+        !msgs(&changed)
+            .iter()
+            .any(|m| matches!(m, EventMsg::QuestionResolved(_)))
+    );
+    engine
+        .submit(Op::QuestionAnswer {
+            id: qid,
+            answer: Answer::No,
+        })
+        .unwrap();
+    let rest = until(&mut engine, turn_done(&id)).await;
+    assert!(msgs(&rest).contains(&delta("answered No")));
+}
+
+/// Shift+Tab typed ahead names no question: the mode changes and nothing is
+/// answered (kb d080).
+#[tokio::test]
+async fn shift_tab_without_a_question_only_changes_the_mode() {
+    let mut engine = Engine::spawn_with(Arc::new(StandIn), modes::DEFAULT, true);
+    let id = engine.submit(Op::UserTurn { text: "ask".into() }).unwrap();
+    let events = until(&mut engine, |e| {
+        matches!(e.msg, EventMsg::QuestionRequest(_))
+    })
+    .await;
+    let EventMsg::QuestionRequest(request) = &events.last().unwrap().msg else {
+        unreachable!()
+    };
+    let qid = request.question_id.clone();
+    engine.submit(Op::CycleMode { question: None }).unwrap();
+    engine.submit(Op::CycleMode { question: None }).unwrap();
+    let changed = until(
+        &mut engine,
+        |e| matches!(&e.msg, EventMsg::ModeChanged(m) if m.mode == "normal"),
+    )
+    .await;
+    assert!(
+        !msgs(&changed)
+            .iter()
+            .any(|m| matches!(m, EventMsg::QuestionResolved(_)))
+    );
+    engine
+        .submit(Op::QuestionAnswer {
+            id: qid,
+            answer: Answer::No,
+        })
+        .unwrap();
+    let rest = until(&mut engine, turn_done(&id)).await;
+    assert!(msgs(&rest).contains(&delta("answered No")));
+}
+
+/// A chat started in a mode other than normal says so first, so the
+/// footer shows it (rp's prompt label).
+#[tokio::test]
+async fn a_chat_started_in_auto_yes_says_so() {
+    let mut engine = Engine::spawn_with(Arc::new(StandIn), auto(), true);
+    let first = engine.next_event().await.unwrap();
+    assert_eq!(
+        first.msg,
+        EventMsg::ModeChanged(ModeChangedEvent {
+            mode: "auto-yes".into()
+        })
     );
 }
 

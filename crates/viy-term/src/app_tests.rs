@@ -611,6 +611,26 @@ fn shift_tab_asks_for_the_next_mode_and_the_footer_shows_it() {
     assert_eq!(f.screen()[3], "");
 }
 
+/// rpctl test_modes PromptShiftTabTests.test_shift_tab_keeps_the_typed_text:
+/// Shift+Tab while typing changes the mode and keeps the draft.
+#[test]
+fn shift_tab_keeps_the_typed_text() {
+    let mut f = fixture(40, 4);
+    for c in "hel".chars() {
+        f.key(KeyCode::Char(c));
+    }
+    f.key(KeyCode::BackTab);
+    for c in "lo".chars() {
+        f.key(KeyCode::Char(c));
+    }
+    assert_eq!(f.ops(), [Op::CycleMode { question: None }]);
+    assert!(
+        f.screen().iter().any(|row| row.starts_with("› hello")),
+        "{:?}",
+        f.screen()
+    );
+}
+
 /// A message sent goes into the history; Up brings it back.
 #[test]
 fn up_brings_back_what_was_sent() {

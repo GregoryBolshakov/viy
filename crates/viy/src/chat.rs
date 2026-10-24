@@ -119,7 +119,8 @@ pub fn cmd_chat(
             desktop: terminal.desktop,
         });
         let turns = Arc::new(ChatTurns::with_server(chat, server));
-        let mut engine = Engine::spawn(turns.clone());
+        // Without a terminal nobody answers, so no mode says yes either.
+        let mut engine = Engine::spawn_with(turns.clone(), dev::chat_mode(&cfg), !plain);
         let first: Vec<Op> = open
             .map(|open| Op::OpenSession {
                 id: open.id,

@@ -21,6 +21,7 @@ use viy_protocol::InputPrefillEvent;
 use viy_protocol::NoticeLevel;
 use viy_protocol::Question;
 use viy_protocol::RewriteReason;
+use viy_tools::modes;
 
 use super::Chat;
 use super::lock;
@@ -108,7 +109,7 @@ const HELP: &str = "  /help              show this
 /// The commands a later work package brings, and which.
 fn later(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
-        "tools" | "mount" | "unmount" | "ssh" | "unssh" | "mode" | "git" => "phase 4",
+        "tools" | "mount" | "unmount" | "ssh" | "unssh" | "git" => "phase 4",
         "search" | "sources" => "phase 5",
         "compact" | "autocompact" => "phase 6",
         "consult" | "toolbox" => "phase 7",
@@ -434,6 +435,28 @@ impl Chat {
                     "effort",
                     format!("reasoning effort = {}", self.settings.reasoning_effort),
                 );
+            }
+            "mode" => {
+                if arg.is_empty() {
+                    let now = ctx.mode();
+                    for m in &modes::MODES {
+                        let mark = if m.name == now.name { "*" } else { " " };
+                        info("mode", format!("{mark} {:<10} {}", m.name, m.blurb));
+                    }
+                    info(
+                        "mode",
+                        "Shift+Tab cycles them; CHAT_MODE sets the one viy chat starts in".into(),
+                    );
+                } else if let Some(m) = modes::get(arg) {
+                    ctx.set_mode(m);
+                    info("mode", m.line());
+                } else {
+                    let names: Vec<&str> = modes::MODES.iter().map(|m| m.name).collect();
+                    warn(
+                        "mode",
+                        format!("no mode {arg}; the modes are {}", names.join(", ")),
+                    );
+                }
             }
             "instructions" => {
                 if matches!(arg, "on" | "off") {

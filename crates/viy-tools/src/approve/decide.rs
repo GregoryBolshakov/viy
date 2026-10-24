@@ -1,12 +1,18 @@
 //! The approval decision for one sandboxed command (rpctl chat.py
 //! `_approve_auto`): destructive questions, the network questions and the
-//! reviewer, the rules file and "always". Pure: the user and the reviewer are
-//! reached through [`Hearing`], so the same code runs in the chat (the engine
-//! asks, and its chat mode may answer) and against the approval decision
-//! table (implementation plan 2.3, the `approve/decisions` fixture).
+//! reviewer, the rules file and "always". Pure: the user, the reviewer and
+//! the rules file are reached through [`Hearing`], so the same code runs in
+//! the chat (the engine asks, and its chat mode may answer) and against the
+//! approval decision table (implementation plan 2.3, the
+//! `approve/decisions` fixture).
 //!
 //! What rp prints before a question goes with the question
 //! ([`Question::reason`]); what it prints otherwise is said as a notice.
+//!
+//! One path is viy's own: viy is in NET_ALWAYS_ASK (kb d014), where rpctl
+//! sends `viy up` to the reviewer. A command only viy's name makes ask is
+//! still reviewed first, so a critical verdict refuses it as in rpctl; any
+//! other verdict asks the user, where rpctl would run on low or medium.
 
 use std::future::Future;
 use std::path::Path;
@@ -26,6 +32,7 @@ use super::net_ask_reason;
 use super::plain_segments;
 use super::prefix_for;
 use super::review::Risk;
+use super::rp_net_ask_reason;
 use super::rules_allow_net;
 
 /// A future the caller boxes.
@@ -46,42 +53,29 @@ pub struct Facts<'a> {
     pub rules_path: &'a str,
 }
 
-/// How the decision reaches the user and the reviewer.
+/// How the decision reaches the user, the reviewer and the rules file.
 pub trait Hearing: Send {
     /// A line rp prints that no question follows.
     fn say(&mut self, notice: NoticeEvent);
     /// A question; the engine's chat mode may answer it.
     fn ask(&mut self, question: Question) -> Pending<'_, Answer>;
-    /// The network reviewer's verdict on the command.
+    /// The network reviewer's verdict on the command. The caller builds the
+    /// request (recent user requests, workspace, where the command can
+    /// connect, which .git it sees).
     fn review(&mut self) -> Pending<'_, Verdict>;
+    /// The rules as the file holds them now (rp reads it again after an
+    /// "always", which may come long after the decision started).
+    fn rules(&mut self) -> Vec<Vec<String>>;
+    /// Appends `net-allow <prefix>` to the rules file.
+    fn save_rule(&mut self, prefix: &[String]) -> Result<(), String>;
 }
 
 /// The outcome: run it, or the refusal the model reads.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Decision {
-    pub go: bool,
-    /// `{"declined": ...}` or `{"denied": ...}` when not run.
-    pub refusal: Option<Value>,
-    /// Prefixes "always" saved, for the rules file, in order.
-    pub save_rules: Vec<Vec<String>>,
-}
-
-impl Decision {
-    fn run() -> Self {
-        Self {
-            go: true,
-            refusal: None,
-            save_rules: Vec::new(),
-        }
-    }
-
-    fn refuse(refusal: Value) -> Self {
-        Self {
-            go: false,
-            refusal: Some(refusal),
-            save_rules: Vec::new(),
-        }
-    }
+pub enum Decision {
+    Run,
+    /// `{"declined": ...}` or `{"denied": ...}`, as rpctl's.
+    Refuse(Value),
 }
 
 fn line(level: NoticeLevel, text: String) -> NoticeEvent {
@@ -91,6 +85,9 @@ fn line(level: NoticeLevel, text: String) -> NoticeEvent {
         message: text,
     }
 }
+
+const NETWORK_PROMPT: &str = "  run it with network access?";
+const DECLINED_NETWORK: &str = "the user declined network access";
 
 /// rp's `_approve_auto(cmd, need_net)`.
 pub async fn decide(facts: &Facts<'_>, hearing: &mut dyn Hearing) -> Decision {
@@ -102,27 +99,26 @@ pub async fn decide(facts: &Facts<'_>, hearing: &mut dyn Hearing) -> Decision {
             format!("  {why} -- in your real workspace, no undo (still sandboxed)"),
         ));
         if hearing.ask(q).await != Answer::Yes {
-            return Decision::refuse(json!({
+            return Decision::Refuse(json!({
                 "declined": true,
                 "note": format!("the user declined ({why})"),
             }));
         }
     }
     if !facts.needs_network {
-        return Decision::run();
+        return Decision::Run;
     }
 
     let why = net_ask_reason(cmd);
-    if why.is_some() || facts.web_taint.is_some() {
+    let rp_why = rp_net_ask_reason(cmd);
+    let asks = |why: Option<&str>| {
+        why.map(|w| line(NoticeLevel::Warn, format!("  wants the network and {w}")))
+    };
+    if rp_why.is_some() || facts.web_taint.is_some() {
         // With internet text in the chat, a page may be what asked for this,
         // and the reviewer is the same model the page talked to.
-        let mut q = Question::yes_no(Some(QuestionKind::Network), "  run it with network access?");
-        if let Some(why) = why {
-            q.reason.push(line(
-                NoticeLevel::Warn,
-                format!("  wants the network and {why}"),
-            ));
-        }
+        let mut q = Question::yes_no(Some(QuestionKind::Network), NETWORK_PROMPT);
+        q.reason.extend(asks(why));
         if let Some(taint) = facts.web_taint {
             q.reason.push(line(
                 NoticeLevel::Warn,
@@ -132,13 +128,14 @@ pub async fn decide(facts: &Facts<'_>, hearing: &mut dyn Hearing) -> Decision {
             ));
         }
         if hearing.ask(q).await != Answer::Yes {
-            let note = why.unwrap_or("untrusted text is in this chat");
-            return Decision::refuse(json!({
+            // rpctl's note: the reason its own lists give.
+            let note = rp_why.unwrap_or("untrusted text is in this chat");
+            return Decision::Refuse(json!({
                 "declined": true,
-                "note": format!("the user declined network access ({note})"),
+                "note": format!("{DECLINED_NETWORK} ({note})"),
             }));
         }
-        return Decision::run();
+        return Decision::Run;
     }
 
     if rules_allow_net(cmd, facts.rules) {
@@ -146,23 +143,25 @@ pub async fn decide(facts: &Facts<'_>, hearing: &mut dyn Hearing) -> Decision {
             NoticeLevel::Info,
             format!("  network: allowed by your rule in {}", facts.rules_path),
         ));
-        return Decision::run();
+        return Decision::Run;
     }
 
     let (level, text) = match hearing.review().await {
         Ok((risk @ (Risk::Low | Risk::Medium), reason)) => {
-            hearing.say(line(
-                NoticeLevel::Info,
-                format!("  review: {} -- {reason}", risk.as_str()),
-            ));
-            return Decision::run();
+            let text = format!("  review: {} -- {reason}", risk.as_str());
+            if why.is_none() {
+                hearing.say(line(NoticeLevel::Info, text));
+                return Decision::Run;
+            }
+            // Only viy's name asks: rpctl would run it on this verdict.
+            (NoticeLevel::Info, text)
         }
         Ok((Risk::Critical, reason)) => {
             hearing.say(line(
                 NoticeLevel::Error,
                 format!("  review: critical -- {reason}. Refused."),
             ));
-            return Decision::refuse(json!({
+            return Decision::Refuse(json!({
                 "denied": true,
                 "risk": "critical",
                 "reason": reason,
@@ -180,35 +179,36 @@ pub async fn decide(facts: &Facts<'_>, hearing: &mut dyn Hearing) -> Decision {
         .collect();
     let can_always = !prefixes.is_empty() && prefixes.iter().all(Option::is_some);
     let mut q = if can_always {
-        Question::yes_no_always(Some(QuestionKind::Network), "  run it with network access?")
+        Question::yes_no_always(Some(QuestionKind::Network), NETWORK_PROMPT)
     } else {
-        Question::yes_no(Some(QuestionKind::Network), "  run it with network access?")
+        Question::yes_no(Some(QuestionKind::Network), NETWORK_PROMPT)
     };
     q.reason.push(line(level, text));
+    q.reason.extend(asks(why));
     match hearing.ask(q).await {
         Answer::Always if can_always => {
-            let mut known: Vec<Vec<String>> = facts.rules.to_vec();
-            let mut saved = Vec::new();
+            let mut known = hearing.rules();
             for prefix in prefixes.into_iter().flatten() {
-                if !known.contains(&prefix) {
-                    hearing.say(line(
+                if known.contains(&prefix) {
+                    continue;
+                }
+                match hearing.save_rule(&prefix) {
+                    Ok(()) => hearing.say(line(
                         NoticeLevel::Info,
                         format!("  saved: net-allow {}", prefix.join(" ")),
-                    ));
-                    known.push(prefix.clone());
-                    saved.push(prefix);
+                    )),
+                    // The user said yes; only remembering it failed.
+                    Err(e) => hearing.say(line(
+                        NoticeLevel::Warn,
+                        format!("  could not save net-allow {}: {e}", prefix.join(" ")),
+                    )),
                 }
+                known.push(prefix);
             }
-            Decision {
-                save_rules: saved,
-                ..Decision::run()
-            }
+            Decision::Run
         }
-        Answer::Yes => Decision::run(),
-        _ => Decision::refuse(json!({
-            "declined": true,
-            "note": "the user declined network access",
-        })),
+        Answer::Yes => Decision::Run,
+        _ => Decision::Refuse(json!({"declined": true, "note": DECLINED_NETWORK})),
     }
 }
 

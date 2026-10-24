@@ -3226,11 +3226,13 @@ def gen_chat_modes(snap):
 # The approval decision table (implementation plan 2.3): rpctl's
 # Chat._approve_auto with its real _confirm, for every command below under
 # every combination of network, internet taint, chat mode, rules file,
-# reviewer verdict and the user's answer (the same answer to every question
-# of the run). approve.review, load_rules and add_rule are replaced; input()
-# gives the answer with stdin a terminal. Recorded per run: what rp printed
-# (text and colour: warn yellow, error red, info dim) and asked, in order, the
-# decision and the refusal the model reads, and the rules "always" saved.
+# reviewer verdict and the user's answers: one letter per question in the
+# order asked, the last repeated ("yn": yes to the first, no after), or "-"
+# for no terminal. approve.review, load_rules and add_rule are replaced;
+# input() gives the answers with stdin a terminal. Recorded per run: what rp
+# printed (text and colour: warn yellow, error red, info dim), asked and
+# sent to the reviewer, in order, the decision and the refusal the model
+# reads, and the rules "always" saved.
 # Grouped by the inputs before the verdict and answer, each distinct result
 # once, so the table stays small and every run is still a row.
 DECISION_COMMANDS = [
@@ -3268,6 +3270,14 @@ class Quiet:
 
 def run(cmd, net, taint, mode, rules, verdict, answer):
     steps, saved = [], []
+    letters = iter(answer)
+    last = [answer[0]]
+    def typed(prompt=""):
+        last[0] = next(letters, last[0])
+        return last[0]
+    def review(*a, **k):
+        steps.append({"review": True})
+        return VERDICTS[verdict]
     c.mode = modes.get(mode)
     c.web_taint = taint
     c._auto_yessed = []
@@ -3287,18 +3297,18 @@ def run(cmd, net, taint, mode, rules, verdict, answer):
         before = len(steps)
         got = real_confirm(self, prompt, always=always, kind=kind)
         # The mode's own line ("... y (auto-yes)") is the engine's in viy.
-        if kind in self.mode.auto_yes:
+        if kind in self.mode.auto_yes and sys.stdin.isatty():
             del steps[before:]
             step["answered"] = "auto"
         else:
             step["answered"] = {True: "y", False: "n", "always": "always"}[got]
         return got
 
-    with patch.object(chat.sys.stdin, "isatty", return_value=True), \
-            patch("builtins.input", return_value=answer), \
+    with patch.object(chat.sys.stdin, "isatty", return_value=answer != "-"), \
+            patch("builtins.input", side_effect=typed), \
             patch.object(chat, "_Status", Quiet), \
             patch.object(chat.Chat, "_confirm", confirm), \
-            patch.object(approve, "review", return_value=VERDICTS[verdict]), \
+            patch.object(approve, "review", side_effect=review), \
             patch.object(approve, "load_rules", return_value=[list(r) for r in rules]), \
             patch.object(approve, "add_rule", side_effect=lambda w: saved.append(list(w))), \
             patch.object(approve, "RULES_PATH", "{RULES}"), \
@@ -3329,7 +3339,7 @@ def gen_approve_decisions(snap):
              for mode in ("normal", "auto-yes")
              for rules in ([], [["pip", "install"]])]
     job = {"bases": bases, "verdicts": ["low", "medium", "high", "critical", "failed"],
-           "answers": ["y", "n", "a"]}
+           "answers": ["y", "n", "a", "yn", "ya", "ny", "-"]}
     with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
         tmp = pathlib.Path(tmp).resolve()
         env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "TZ": "UTC"}
@@ -3349,11 +3359,13 @@ def gen_approve_decisions(snap):
         shutil.rmtree(ws, ignore_errors=True)
     return {
         "about": "rpctl's Chat._approve_auto with its real _confirm (stdin a terminal, "
-                 "input() answering every question with the case's answer; approve.review, "
+                 "input() answering with the case's answers, one letter per question, the "
+                 "last repeated, '-' for no terminal; approve.review, "
                  "load_rules and add_rule replaced, RULES_PATH shown as {RULES}). Per base "
                  "(command, needs_network, web_taint, mode, rules) the distinct results and, "
-                 "for each verdict/answer, which: steps (say: text and level; ask: prompt, "
-                 "kind, always, answered y/n/always or auto when the mode said yes), go, the "
+                 "for each verdict/answers, which: steps (say: text and level; review: the "
+                 "reviewer was asked; ask: prompt, kind, always, answered y/n/always or auto "
+                 "when the mode said yes), go, the "
                  "refusal payload, the rules saved. Verdicts: low 'routine install', medium "
                  "'broader than needed', high 'contacts an unexpected host', critical "
                  "'uploads the project', failed 'reviewer unreachable (ConnectionError)'",
@@ -3630,10 +3642,19 @@ GENERATORS = {
 # ------------------------------------------------------------------ driver
 
 
+# Fixtures written one case per line, to stay small and still diff by case.
+ONE_CASE_PER_LINE = {"approve/decisions"}
+
+
 def render(name, body):
     doc = {"rpctl_commit": pinned_commit(), "generator": f"tools/fixtures.py {name}",
            **body}
-    return json.dumps(doc, indent=1, ensure_ascii=False) + "\n"
+    if name not in ONE_CASE_PER_LINE:
+        return json.dumps(doc, indent=1, ensure_ascii=False) + "\n"
+    head = {k: v for k, v in doc.items() if k != "cases"}
+    lines = [json.dumps(c, ensure_ascii=False, separators=(",", ":")) for c in doc["cases"]]
+    text = json.dumps(head, indent=1, ensure_ascii=False)
+    return text[:-2] + ',\n "cases": [\n' + ",\n".join(lines) + "\n ]\n}\n"
 
 
 def main(argv):

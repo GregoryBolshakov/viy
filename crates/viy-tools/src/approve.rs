@@ -106,10 +106,21 @@ const RAW_SOCKET: [&str; 4] = ["nc", "ncat", "netcat", "socat"];
 /// reviewer: it spends money (rp, viy), touches credentials (tok, ssh keys)
 /// or runs unseen code. `None` otherwise.
 pub fn net_ask_reason(cmd: &str) -> Option<&'static str> {
+    net_ask(cmd, &POD_AND_VAULT)
+}
+
+/// [`net_ask_reason`] with rpctl's own names only (rp and tok, not viy):
+/// where only viy's name asks, the decision still consults the reviewer
+/// first, so a critical verdict refuses as in rpctl.
+pub(crate) fn rp_net_ask_reason(cmd: &str) -> Option<&'static str> {
+    net_ask(cmd, &POD_AND_VAULT[..2])
+}
+
+fn net_ask(cmd: &str, pods: &[&str]) -> Option<&'static str> {
     let lit = Literal::new(cmd);
     let cmds = argv::commands(cmd);
     let any = |names: &[&str]| cmds.iter().any(|a| argv::program(a, names));
-    if lit.program(&POD_AND_VAULT) || any(&POD_AND_VAULT) {
+    if lit.program(pods) || any(pods) {
         return Some("controls pods or the token vault");
     }
     if lit.program(&REMOTE) || any(&REMOTE) {

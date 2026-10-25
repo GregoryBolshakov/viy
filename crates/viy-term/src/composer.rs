@@ -169,6 +169,19 @@ impl Composer {
                 self.area.set_text(&kept);
                 self.newline()
             }
+            // With the popup open, Enter takes its choice as Codex's command
+            // popup does: `/res` Enter runs /resume; a command that needs
+            // its argument goes into the input to finish.
+            KeyCode::Enter if !popup.is_empty() => {
+                let choice = popup[self.selected.min(popup.len() - 1)].clone();
+                if choice.runs {
+                    self.area.set_text(choice.text.trim_end());
+                    self.submit()
+                } else {
+                    self.area.set_text(&choice.text);
+                    Action::None
+                }
+            }
             KeyCode::Enter => self.submit(),
             KeyCode::Char('j') if ctrl => self.newline(),
             KeyCode::BackTab => Action::CycleMode,
@@ -278,6 +291,14 @@ impl Composer {
         self.dismissed = None;
         let _ = self.history.record(&text);
         Action::Submit(text)
+    }
+}
+
+#[cfg(test)]
+impl Composer {
+    /// Empties the input without sending it.
+    pub(crate) fn take_text_for_test(&mut self) {
+        self.area.take();
     }
 }
 

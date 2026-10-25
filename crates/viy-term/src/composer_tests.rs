@@ -72,6 +72,33 @@ fn enter_sends_the_trimmed_line_and_a_blank_one_nothing() {
     assert_eq!(t.key(KeyCode::Enter), Action::None);
 }
 
+/// Enter with the slash popup open takes its choice, as Codex's command
+/// popup: a partly typed command runs (`/res` is /resume), one that needs
+/// its argument goes into the input to finish, a value runs, and a name the
+/// popup does not offer is sent as typed (the engine names it unknown).
+#[test]
+fn enter_takes_the_popups_choice() {
+    let mut t = typist();
+    t.type_text("/res");
+    assert_eq!(t.key(KeyCode::Enter), Action::Submit("/resume".into()));
+    t.type_text("/hel");
+    assert_eq!(t.key(KeyCode::Enter), Action::Submit("/help".into()));
+    t.type_text("/sys");
+    assert_eq!(t.key(KeyCode::Enter), Action::None);
+    assert_eq!(t.composer.text(), "/system ");
+    t.composer.take_text_for_test();
+    t.type_text("/effort l");
+    assert_eq!(t.key(KeyCode::Enter), Action::Submit("/effort low".into()));
+    t.type_text("/resume");
+    assert_eq!(t.key(KeyCode::Enter), Action::Submit("/resume".into()));
+    t.type_text("/nosuch");
+    assert_eq!(t.key(KeyCode::Enter), Action::Submit("/nosuch".into()));
+    // Esc closes the popup: Enter then sends what was typed.
+    t.type_text("/res");
+    t.key(KeyCode::Esc);
+    assert_eq!(t.key(KeyCode::Enter), Action::Submit("/res".into()));
+}
+
 /// rp's readline: Ctrl-J (kb f087), Alt-Enter and a trailing `\` add a
 /// line; only Enter sends.
 #[test]

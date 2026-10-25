@@ -210,6 +210,9 @@ pub struct Completion {
     pub label: String,
     /// What it shows on the right.
     pub about: &'static str,
+    /// Enter runs it as taken (no argument, an optional one, or a value);
+    /// otherwise Enter puts it in the input for the argument to be typed.
+    pub runs: bool,
 }
 
 /// What the popup offers for the input `text`, with the cursor at its end:
@@ -240,6 +243,7 @@ pub fn completions(text: &str) -> Vec<Completion> {
                     format!("/{} {}", c.name, c.args)
                 },
                 about: c.about,
+                runs: c.args.is_empty() || c.args.starts_with('['),
             })
             .collect(),
         Some((name, typed)) if !typed.contains(' ') => {
@@ -254,6 +258,7 @@ pub fn completions(text: &str) -> Vec<Completion> {
                     text: format!("/{name} {v}"),
                     label: (*v).to_string(),
                     about: command.about,
+                    runs: true,
                 })
                 .collect()
         }

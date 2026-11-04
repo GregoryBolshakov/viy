@@ -5,6 +5,12 @@
 //! a cell (a row's key), not a screen row, so a resize lays every cell out
 //! again at the new width and the same text stays at the top (Codex's
 //! anchors).
+//!
+//! Below the cells is the live tail, as in Codex's transcript view: what
+//! the turn running is writing (the reasoning trace, the answer's open
+//! block, the tool cards running), drawn again each frame and scrolled
+//! with the rest. Read back into it, the view keeps the same row at the top
+//! when the tail moves up into the cells.
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -20,6 +26,8 @@ enum Position {
     Latest,
     /// Scrolled back: this text at the top.
     Reading(Anchor),
+    /// Scrolled back into the live tail: its row this far down at the top.
+    Live(usize),
 }
 
 /// A place in the text: a cell and the key of a row in it.
@@ -68,6 +76,13 @@ pub struct TranscriptView {
     expanded: bool,
     /// A cell to bring into view on the next render.
     reveal: Option<usize>,
+    /// The live tail's rows, below the cells.
+    live: Vec<Line<'static>>,
+    /// Rows of the cells at the last layout, and whether they have been
+    /// laid out anew since (a width or Ctrl-T), so a row in the live tail
+    /// can be found again after the cells grew.
+    laid: usize,
+    relaid: bool,
 }
 
 impl TranscriptView {
@@ -82,6 +97,7 @@ impl TranscriptView {
         if expanded != self.expanded {
             self.expanded = expanded;
             self.layouts.clear();
+            self.relaid = true;
         }
     }
 
@@ -101,6 +117,11 @@ impl TranscriptView {
         self.page
     }
 
+    /// The live tail's rows, drawn below the cells from the next render on.
+    pub fn set_live(&mut self, rows: Vec<Line<'static>>) {
+        self.live = rows;
+    }
+
     /// Rows below the view, for the footer's "↓ N rows (End)".
     pub fn rows_below(&self) -> usize {
         self.total().saturating_sub(self.top() + self.page)
@@ -109,7 +130,7 @@ impl TranscriptView {
     /// Scrolls back `rows`; nothing when all of it fits.
     pub fn scroll_up(&mut self, rows: usize) {
         if self.total() > self.page {
-            self.position = Position::Reading(self.anchor_at(self.top().saturating_sub(rows)));
+            self.position = self.position_at(self.top().saturating_sub(rows));
         }
     }
 
@@ -119,14 +140,14 @@ impl TranscriptView {
         self.position = if top + self.page >= self.total() {
             Position::Latest
         } else {
-            Position::Reading(self.anchor_at(top))
+            self.position_at(top)
         };
     }
 
     /// The transcript's start.
     pub fn home(&mut self) {
         if self.total() > self.page {
-            self.position = Position::Reading(self.anchor_at(0));
+            self.position = self.position_at(0);
         }
     }
 
@@ -161,8 +182,18 @@ impl TranscriptView {
     /// [`Self::rows_below`] counts what the next render shows; rendering
     /// does it too.
     pub fn prepare(&mut self, cells: &[Cell], width: u16, height: u16) {
+        let before = self.laid;
         self.lay_out(cells, width);
+        let relaid = std::mem::take(&mut self.relaid);
+        self.laid = self.cells_total();
         self.page = usize::from(height);
+        // What was read in the live tail may have moved up into the cells,
+        // to the same row: the text stays put.
+        if let Position::Live(offset) = self.position
+            && !relaid
+        {
+            self.position = self.position_at(before + offset);
+        }
         if let Some(cell) = self.reveal.take()
             && cell < self.layouts.len()
         {
@@ -172,21 +203,20 @@ impl TranscriptView {
             if start < top || end > top + self.page {
                 // A third of a page above it, for what led to it.
                 let row = start.saturating_sub(self.page / 3);
-                self.position = Position::Reading(self.anchor_at(row));
+                self.position = self.position_at(row);
             }
         }
-        if let Position::Reading(_) = self.position
-            && self.top() + self.page >= self.total()
-        {
+        if self.position != Position::Latest && self.top() + self.page >= self.total() {
             self.position = Position::Latest;
         }
     }
 
-    /// Rows `start..end` of the whole transcript.
+    /// Rows `start..end` of the whole transcript, the live tail last.
     fn rows(&self, start: usize, end: usize) -> impl Iterator<Item = &Line<'static>> {
         self.layouts
             .iter()
             .flat_map(|layout| &layout.rows)
+            .chain(&self.live)
             .skip(start)
             .take(end - start)
     }
@@ -195,6 +225,7 @@ impl TranscriptView {
         if width != self.width {
             self.width = width;
             self.layouts.clear();
+            self.relaid = true;
         }
         self.layouts.truncate(cells.len());
         let width = usize::from(width.max(1));
@@ -204,6 +235,11 @@ impl TranscriptView {
     }
 
     fn total(&self) -> usize {
+        self.cells_total() + self.live.len()
+    }
+
+    /// Rows of the cells, without the live tail.
+    fn cells_total(&self) -> usize {
         self.layouts.iter().map(|l| l.rows.len()).sum()
     }
 
@@ -212,6 +248,7 @@ impl TranscriptView {
         match self.position {
             Position::Latest => self.total().saturating_sub(self.page),
             Position::Reading(anchor) => self.row_of(anchor),
+            Position::Live(offset) => self.cells_total() + offset.min(self.live.len()),
         }
     }
 
@@ -227,17 +264,15 @@ impl TranscriptView {
                 .map_or(0, |l| l.row_of(anchor.key))
     }
 
-    fn anchor_at(&self, mut row: usize) -> Anchor {
+    /// The position with `row` at the top: in a cell, or in the live tail.
+    fn position_at(&self, mut row: usize) -> Position {
         for (cell, layout) in self.layouts.iter().enumerate() {
             if let Some(&key) = layout.starts.get(row) {
-                return Anchor { cell, key };
+                return Position::Reading(Anchor { cell, key });
             }
             row -= layout.rows.len();
         }
-        Anchor {
-            cell: self.layouts.len(),
-            key: (0, 0),
-        }
+        Position::Live(row)
     }
 }
 

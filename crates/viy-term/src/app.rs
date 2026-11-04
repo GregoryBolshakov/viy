@@ -1,14 +1,13 @@
 //! The chat's screen (ui-plan 3): the transcript, scrolled by viy, above a
-//! live region of the turn's activity line, the answer being written, the
-//! input box and a footer. Engine events come in, [`Op`]s go out
+//! live region of the turn's activity line, the input box and a footer. Engine events come in, [`Op`]s go out
 //! (kb d036), and frames are drawn at most 30 a second, each in one
 //! synchronized write.
 //!
-//! The answer streams as Markdown: its finished blocks move up into the
-//! transcript, the open one is drawn again with each delta under the
-//! activity line ([`markdown::finished`]). Reasoning is drawn live (rp
-//! `/think on`) and then kept as a cell; running tools show a card with
-//! the last lines of their output, which moves up when the call ends.
+//! The answer streams as Markdown: its finished blocks become cells, the
+//! open one is drawn again with each delta as the transcript's live tail
+//! ([`markdown::finished`]), which scrolls with it. Reasoning is drawn live
+//! (rp `/think on`) and then kept as a cell; running tools show a card with
+//! the last lines of their output in the tail, a cell when the call ends.
 //! Ctrl-T draws every card's output and every trace whole. The footer
 //! shows the engine's statuses, queued lines and the scroll position
 //! ([`crate::footer`]); the tab title spins while a turn runs ([`tabtitle`]), if
@@ -108,7 +107,7 @@ pub enum Flow {
     Exit,
 }
 
-/// The turn running: what the activity line and the live region show.
+/// The turn running: what the activity line and the live tail show.
 struct Turn {
     started: Instant,
     phase: Option<StatusPhase>,
@@ -870,8 +869,7 @@ impl App {
         let (mut input_rows, mut input_cursor) = self.composer.layout(width - 2);
         // The live region may take all but two rows; the transcript the
         // rest. The question box keeps its rows longest, then the queued
-        // messages and the popup; of the activity, the answer's oldest
-        // rows give way first, then the activity line above them.
+        // messages and the popup, then the activity line.
         let room = usize::from(size.height.saturating_sub(2)).max(2);
         // A draft taller than that shows the rows around the cursor, as
         // Codex's composer scrolls, so the footer stays on screen (a pasted
@@ -895,7 +893,7 @@ impl App {
             .len()
             .saturating_sub(room.saturating_sub(fixed + question.len()));
         tail.drain(..excess);
-        let mut live = self.live_lines(usize::from(width));
+        let mut live = self.activity_lines(usize::from(width));
         let live_room = room.saturating_sub(fixed + question.len() + tail.len());
         if live.len() > live_room {
             let first = usize::from(live_room > 0);
@@ -914,6 +912,8 @@ impl App {
             .unwrap_or(u16::MAX)
             .min(size.height);
         let top_height = size.height - bottom_height;
+        self.view
+            .set_live(self.tail_lines(usize::from(size.width.max(1))));
         self.view.prepare(&self.cells, size.width, top_height);
         bottom.push(self.footer(usize::from(size.width)));
         let bottom: Vec<Line<'static>> = bottom.into_iter().map(clean_row).collect();
@@ -941,8 +941,9 @@ impl App {
         Ok(())
     }
 
-    /// The activity line and the answer being written.
-    fn live_lines(&self, width: usize) -> Vec<Line<'static>> {
+    /// The live region's rows above the input: the rewind hint, and the
+    /// activity line of the turn running or of closing.
+    fn activity_lines(&self, width: usize) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
         if self.picking.is_some() {
             let hint = "rewind: ↑↓ choose your message · Enter goes back to before it, to edit \
@@ -977,20 +978,34 @@ impl App {
             " ".into(),
             activity.dim(),
         ]));
+        lines
+    }
+
+    /// The transcript's live tail: what the turn is writing, drawn as the
+    /// cells it becomes will draw it, so moving up into them moves no row.
+    fn tail_lines(&self, width: usize) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
+        let Some(turn) = &self.turn else {
+            return lines;
+        };
         if self.show_think && !turn.reasoning.trim().is_empty() {
             let live = Reasoning {
                 text: turn.reasoning.clone(),
                 took: None,
                 shown: true,
             };
-            // Without the blank row a cell starts with.
-            lines.extend(live.rows(width, false).into_iter().skip(1).map(|r| r.line));
+            lines.extend(live.rows(width, false).into_iter().map(|r| r.line));
         }
         let tail = &turn.answer[turn.committed..];
         if !tail.trim().is_empty() {
             let rows = Cell::answer(tail, self.markdown).rows(width, false);
-            lines.extend(rows.into_iter().skip(1).map(|r| r.line));
+            // Going on from the answer's cell, the blank row its own cell
+            // starts with is there only where the text has a blank line.
+            let skip = turn.answer_cell.is_some() && !ends_blank(&turn.answer[..turn.committed]);
+            lines.extend(rows.into_iter().skip(usize::from(skip)).map(|r| r.line));
         }
+        let elapsed = turn.started.elapsed();
+        let frame = (elapsed.as_millis() / SPINNER_FRAME.as_millis()) as usize % SPINNER.len();
         for (card, started) in &turn.tools {
             let running = Running {
                 spinner: SPINNER[frame],
@@ -1088,6 +1103,14 @@ impl App {
         self.tab_shown = Some(title);
         Ok(())
     }
+}
+
+/// Whether `text` ends with a blank line: where the answer's next block
+/// gets a blank row above it.
+fn ends_blank(text: &str) -> bool {
+    text.strip_suffix('\n')
+        .and_then(|rest| rest.rsplit('\n').next())
+        .is_some_and(|line| line.trim().is_empty())
 }
 
 /// `line` as one row with every char that could act on the terminal shown,

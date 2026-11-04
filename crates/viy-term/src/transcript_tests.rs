@@ -178,3 +178,69 @@ fn controls_in_the_text_are_drawn_visible() {
     let mut view = TranscriptView::default();
     assert_eq!(draw(&mut view, &[cell("a\x1b[2Jb")], 10, 1), ["a␛[2Jb"]);
 }
+
+fn live(rows: &[&str]) -> Vec<Line<'static>> {
+    rows.iter().map(|r| Line::from(r.to_string())).collect()
+}
+
+#[test]
+fn the_live_tail_is_drawn_under_the_cells_and_scrolls_with_them() {
+    let mut view = TranscriptView::default();
+    let cells = numbered(3);
+    view.set_live(live(&["live a", "live b"]));
+    assert_eq!(
+        draw(&mut view, &cells, 10, 3),
+        ["line 3", "live a", "live b"]
+    );
+    view.scroll_up(2);
+    assert_eq!(
+        draw(&mut view, &cells, 10, 3),
+        ["line 1", "line 2", "line 3"]
+    );
+    assert_eq!(view.rows_below(), 2);
+    // It grows below the view.
+    view.set_live(live(&["live a", "live b", "live c"]));
+    assert_eq!(draw(&mut view, &cells, 10, 3)[0], "line 1");
+    assert_eq!(view.rows_below(), 3);
+}
+
+#[test]
+fn read_back_into_the_tail_the_text_stays_when_it_becomes_a_cell() {
+    let mut view = TranscriptView::default();
+    let mut cells = numbered(2);
+    view.set_live(live(&["a", "b", "c", "d", "e", "f"]));
+    draw(&mut view, &cells, 10, 3);
+    view.scroll_up(2);
+    assert_eq!(draw(&mut view, &cells, 10, 3), ["b", "c", "d"]);
+    // "a" to "d" move up into a cell; the tail goes on with the rest.
+    cells.push(cell("a\nb\nc\nd"));
+    view.set_live(live(&["e", "f", "g"]));
+    assert_eq!(draw(&mut view, &cells, 10, 3), ["b", "c", "d"]);
+    assert_eq!(view.rows_below(), 3);
+    assert!(!view.is_following());
+}
+
+#[test]
+fn a_tail_that_shrinks_under_the_view_follows_the_end() {
+    let mut view = TranscriptView::default();
+    let cells = numbered(1);
+    view.set_live(live(&["a", "b", "c", "d", "e"]));
+    draw(&mut view, &cells, 10, 2);
+    view.scroll_up(1);
+    assert_eq!(draw(&mut view, &cells, 10, 2), ["c", "d"]);
+    view.set_live(live(&["a"]));
+    assert_eq!(draw(&mut view, &cells, 10, 2), ["line 1", "a"]);
+    assert!(view.is_following());
+}
+
+#[test]
+fn read_back_into_the_tail_a_resize_keeps_its_row() {
+    let mut view = TranscriptView::default();
+    let cells = vec![cell("aaaa bbbb")];
+    view.set_live(live(&["a", "b", "c", "d", "e"]));
+    draw(&mut view, &cells, 10, 2);
+    view.scroll_up(2);
+    assert_eq!(draw(&mut view, &cells, 10, 2), ["b", "c"]);
+    // The cell is two rows at 5 columns, not one: the tail's row stays.
+    assert_eq!(draw(&mut view, &cells, 5, 2), ["b", "c"]);
+}

@@ -223,21 +223,10 @@ fn finished_blocks_move_up_and_the_open_one_streams_below() {
     f.app.event(delta("First **para"));
     f.app.event(delta("graph**.\n\nSecond "));
     let screen = f.screen();
-    // One block so far: all of it live, under the activity line.
-    assert_eq!(screen[..5], ["", "", "", "", "you › explain"]);
-    assert!(screen[5].contains("writing ·"), "{screen:?}");
-    assert_eq!(screen[6..], ["First paragraph.", "", "Second", "› ▮", ""]);
-    f.app.event(delta("one.\nmore"));
-    let screen = f.screen();
+    // One block so far: all of it the transcript's live tail, above the
+    // activity line.
     assert_eq!(
-        screen[..6],
-        ["", "", "", "you › explain", "", "First paragraph."]
-    );
-    assert!(screen[6].contains("writing ·"), "{screen:?}");
-    assert_eq!(screen[7..], ["Second one.", "more", "› ▮", ""]);
-    f.app.event(complete());
-    assert_eq!(
-        f.screen(),
+        screen[..8],
         [
             "",
             "",
@@ -246,12 +235,29 @@ fn finished_blocks_move_up_and_the_open_one_streams_below() {
             "",
             "First paragraph.",
             "",
-            "Second one.",
-            "more",
-            "› ▮",
-            ""
+            "Second"
         ]
     );
+    assert!(screen[8].contains("writing ·"), "{screen:?}");
+    assert_eq!(screen[9..], ["› ▮", ""]);
+    f.app.event(delta("one.\nmore"));
+    let screen = f.screen();
+    let streamed = [
+        "",
+        "you › explain",
+        "",
+        "First paragraph.",
+        "",
+        "Second one.",
+        "more",
+    ];
+    assert_eq!(screen[1..8], streamed);
+    assert!(screen[8].contains("writing ·"), "{screen:?}");
+    // The finished block moved up to the row it was drawn at.
+    f.app.event(complete());
+    let screen = f.screen();
+    assert_eq!(screen[2..9], streamed);
+    assert_eq!(screen[9..], ["› ▮", ""]);
 }
 
 #[test]
@@ -260,13 +266,10 @@ fn a_blank_line_inside_a_code_fence_keeps_the_block_live() {
     f.app.event(started("code"));
     f.app.event(delta("```\nfn a() {}\n\nfn b() {}\n"));
     let screen = f.screen();
-    assert_eq!(screen[..4], ["", "", "", "you › code"]);
-    assert_eq!(screen[5..10], ["╭─", "fn a() {}", "", "fn b() {}", "╰─"]);
-    f.app.event(delta("```\n\nAfter.\n"));
-    let screen = f.screen();
     assert_eq!(
-        screen[..8],
+        screen[..9],
         [
+            "",
             "",
             "you › code",
             "",
@@ -277,7 +280,23 @@ fn a_blank_line_inside_a_code_fence_keeps_the_block_live() {
             "╰─"
         ]
     );
-    assert_eq!(screen[9], "After.");
+    assert!(screen[9].contains("writing ·"), "{screen:?}");
+    f.app.event(delta("```\n\nAfter.\n"));
+    let screen = f.screen();
+    assert_eq!(
+        screen[..9],
+        [
+            "you › code",
+            "",
+            "╭─",
+            "fn a() {}",
+            "",
+            "fn b() {}",
+            "╰─",
+            "",
+            "After."
+        ]
+    );
 }
 
 #[test]
@@ -427,15 +446,66 @@ fn a_rewritten_history_is_drawn_from_its_items() {
 }
 
 #[test]
-fn the_live_region_leaves_the_transcript_two_rows() {
+fn the_block_being_written_scrolls_with_the_transcript() {
     let mut f = fixture(30, 6);
     numbered(&mut f, 5);
     f.app.event(started("long"));
     f.app.event(delta("a\nb\nc\nd\ne\nf"));
     let screen = f.screen();
-    assert_eq!(screen[..2], ["", "you › long"]);
-    assert!(screen[2].contains("writing ·"), "{screen:?}");
-    assert_eq!(screen[3..], ["f", "› ▮", ""]);
+    assert_eq!(screen[..3], ["d", "e", "f"]);
+    assert!(screen[3].contains("writing ·"), "{screen:?}");
+    f.key(KeyCode::PageUp);
+    let screen = f.screen();
+    assert_eq!(screen[..3], ["b", "c", "d"]);
+    assert!(screen[3].contains("writing ·"), "{screen:?}");
+    assert_eq!(screen[5], "↓ 2 rows (End)");
+    // The block grows below the view, which holds still, and moving up
+    // into the transcript when it ends moves it no row.
+    f.app.event(delta("\ng"));
+    assert_eq!(f.screen()[..3], ["b", "c", "d"]);
+    assert_eq!(f.rows()[5], "↓ 3 rows (End)");
+    f.app.event(delta("\n\nnext\n"));
+    assert_eq!(f.screen()[..3], ["b", "c", "d"]);
+    assert_eq!(f.rows()[5], "↓ 5 rows (End)");
+    f.key(KeyCode::End);
+    assert_eq!(f.screen()[..3], ["g", "", "next"]);
+    // Followed again, the tail's new rows show as they come.
+    f.app.event(delta("more\n"));
+    assert_eq!(f.screen()[..3], ["", "next", "more"]);
+}
+
+#[test]
+fn reasoning_and_running_tools_scroll_with_the_transcript() {
+    use viy_protocol::ToolCallBeginEvent;
+    use viy_protocol::ToolCallOutputDeltaEvent;
+
+    let mut f = fixture(40, 7);
+    numbered(&mut f, 3);
+    f.app.event(started("go"));
+    f.app.event(EventMsg::ReasoningContentDelta(DeltaEvent {
+        delta: "one\ntwo\nthree\nfour".into(),
+    }));
+    let screen = f.screen();
+    assert_eq!(screen[..4], ["[thinking] one", "two", "three", "four"]);
+    assert!(screen[4].contains("thinking ·"), "{screen:?}");
+    f.app.event(EventMsg::ToolCallBegin(ToolCallBeginEvent {
+        call_id: "c1".into(),
+        tool: "run_shell".into(),
+        summary: "ls".into(),
+    }));
+    f.app
+        .event(EventMsg::ToolCallOutputDelta(ToolCallOutputDeltaEvent {
+            call_id: "c1".into(),
+            chunk: "x\n".into(),
+        }));
+    let screen = f.screen();
+    assert!(screen[2].contains("run_shell  ls"), "{screen:?}");
+    assert_eq!(screen[3], "  └ x");
+    assert!(screen[4].contains("running tools ·"), "{screen:?}");
+    f.key(KeyCode::PageUp);
+    let screen = f.screen();
+    assert_eq!(screen[..4], ["", "[thinking] one", "two", "three"]);
+    assert!(screen[4].contains("running tools ·"), "{screen:?}");
 }
 
 #[test]

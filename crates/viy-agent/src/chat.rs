@@ -26,6 +26,7 @@
 //! prompt with them (phase 4); elision and compaction (phase 6); tracing
 //! (phase 7).
 
+use crate::files::FileTools;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -96,6 +97,16 @@ pub struct Places {
     pub config_dir: PathBuf,
     /// The user's home, for `~`.
     pub home: PathBuf,
+    /// The project folder (its `.viy`/`.rpctl` marker), for the file tools'
+    /// root-file rules.
+    pub project_dir: PathBuf,
+    /// Where the workspace locks live: rpctl's state folder, shared with rp.
+    pub locks_dir: PathBuf,
+    /// Where quarantined paths go.
+    pub quarantine_dir: PathBuf,
+    /// Besides the workspace and project, what a mount must neither hold nor
+    /// sit inside: the clients' code, both tools' config, state and data.
+    pub guarded: Vec<PathBuf>,
 }
 
 /// One conversation with the model.
@@ -152,6 +163,13 @@ pub struct Chat {
     end_reason: &'static str,
     /// What the round in progress has streamed of its answer.
     partial: String,
+    /// The file tools, with the mounts and what this chat has read.
+    pub(crate) files: FileTools,
+    /// What the next user message tells the model about the mounts.
+    pub(crate) mount_note: Option<String>,
+    /// Why network commands need the user's yes: internet text, or files
+    /// from a mounted folder, in this chat (rp's `web_taint`).
+    pub(crate) web_taint: Option<String>,
     /// Whether the log had been written when its session last ended.
     closed_saved: bool,
     /// The name last sent as [`EventMsg::TitleChanged`]; empty at first,
@@ -180,6 +198,18 @@ impl Chat {
     ) -> Result<Self, String> {
         let on = |key: &str, default: &str| cfg.get(key).unwrap_or(default) == "1";
         let max_rounds = cfg.get("SEARCH_MAX_ROUNDS").unwrap_or("4");
+        let mut files = FileTools::new(
+            places.workspace.clone(),
+            places.project_dir.clone(),
+            places.locks_dir.clone(),
+            places.quarantine_dir.clone(),
+        );
+        files.write_requires_read = on("WRITE_REQUIRES_READ", "1");
+        files.max_output = cfg
+            .get("TOOLS_MAX_OUTPUT")
+            .and_then(|n| n.trim().parse().ok())
+            .unwrap_or(20000);
+        files.clients = viy_tools::guard::client_paths();
         Ok(Self {
             cfg: cfg.clone(),
             places,
@@ -218,6 +248,9 @@ impl Chat {
             pending_images: Vec::new(),
             end_reason: "exit",
             partial: String::new(),
+            files,
+            mount_note: None,
+            web_taint: None,
             closed_saved: false,
             label_sent: Arc::default(),
         })
@@ -419,6 +452,10 @@ impl Chat {
         self.today = crate::prompt::today();
         self.earlier.clear();
         self.inflight = None;
+        // Files read by the old chat are unknown to this one.
+        self.files.forget_reads();
+        self.reset_web(&[]);
+        self.mount_note = self.mounts_note();
         let fresh = match (&old, &self.sessions) {
             (Some(_), Some(store)) => {
                 Some(store.create(self.project.as_deref(), Some(&self.settings.model)))
@@ -494,6 +531,66 @@ impl Chat {
         self.earlier = st.earlier;
         self.today = crate::prompt::today();
         self.inflight = None;
+        // Reads made by the chat left behind do not count.
+        self.files.forget_reads();
+        let history = std::mem::take(&mut self.messages);
+        self.reset_web(&history);
+        self.messages = history;
+        self.mount_note = self.mounts_note();
+    }
+
+    /// The note the mounts give a fresh history, if any are mounted.
+    fn mounts_note(&self) -> Option<String> {
+        (!self.files.mounts.is_empty()).then(|| viy_tools::mounts::note(&self.files.mounts, &[]))
+    }
+
+    /// Forgets the old chat's web state; taints again if `messages` (a
+    /// resumed chat) already hold internet text or files from a mount (rp's
+    /// `_reset_web`, the taint part).
+    pub(crate) fn reset_web(&mut self, messages: &[Value]) {
+        const WEB: &str = "web results earlier in this chat";
+        let mut taint: Option<&str> = None;
+        for m in messages {
+            if m["role"] == "tool"
+                && m["content"]
+                    .as_str()
+                    .is_some_and(|c| c.contains("<<<UNTRUSTED "))
+            {
+                taint = Some(WEB);
+            }
+            for tc in m["tool_calls"].as_array().into_iter().flatten() {
+                let name = tc["function"]["name"].as_str().unwrap_or_default();
+                let args = tc["function"]["arguments"].as_str().unwrap_or_default();
+                if matches!(name, "web_search" | "fetch_url")
+                    || (name == "run_shell" && args.contains("\"needs_network\": true"))
+                {
+                    taint = Some(WEB);
+                } else if matches!(name, "read_file" | "list_dir" | "write_file")
+                    && absolute_path_arg(args)
+                {
+                    // Only a mounted folder takes an absolute path.
+                    taint = taint.or(Some("files from a mounted folder earlier in this chat"));
+                } else if name == "run_shell" && ssh_command_arg(args) {
+                    taint = taint.or(Some("output from a lent server earlier in this chat"));
+                }
+            }
+        }
+        if !self.files.mounts.is_empty() {
+            taint = taint.or(Some("files from a mounted folder"));
+        }
+        self.web_taint = taint.map(str::to_string);
+    }
+
+    /// Marks the chat as holding outside text, if it does not already.
+    pub(crate) fn taint(&mut self, why: String) {
+        if self.web_taint.is_none() {
+            self.web_taint = Some(why);
+        }
+    }
+
+    /// Why network commands need the user's yes, if they do.
+    pub fn web_taint(&self) -> Option<&str> {
+        self.web_taint.as_deref()
     }
 
     /// Marks this chat, not yet written, as one-shot (`viy exec`).
@@ -1290,6 +1387,37 @@ mod commands;
 pub use commands::POD_COMMANDS;
 pub use commands::history_items;
 pub use commands::render_content;
+
+/// Python's `\s`: Unicode whitespace and `\x1c`-`\x1f`.
+fn py_space(c: char) -> bool {
+    c.is_whitespace() || ('\x1c'..='\x1f').contains(&c)
+}
+
+/// rp's `"path"\s*:\s*"/`: a file tool call on an absolute path.
+fn absolute_path_arg(args: &str) -> bool {
+    key_then_quoted(args, "\"path\"", |rest| rest.starts_with('/'))
+}
+
+/// rp's `"command"\s*:\s*"\s*ssh\s`: a command that starts with ssh.
+fn ssh_command_arg(args: &str) -> bool {
+    key_then_quoted(args, "\"command\"", |rest| {
+        let rest = rest.trim_start_matches(py_space);
+        rest.strip_prefix("ssh")
+            .is_some_and(|r| r.starts_with(py_space))
+    })
+}
+
+/// Somewhere in `text`: `key`, whitespace, `:`, whitespace, `"`, then what
+/// `then` accepts.
+fn key_then_quoted(text: &str, key: &str, then: impl Fn(&str) -> bool) -> bool {
+    text.match_indices(key).any(|(i, _)| {
+        let rest = text[i + key.len()..].trim_start_matches(py_space);
+        rest.strip_prefix(':')
+            .map(|r| r.trim_start_matches(py_space))
+            .and_then(|r| r.strip_prefix('"'))
+            .is_some_and(&then)
+    })
+}
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

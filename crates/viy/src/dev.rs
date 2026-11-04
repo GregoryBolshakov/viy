@@ -442,6 +442,18 @@ pub(crate) fn chat(
         workspace: viy_agent::prompt::workspace(cfg, project.root(), &paths.home),
         config_dir: paths.config_dir(),
         home: paths.home.clone(),
+        project_dir: project.root().to_path_buf(),
+        // rpctl's state folder: rp and viy lock each other out of a write.
+        locks_dir: paths.pod_state_dir().join("locks"),
+        quarantine_dir: paths.state_dir().join("quarantine"),
+        guarded: vec![
+            paths.config_dir(),
+            paths.state_dir(),
+            paths.data_dir(),
+            paths.rpctl_config_dir(),
+            paths.pod_state_dir(),
+            paths.rpctl_data_dir(),
+        ],
     };
     let sessions = Sessions::new(paths.sessions_dir(), Arc::new(SystemTimeProvider));
     let paths = paths.clone();

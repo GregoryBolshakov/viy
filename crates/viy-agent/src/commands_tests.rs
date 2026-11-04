@@ -614,3 +614,112 @@ async fn mode_command() {
     d.cmd("/mode Normal ").await;
     assert_eq!(d.ctx.mode().name, "normal");
 }
+
+// ------------------------------------------------------------ /mount
+// rpctl tests/test_mounts.py ChatTests: the command, the note to the model
+// and the taint (the file tools' half is files_tests.rs).
+
+struct Drive {
+    _scratch: viy_testkit::scratch::ScratchDir,
+    path: std::path::PathBuf,
+}
+
+fn drive() -> Drive {
+    let scratch = viy_testkit::scratch::ScratchDir::new("mount-drive").unwrap();
+    let path = scratch.path().join("drive");
+    std::fs::create_dir_all(path.join("docs")).unwrap();
+    std::fs::write(path.join("docs/a.txt"), "hello from the drive\n").unwrap();
+    std::fs::write(path.join(".env"), "KEY=secret\n").unwrap();
+    Drive {
+        _scratch: scratch,
+        path,
+    }
+}
+
+#[tokio::test]
+async fn read_only_mount_for_the_file_tools() {
+    let mut d = direct(ok(0), &[]);
+    let drive = drive();
+    d.cmd(&format!("/mount {}", drive.path.display())).await;
+    assert_eq!(d.chat.files.mounts.len(), 1);
+    assert!(!d.chat.files.mounts[0].rw);
+    assert_eq!(d.chat.files.mounts[0].secrets, [drive.path.join(".env")]);
+    let said = notices(&d.events());
+    assert!(said[0].starts_with(&format!("mounted {} read-only", drive.path.display())));
+    assert!(said.iter().any(|l| l.contains("1 secret file(s)")));
+    // The chat holds outside text now; the note waits for the next message.
+    assert!(d.chat.web_taint().unwrap().contains("mounted"));
+    let content = d.chat.user_content("look at it".into());
+    assert!(viy_tools::mounts::is_note(
+        content[0]["text"].as_str().unwrap()
+    ));
+    assert_eq!(content[1]["text"], "look at it");
+    assert_eq!(d.chat.user_content("again".into()), "again");
+}
+
+#[tokio::test]
+async fn refused_mounts_change_nothing() {
+    let mut d = direct(ok(0), &[]);
+    let drive = drive();
+    d.cmd("/mount /etc").await;
+    assert!(notices(&d.events())[0].starts_with("not mounted: /etc is a system directory"));
+    d.cmd("/mount /").await;
+    assert!(d.chat.files.mounts.is_empty());
+    assert_eq!(d.chat.web_taint(), None);
+    let (q, _) = d
+        .cmd_answering(&format!("/mount {} rw", drive.path.display()), Answer::No)
+        .await;
+    assert_eq!(q.prompt, "  mount it read-write?");
+    assert_eq!(q.kind, None, "only the user answers it, whatever the mode");
+    assert!(d.chat.files.mounts.is_empty());
+}
+
+#[tokio::test]
+async fn rw_mount_asks_and_keeps_the_workspace_rules() {
+    let mut d = direct(ok(0), &[]);
+    let drive = drive();
+    let (_, events) = d
+        .cmd_answering(&format!("/mount {} rw", drive.path.display()), Answer::Yes)
+        .await;
+    assert!(d.chat.files.mounts[0].rw);
+    assert!(notices(&events).iter().any(|l| l.contains("read-write")));
+}
+
+#[tokio::test]
+async fn unmount_and_new_chat() {
+    let mut d = direct(ok(0), &[]);
+    let drive = drive();
+    d.cmd(&format!("/mount {}", drive.path.display())).await;
+    d.chat.mount_note = None;
+    d.cmd("/new").await;
+    assert!(d.chat.mount_note.as_deref().unwrap().contains("read-only"));
+    assert!(d.chat.web_taint().is_some());
+    d.events();
+    d.cmd("/unmount").await;
+    assert!(d.chat.files.mounts.is_empty());
+    assert!(d.chat.mount_note.as_deref().unwrap().contains("unmounted"));
+    assert!(d.chat.web_taint().is_some(), "what it read stays");
+    assert!(notices(&d.events())[0].starts_with("unmounted "));
+    d.cmd("/unmount").await;
+    assert_eq!(notices(&d.events()), ["nothing is mounted"]);
+}
+
+#[tokio::test]
+async fn resumed_chat_with_mount_reads_is_tainted() {
+    let mut d = direct(ok(0), &[]);
+    let args = json!({"path": "/media/me/USB/a.txt"}).to_string();
+    d.chat
+        .reset_web(&[json!({"role": "assistant", "content": "", "tool_calls": [
+        {"id": "1", "function": {"name": "read_file", "arguments": args}}]})]);
+    assert!(d.chat.web_taint().unwrap().contains("mounted folder"));
+    d.chat
+        .reset_web(&[json!({"role": "assistant", "content": "", "tool_calls": [
+        {"id": "1", "function": {"name": "run_shell",
+         "arguments": "{\"command\": \"ssh host ls\"}"}}]})]);
+    assert!(d.chat.web_taint().unwrap().contains("lent server"));
+    d.chat
+        .reset_web(&[json!({"role": "tool", "content": "x <<<UNTRUSTED abc y"})]);
+    assert_eq!(d.chat.web_taint(), Some("web results earlier in this chat"));
+    d.chat.reset_web(&[]);
+    assert_eq!(d.chat.web_taint(), None);
+}

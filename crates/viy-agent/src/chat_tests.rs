@@ -24,6 +24,10 @@ fn nowhere() -> Places {
         workspace: std::path::PathBuf::from("/nonexistent/viy-workspace"),
         config_dir: std::path::PathBuf::from("/nonexistent/viy-config"),
         home: std::path::PathBuf::from("/nonexistent/home"),
+        project_dir: std::path::PathBuf::from("/nonexistent/viy-workspace"),
+        locks_dir: std::path::PathBuf::from("/nonexistent/locks"),
+        quarantine_dir: std::path::PathBuf::from("/nonexistent/quarantine"),
+        guarded: Vec::new(),
     }
 }
 

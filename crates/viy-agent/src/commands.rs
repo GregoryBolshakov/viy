@@ -8,6 +8,8 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use viy_tools::mounts;
+use viy_tools::mounts::Mount;
 
 use base64::Engine as _;
 use serde_json::Value;
@@ -18,6 +20,7 @@ use viy_protocol::EventMsg;
 use viy_protocol::HistoryItem;
 use viy_protocol::HistoryRewrittenEvent;
 use viy_protocol::InputPrefillEvent;
+use viy_protocol::NoticeEvent;
 use viy_protocol::NoticeLevel;
 use viy_protocol::Question;
 use viy_protocol::RewriteReason;
@@ -109,7 +112,7 @@ const HELP: &str = "  /help              show this
 /// The commands a later work package brings, and which.
 fn later(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
-        "tools" | "mount" | "unmount" | "ssh" | "unssh" | "git" => "phase 4",
+        "tools" | "ssh" | "unssh" | "git" => "phase 4",
         "search" | "sources" => "phase 5",
         "compact" | "autocompact" => "phase 6",
         "consult" | "toolbox" => "phase 7",
@@ -458,6 +461,8 @@ impl Chat {
                     );
                 }
             }
+            "mount" => self.mount(ctx, arg).await,
+            "unmount" => self.unmount(ctx, arg),
             "instructions" => {
                 if matches!(arg, "on" | "off") {
                     self.instructions_on = arg == "on";
@@ -506,15 +511,243 @@ impl Chat {
         }
     }
 
-    /// The next user message: the line, then the pending images (rp's
-    /// `_user_content`, without the `/mount` and `/ssh` notes of phase 4).
+    /// `/mount`: lists the drives, or lends the model a drive or folder (rp's
+    /// `_cmd_mount`).
+    async fn mount(&mut self, ctx: &TurnContext, arg: &str) {
+        let say = |level: NoticeLevel, text: String| notice(ctx, level, "mount", text);
+        let (target, rw) = mounts::parse_arg(arg);
+        let table = mounts::mount_table();
+        if target.is_empty() {
+            if arg.trim().is_empty() {
+                self.list_mounts(ctx, &table);
+            } else {
+                say(NoticeLevel::Warn, "usage: /mount <drive|path> [rw]".into());
+            }
+            return;
+        }
+        let path = match mounts::resolve(&target, &table, &self.places.home) {
+            Ok(p) => p,
+            Err(e) => return say(NoticeLevel::Warn, e),
+        };
+        let guarded = self.mount_guarded();
+        let home = self.places.home.clone();
+        if let Some(why) = mounts::problem(&path, rw, &guarded, &table, &home) {
+            say(NoticeLevel::Error, format!("not mounted: {why}"));
+            if rw && mounts::problem(&path, false, &guarded, &table, &home).is_none() {
+                say(
+                    NoticeLevel::Info,
+                    format!("read-only works: /mount {}", path.display()),
+                );
+            }
+            return;
+        }
+        if let Some(other) = mounts::overlap(&self.files.mounts, &path) {
+            return say(
+                NoticeLevel::Warn,
+                format!(
+                    "not mounted: {} is mounted already and overlaps it; /unmount it first",
+                    other.path.display()
+                ),
+            );
+        }
+        if rw {
+            let mut q = Question::yes_no(None, "  mount it read-write?");
+            q.reason.push(NoticeEvent {
+                level: NoticeLevel::Warn,
+                code: "mount".into(),
+                message: format!(
+                    "  read-write: the model can change and delete files in {}. /rewind puts \
+                     back what write_file changed, not what shell commands did, and the drive \
+                     has no other undo.",
+                    path.display()
+                ),
+            });
+            if ctx.ask(&q).await != Answer::Yes {
+                return say(NoticeLevel::Info, "  not mounted".into());
+            }
+        }
+        let m = mounts::scan(&path, rw);
+        let (mode, secrets) = (m.mode(), m.secrets.len());
+        self.files.mounts.retain(|x| x.path != path);
+        self.files.mounts.push(m);
+        self.mount_note = Some(mounts::note(&self.files.mounts, &[]));
+        self.taint(format!("files from the mounted {}", path.display()));
+        say(
+            NoticeLevel::Info,
+            format!(
+                "mounted {} {mode} until /unmount or the end of this viy chat; the model \
+                 learns of it with your next message",
+                path.display()
+            ),
+        );
+        if secrets > 0 {
+            say(
+                NoticeLevel::Info,
+                format!("  {secrets} secret file(s) there are hidden from commands"),
+            );
+        }
+        say(
+            NoticeLevel::Info,
+            "  anything else on it is readable, keys and password stores included; files \
+             there count as untrusted text, so network commands ask first"
+                .into(),
+        );
+    }
+
+    /// What a mount must neither hold nor sit inside.
+    fn mount_guarded(&self) -> Vec<PathBuf> {
+        let mut out = vec![
+            self.places.workspace.clone(),
+            self.places.project_dir.clone(),
+        ];
+        out.extend(self.files.clients.iter().cloned());
+        out.extend(self.places.guarded.iter().cloned());
+        out
+    }
+
+    /// `/mount` alone: what is lent, and the drives one could lend.
+    fn list_mounts(&self, ctx: &TurnContext, table: &[mounts::Volume]) {
+        let say = |level: NoticeLevel, text: String| notice(ctx, level, "mount", text);
+        if !self.files.mounts.is_empty() {
+            say(NoticeLevel::Info, "mounted for the model:".into());
+            for m in &self.files.mounts {
+                say(
+                    NoticeLevel::Info,
+                    format!("  {}  {}", m.path.display(), m.mode()),
+                );
+            }
+        }
+        let rows = mounts::drives(table);
+        let names: Vec<String> = rows
+            .iter()
+            .map(|r| {
+                mounts::short_name(&r.target, table, &self.places.home)
+                    .unwrap_or_else(|| "-".into())
+            })
+            .collect();
+        if rows.is_empty() {
+            say(
+                NoticeLevel::Info,
+                format!(
+                    "no drives are mounted under {}; open one in the file manager or run \
+                     udisksctl mount -b /dev/<partition> first, or give any folder's path",
+                    mounts::DRIVE_ROOTS.join(", ")
+                ),
+            );
+        } else {
+            say(
+                NoticeLevel::Info,
+                "drives on this machine (name, then path):".into(),
+            );
+            let width = names.iter().map(|n| n.chars().count()).max().unwrap_or(0);
+            for (name, row) in names.iter().zip(&rows) {
+                let lent = mounts::containing(&self.files.mounts, &row.target).is_some();
+                say(
+                    NoticeLevel::Info,
+                    format!(
+                        "  {name:<width$}  {}  {}, {}{}{}",
+                        row.target.display(),
+                        row.source,
+                        row.fstype,
+                        if row.read_only { ", read-only" } else { "" },
+                        if lent { ", mounted for the model" } else { "" }
+                    ),
+                );
+            }
+        }
+        let example = names
+            .iter()
+            .find(|n| *n != "-")
+            .map_or("<name>", String::as_str);
+        say(
+            NoticeLevel::Info,
+            format!(
+                "/mount {example} (or the path), read-only; add rw to let the model write. \
+                 /unmount takes it back."
+            ),
+        );
+    }
+
+    /// `/unmount [<drive|path>|all]`: takes mounts back (rp's
+    /// `_cmd_unmount`).
+    fn unmount(&mut self, ctx: &TurnContext, arg: &str) {
+        let say = |level: NoticeLevel, text: String| notice(ctx, level, "unmount", text);
+        let target = arg.trim().trim_matches(['\'', '"']);
+        if self.files.mounts.is_empty() {
+            return say(NoticeLevel::Info, "nothing is mounted".into());
+        }
+        let gone: Vec<Mount> =
+            if target == "all" || (target.is_empty() && self.files.mounts.len() == 1) {
+                self.files.mounts.clone()
+            } else if target.is_empty() {
+                let listed: Vec<String> = self
+                    .files
+                    .mounts
+                    .iter()
+                    .map(|m| m.path.display().to_string())
+                    .collect();
+                return say(
+                    NoticeLevel::Warn,
+                    format!(
+                        "usage: /unmount <drive|path>|all  (mounted: {})",
+                        listed.join(", ")
+                    ),
+                );
+            } else {
+                let path = mounts::resolve(target, &mounts::mount_table(), &self.places.home).ok();
+                let by_path: Vec<Mount> = self
+                    .files
+                    .mounts
+                    .iter()
+                    .filter(|m| Some(&m.path) == path.as_ref())
+                    .cloned()
+                    .collect();
+                let gone = if by_path.is_empty() {
+                    self.files
+                        .mounts
+                        .iter()
+                        .filter(|m| {
+                            m.path.file_name().is_some_and(|n| {
+                                n.to_string_lossy().to_lowercase() == target.to_lowercase()
+                            })
+                        })
+                        .cloned()
+                        .collect()
+                } else {
+                    by_path
+                };
+                if gone.is_empty() {
+                    return say(NoticeLevel::Warn, format!("{target} is not mounted"));
+                }
+                gone
+            };
+        self.files.mounts.retain(|m| !gone.contains(m));
+        let paths: Vec<PathBuf> = gone.iter().map(|m| m.path.clone()).collect();
+        self.mount_note = Some(mounts::note(&self.files.mounts, &paths));
+        let listed: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+        say(
+            NoticeLevel::Info,
+            format!(
+                "unmounted {}. What the model read there stays in the chat, so network \
+                 commands keep asking.",
+                listed.join(", ")
+            ),
+        );
+    }
+
+    /// The next user message: the pending `/mount` note, the line, then the
+    /// pending images (rp's `_user_content`; the `/ssh` note comes with
+    /// remote.py).
     pub fn user_content(&mut self, line: String) -> Value {
-        if self.pending_images.is_empty() {
+        let note = self.mount_note.take();
+        if self.pending_images.is_empty() && note.is_none() {
             return Value::String(line);
         }
         let mut parts = Vec::new();
-        if !line.is_empty() {
-            parts.push(json!({"type": "text", "text": line}));
+        for text in note.into_iter().chain(Some(line.clone())) {
+            if !text.is_empty() {
+                parts.push(json!({"type": "text", "text": text}));
+            }
         }
         parts.extend(
             std::mem::take(&mut self.pending_images)

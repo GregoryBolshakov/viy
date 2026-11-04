@@ -268,10 +268,17 @@ fn a_scripted_run_refuses_instruction_files_from_outside_the_workspace() {
 
 #[test]
 fn a_scripted_run_in_a_project_refuses_the_projects_own_files() {
-    // The repository sits in a folder whose instruction files a scenario
-    // must never carry.
+    // A project whose own instruction file a scenario must never carry,
+    // built here so the test does not rely on one above the repository.
+    let scratch = ScratchDir::new("drive").unwrap();
+    std::fs::write(
+        scratch.path().join("AGENTS.md"),
+        "The project's own rules.\n",
+    )
+    .unwrap();
+    let dir = scratch.path().join("src");
+    std::fs::create_dir(&dir).unwrap();
     let file = scenario::dir().join("plain-two-turns.json");
-    let crate_dir = env!("CARGO_MANIFEST_DIR");
     let (code, _, err) = run_capture(&[
         "dev",
         "drive",
@@ -279,7 +286,7 @@ fn a_scripted_run_in_a_project_refuses_the_projects_own_files() {
         "--url",
         "http://127.0.0.1:9",
         "--dir",
-        crate_dir,
+        dir.to_str().unwrap(),
     ]);
     assert_eq!(code, 1, "{err}");
     assert!(

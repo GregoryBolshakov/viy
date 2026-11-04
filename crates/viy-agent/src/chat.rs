@@ -26,7 +26,9 @@
 //! prompt with them (phase 4); elision and compaction (phase 6); tracing
 //! (phase 7).
 
+use crate::filehistory::FileHistory;
 use crate::files::FileTools;
+use crate::files::Outcome;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -166,6 +168,9 @@ pub struct Chat {
     partial: String,
     /// The file tools, with the mounts and what this chat has read.
     pub(crate) files: FileTools,
+    /// What write_file overwrote, for `/rewind`, while the chat has no
+    /// session log (a saved chat keeps it in the log's `<id>.files/`).
+    mem_files: FileHistory,
     /// What the next user message tells the model about the mounts.
     pub(crate) mount_note: Option<String>,
     /// Why network commands need the user's yes: internet text, or files
@@ -250,6 +255,7 @@ impl Chat {
             end_reason: "exit",
             partial: String::new(),
             files,
+            mem_files: FileHistory::in_memory(),
             mount_note: None,
             web_taint: None,
             closed_saved: false,
@@ -455,6 +461,7 @@ impl Chat {
         self.inflight = None;
         // Files read by the old chat are unknown to this one.
         self.files.forget_reads();
+        self.mem_files = FileHistory::in_memory();
         self.reset_web(&[]);
         self.mount_note = self.mounts_note();
         let fresh = match (&old, &self.sessions) {
@@ -538,6 +545,46 @@ impl Chat {
         self.reset_web(&history);
         self.messages = history;
         self.mount_note = self.mounts_note();
+    }
+
+    /// Runs `f` on this chat's record of what write_file overwrote (rp's
+    /// `_files`): the session log's, or the one in memory.
+    pub(crate) fn with_file_history<T>(&mut self, f: impl FnOnce(&mut FileHistory) -> T) -> T {
+        let folder = lock(&self.session).as_ref().map(SessionLog::files_dir);
+        match folder {
+            Some(folder) => f(&mut FileHistory::at(folder)),
+            None => f(&mut self.mem_files),
+        }
+    }
+
+    /// write_file for tool call `call_id`, what it overwrote kept for
+    /// `/rewind` (rp's `_tool_write_file` with `_record_write`). Failing
+    /// to keep it costs only that: the write has happened.
+    pub async fn write_file(
+        &mut self,
+        ctx: &TurnContext,
+        call_id: &str,
+        args: &serde_json::Map<String, Value>,
+        stamp: &str,
+    ) -> Outcome {
+        let mut outcome = self.files.write_file(args, ctx, stamp).await;
+        if let Some(wrote) = outcome.wrote.take() {
+            let kept = self.with_file_history(|history| {
+                history.record(call_id, &wrote.path, wrote.before.as_deref(), &wrote.after)
+            });
+            if let Err(e) = kept {
+                notice(
+                    ctx,
+                    NoticeLevel::Info,
+                    "record_write",
+                    format!(
+                        "  [/rewind will not be able to restore {}: {e}]",
+                        self.files.ws_rel(&wrote.path)
+                    ),
+                );
+            }
+        }
+        outcome
     }
 
     /// The note the mounts give a fresh history, if any are mounted.

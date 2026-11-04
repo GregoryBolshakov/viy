@@ -33,6 +33,7 @@ use super::Chat;
 use super::lock;
 use super::notice;
 use crate::engine::TurnContext;
+use crate::filehistory::Action;
 use crate::sessions;
 use crate::sessions::RowView;
 use crate::sessions::Summary;
@@ -1039,13 +1040,25 @@ impl Chat {
                     "  (earlier turns were compacted; /resume draws them)",
                 );
             }
+            let ends = points[1..].iter().copied().chain([self.messages.len()]);
             let options = points
                 .iter()
-                .map(|&i| {
+                .zip(ends)
+                .map(|(&i, j)| {
                     let text = sessions::message_text(&self.messages[i], false);
                     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
                     let more = if text.chars().count() > 70 { "..." } else { "" };
-                    format!("{}{more}", text.chars().take(70).collect::<String>())
+                    let writes = self.messages[i..j]
+                        .iter()
+                        .flat_map(|m| m["tool_calls"].as_array().into_iter().flatten())
+                        .filter(|tc| tc["function"]["name"] == "write_file")
+                        .count();
+                    let note = match writes {
+                        0 => String::new(),
+                        1 => "  (1 write)".into(),
+                        n => format!("  ({n} writes)"),
+                    };
+                    format!("{}{more}{note}", text.chars().take(70).collect::<String>())
                 })
                 .collect();
             let last = u32::try_from(points.len() - 1).unwrap_or(u32::MAX);
@@ -1069,14 +1082,71 @@ impl Chat {
             );
             return;
         }
-        self.rewind_to(ctx, points[k - 1], k);
+        self.rewind_to(ctx, points[k - 1], k).await;
     }
 
-    /// Drops the history from message `cut` on and hands that user message
-    /// back to the input box (rp's `_rewind_to`; the files write_file
-    /// changed are offered back with phase 4's write_file).
-    fn rewind_to(&mut self, ctx: &TurnContext, cut: usize, k: usize) {
+    /// Drops the history from message `cut` on, offering to put back the
+    /// files write_file changed in it, and hands that user message back to
+    /// the input box (rp's `_rewind_to`).
+    async fn rewind_to(&mut self, ctx: &TurnContext, cut: usize, k: usize) {
+        let calls: Vec<Value> = self.messages[cut..]
+            .iter()
+            .flat_map(|m| m["tool_calls"].as_array().into_iter().flatten())
+            .cloned()
+            .collect();
+        let ids = calls.iter().filter_map(|tc| tc["id"].as_str());
+        let (files, actions) = self.with_file_history(|history| {
+            let files = history.plan(ids);
+            let actions = history.actions(&files, false);
+            (files, actions)
+        });
+        if actions.iter().any(|a| *a != Action::Same) {
+            let mut lines = vec!["write_file changed these files since then:".to_string()];
+            for (f, a) in files.iter().zip(&actions) {
+                let note = match a {
+                    Action::Restore => String::new(),
+                    Action::Delete => "  (created then; would be deleted)".into(),
+                    Action::Same => "  (already as it was)".into(),
+                    Action::Changed => "  (changed since by something else; stays)".into(),
+                    Action::Lost => "  (its old content was not kept; stays)".into(),
+                    Action::Failed(e) => format!("  (failed: {e})"),
+                };
+                lines.push(format!("  {}{note}", self.files.recorded_rel(&f.path)));
+            }
+            notice(ctx, NoticeLevel::Info, "rewind_to", lines.join("\n"));
+        }
+        let todo = actions.iter().filter(|a| a.changes()).count();
+        let mut applied = Vec::new();
+        if todo > 0 {
+            let prompt = if todo == 1 {
+                "put it back as it was?"
+            } else {
+                "put them back as they were?"
+            };
+            match ctx.ask(&Question::yes_no_cancel(prompt)).await {
+                Answer::Cancel => return,
+                Answer::Yes => {
+                    // Without the lock nothing is undone and the chat
+                    // stays as it is.
+                    let _lock = match self.files.lock() {
+                        Ok(lock) => lock,
+                        Err(e) => {
+                            notice(
+                                ctx,
+                                NoticeLevel::Error,
+                                "rewind_to",
+                                format!("could not lock the workspace: {e}"),
+                            );
+                            return;
+                        }
+                    };
+                    applied = self.with_file_history(|h| h.actions(&files, true));
+                }
+                _ => {}
+            }
+        }
         let dropped = self.messages.split_off(cut);
+        self.files.rewound(&self.messages, &files);
         let parts: Vec<Value> = match &dropped[0]["content"] {
             Value::Array(parts) => parts.clone(),
             other => vec![json!({"type": "text", "text": other.as_str().unwrap_or_default()})],
@@ -1099,6 +1169,16 @@ impl Chat {
         let mut pending = images;
         pending.append(&mut self.pending_images);
         self.pending_images = pending;
+        // A /mount note the dropped turns carried goes out again, up to date.
+        let carried_note = dropped
+            .iter()
+            .filter(|m| m["role"] == "user")
+            .flat_map(|m| m["content"].as_array().into_iter().flatten())
+            .filter_map(|p| p["text"].as_str())
+            .any(mounts::is_note);
+        if carried_note {
+            self.mount_note = Some(mounts::note(&self.files.mounts, &[]));
+        }
         self.checkpoint(ctx);
         self.redraw(ctx, RewriteReason::Rewind);
         let info = |text: String| notice(ctx, NoticeLevel::Info, "rewind_to", text);
@@ -1107,6 +1187,34 @@ impl Chat {
              them)",
             dropped.len()
         ));
+        let shown = |want: &Action| -> Vec<String> {
+            files
+                .iter()
+                .zip(&applied)
+                .filter(|(_, a)| *a == want)
+                .map(|(f, _)| self.files.recorded_rel(&f.path))
+                .collect()
+        };
+        let (restored, deleted) = (shown(&Action::Restore), shown(&Action::Delete));
+        if !restored.is_empty() {
+            info(format!("restored {}", restored.join(", ")));
+        }
+        if !deleted.is_empty() {
+            info(format!("deleted {}", deleted.join(", ")));
+        }
+        for (f, a) in files.iter().zip(&applied) {
+            if let Action::Failed(e) = a {
+                notice(
+                    ctx,
+                    NoticeLevel::Error,
+                    "rewind_to",
+                    format!(
+                        "could not restore {}: {e}",
+                        self.files.recorded_rel(&f.path)
+                    ),
+                );
+            }
+        }
         let names: Vec<&str> = dropped
             .iter()
             .flat_map(|m| m["tool_calls"].as_array().into_iter().flatten())

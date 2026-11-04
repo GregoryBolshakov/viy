@@ -59,6 +59,18 @@ impl Question {
         }
     }
 
+    /// `[Y/n, q = cancel]` (rp's `/rewind` "put them back?"): Enter is
+    /// yes; `q`, Ctrl-C and nobody to ask cancel ([`Answer::Cancel`]).
+    /// No chat mode answers it.
+    pub fn yes_no_cancel(prompt: impl Into<String>) -> Self {
+        Self {
+            choices: Choices::YesNoCancel,
+            default: Answer::Yes,
+            unattended: Answer::Cancel,
+            ..Self::yes_no(None, prompt)
+        }
+    }
+
     /// One of `options` (rp's numbered lists: `/rewind`, `/resume`):
     /// Enter takes `default`, nobody to ask and `q` take none
     /// ([`Answer::No`]).
@@ -83,6 +95,8 @@ impl Question {
                 };
                 format!("[1-{}{enter}, q = cancel]", self.options.len())
             }
+            (Choices::YesNoCancel, Answer::No) => "[y/N, q = cancel]".into(),
+            (Choices::YesNoCancel, _) => "[Y/n, q = cancel]".into(),
             (Choices::YesNo, Answer::No) => "[y/N]".into(),
             (Choices::YesNo, _) => "[Y/n]".into(),
             (_, Answer::No) => "[y/N/a=always]".into(),
@@ -121,6 +135,8 @@ pub enum QuestionKind {
 pub enum Choices {
     YesNo,
     YesNoAlways,
+    /// Yes, no, or neither: the question's whole command is called off.
+    YesNoCancel,
     /// One of [`Question::options`].
     Pick,
 }
@@ -132,6 +148,9 @@ pub enum Answer {
     No,
     /// Yes, and remember it (only offered with [`Choices::YesNoAlways`]).
     Always,
+    /// Call the whole thing off (only with [`Choices::YesNoCancel`];
+    /// Codex's `ReviewDecision::Abort`).
+    Cancel,
     /// The option at this index (only with [`Choices::Pick`]).
     Pick(u32),
 }

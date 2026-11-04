@@ -148,8 +148,9 @@ impl Questions {
         }
         let front = self.queue.front()?;
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let cancels = front.question.choices == Choices::YesNoCancel;
         if key.code == KeyCode::Char('c') && ctrl {
-            return self.answer(Answer::No);
+            return self.answer(if cancels { Answer::Cancel } else { Answer::No });
         }
         if ctrl || key.modifiers.contains(KeyModifiers::ALT) {
             return None;
@@ -162,6 +163,7 @@ impl Questions {
             KeyCode::Char('y' | 'Y') => Answer::Yes,
             KeyCode::Char('n' | 'N') => Answer::No,
             KeyCode::Char('a' | 'A') if question.choices == Choices::YesNoAlways => Answer::Always,
+            KeyCode::Char('q' | 'Q') | KeyCode::Esc if cancels => Answer::Cancel,
             KeyCode::Enter if key.modifiers.is_empty() && !draft => question.default,
             KeyCode::BackTab => {
                 return Some(Taken::CycleMode {
@@ -357,6 +359,7 @@ pub fn answer_word(answer: Answer) -> String {
         Answer::Yes => "y".into(),
         Answer::No => "n".into(),
         Answer::Always => "a".into(),
+        Answer::Cancel => "q".into(),
         Answer::Pick(n) => (u64::from(n) + 1).to_string(),
     }
 }
@@ -389,6 +392,9 @@ fn keys_spans(question: &Question, armed: bool) -> Vec<Span<'static>> {
             "a",
             format!("always{}", mark(question.default == Answer::Always)),
         ));
+    }
+    if question.choices == Choices::YesNoCancel {
+        keys.push(("q", "cancel".into()));
     }
     if question.kind.is_some() {
         keys.push(("⇧Tab", "mode".into()));

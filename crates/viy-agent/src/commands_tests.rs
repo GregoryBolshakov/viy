@@ -2,6 +2,8 @@
 //! ResumeShowsWholeChatTests (test_sessions.py) where they run without
 //! tools, and each command's words.
 
+use std::path::PathBuf;
+
 use pretty_assertions::assert_eq;
 use viy_protocol::Answer;
 use viy_protocol::HistoryItem;
@@ -217,6 +219,274 @@ async fn shell_changes_are_named_as_not_undone() {
         ),
         "{said:?}"
     );
+}
+
+// ------------------------------------------- /rewind and write_file
+
+/// A workspace of its own for `d`'s file tools.
+fn workspace(d: &mut Direct) -> (viy_testkit::scratch::ScratchDir, PathBuf) {
+    let scratch = viy_testkit::scratch::ScratchDir::new("rewind-ws").unwrap();
+    let ws = scratch.path().join("ws");
+    std::fs::create_dir_all(&ws).unwrap();
+    d.chat.files.workspace = ws.clone();
+    d.chat.files.project_dir = ws.clone();
+    d.chat.files.locks_dir = scratch.path().join("locks");
+    d.chat.files.quarantine_dir = scratch.path().join("quarantine");
+    let ws = viy_tools::resolve::resolve(&ws);
+    (scratch, ws)
+}
+
+/// A chat whose session log is off: the file history lives in memory.
+fn unsaved(d: &mut Direct) {
+    *lock(&d.chat.session) = None;
+    d.chat.sessions = None;
+}
+
+fn call(id: &str, name: &str, args: &Value) -> Value {
+    json!({"id": id, "type": "function",
+           "function": {"name": name, "arguments": args.to_string()}})
+}
+
+impl Direct {
+    /// A turn in which the model reads `path` (unless `read` is false) and
+    /// writes `content` there, as the tool loop runs them (rp's
+    /// `write_turn`): call `cid` writes, `cid`+"r" reads.
+    async fn write_turn(&mut self, text: &str, path: &str, content: &str, read: bool, cid: &str) {
+        self.chat
+            .messages
+            .push(json!({"role": "user", "content": text}));
+        if read {
+            let args = json!({"path": path});
+            let rid = format!("{cid}r");
+            self.chat
+                .messages
+                .push(json!({"role": "assistant", "content": null,
+                "tool_calls": [call(&rid, "read_file", &args)]}));
+            let out = self
+                .chat
+                .files
+                .read_file(args.as_object().unwrap(), &self.ctx)
+                .await;
+            self.chat
+                .messages
+                .push(json!({"role": "tool", "tool_call_id": rid,
+                "content": out.result.to_string()}));
+        }
+        let args = json!({"path": path, "content": content});
+        self.chat
+            .messages
+            .push(json!({"role": "assistant", "content": null,
+            "tool_calls": [call(cid, "write_file", &args)]}));
+        let ctx = self.ctx.clone();
+        let out = self
+            .chat
+            .write_file(&ctx, cid, args.as_object().unwrap(), "stamp")
+            .await;
+        assert_eq!(out.result["ok"], true, "{}", out.result);
+        self.chat
+            .messages
+            .push(json!({"role": "tool", "tool_call_id": cid,
+            "content": out.result.to_string()}));
+        self.chat
+            .messages
+            .push(json!({"role": "assistant", "content": "done"}));
+        self.chat.checkpoint(&ctx);
+    }
+
+    /// `line` when it must ask nothing.
+    async fn cmd_silent(&mut self, line: &str) -> Vec<EventMsg> {
+        tokio::time::timeout(std::time::Duration::from_secs(10), self.cmd(line))
+            .await
+            .expect("asked a question");
+        let events = self.events();
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, EventMsg::QuestionRequest(_))),
+            "asked a question"
+        );
+        events
+    }
+
+    async fn write(&mut self, path: &str, content: &str) -> Value {
+        let ctx = self.ctx.clone();
+        let args = json!({"path": path, "content": content});
+        self.chat
+            .write_file(&ctx, "later", args.as_object().unwrap(), "stamp")
+            .await
+            .result
+    }
+}
+
+async fn restores_what_write_file_changed(saved: bool) {
+    let mut d = direct(ok(0), &[]);
+    if !saved {
+        unsaved(&mut d);
+    }
+    let (_s, ws) = workspace(&mut d);
+    std::fs::write(ws.join("a.txt"), "v1").unwrap();
+    d.write_turn("edit a", "a.txt", "v2", true, "w1").await;
+    d.write_turn("make b", "b.txt", "new", false, "w2").await;
+    d.write_turn("edit a again", "a.txt", "v3", true, "w3")
+        .await;
+    assert_eq!(std::fs::read_to_string(ws.join("a.txt")).unwrap(), "v3");
+    d.events();
+    let (question, events) = d.cmd_answering("/rewind 2", Answer::Yes).await;
+    assert_eq!(
+        format!("{} {}", question.prompt, question.hint()),
+        "put them back as they were? [Y/n, q = cancel]"
+    );
+    assert_eq!(question.kind, None, "no chat mode answers it");
+    assert_eq!(question.unattended, Answer::Cancel);
+    assert_eq!(std::fs::read_to_string(ws.join("a.txt")).unwrap(), "v2");
+    assert!(!ws.join("b.txt").exists());
+    let said = notices(&events);
+    assert_eq!(
+        said[0],
+        "write_file changed these files since then:\n  b.txt  (created then; would be deleted)\n  a.txt"
+    );
+    assert!(said.contains(&"restored a.txt".to_string()), "{said:?}");
+    assert!(said.contains(&"deleted b.txt".to_string()), "{said:?}");
+    assert_eq!(prefill(&events).as_deref(), Some("make b"));
+    // a.txt is known as v2 again: the model may write it without a read.
+    assert_eq!(d.write("a.txt", "v4").await["ok"], true);
+}
+
+#[tokio::test]
+async fn rewind_restores_what_write_file_changed() {
+    restores_what_write_file_changed(true).await;
+}
+
+#[tokio::test]
+async fn rewind_restores_without_a_session_log() {
+    restores_what_write_file_changed(false).await;
+}
+
+#[tokio::test]
+async fn conversation_only_keeps_the_files_and_the_guard_asks_for_a_read() {
+    let mut d = direct(ok(0), &[]);
+    let (_s, ws) = workspace(&mut d);
+    std::fs::write(ws.join("a.txt"), "v1").unwrap();
+    d.write_turn("edit a", "a.txt", "v2", true, "w").await;
+    let (question, _) = d.cmd_answering("/rewind 1", Answer::No).await;
+    assert_eq!(question.prompt, "put it back as it was?");
+    assert_eq!(std::fs::read_to_string(ws.join("a.txt")).unwrap(), "v2");
+    assert_eq!(d.chat.messages(), Vec::<Value>::new());
+    d.chat.messages = vec![json!({"role": "user", "content": "x"})];
+    let r = d.write("a.txt", "v9").await;
+    assert!(r.get("error").is_some(), "{r}");
+}
+
+#[tokio::test]
+async fn a_file_changed_since_is_left_alone() {
+    let mut d = direct(ok(0), &[]);
+    let (_s, ws) = workspace(&mut d);
+    std::fs::write(ws.join("a.txt"), "v1").unwrap();
+    d.write_turn("edit a", "a.txt", "v2", true, "w").await;
+    std::fs::write(ws.join("a.txt"), "edited by hand").unwrap();
+    d.events();
+    // Nothing to restore: no question.
+    let said = notices(&d.cmd_silent("/rewind 1").await);
+    assert!(said[0].contains("changed since"), "{said:?}");
+    assert_eq!(
+        std::fs::read_to_string(ws.join("a.txt")).unwrap(),
+        "edited by hand"
+    );
+    assert_eq!(d.chat.messages(), Vec::<Value>::new());
+}
+
+#[tokio::test]
+async fn cancel_at_the_file_question_keeps_everything() {
+    let mut d = direct(ok(0), &[]);
+    let (_s, ws) = workspace(&mut d);
+    std::fs::write(ws.join("a.txt"), "v1").unwrap();
+    d.write_turn("edit a", "a.txt", "v2", true, "w").await;
+    let (_, events) = d.cmd_answering("/rewind 1", Answer::Cancel).await;
+    assert_eq!(d.chat.messages().len(), 6);
+    assert_eq!(std::fs::read_to_string(ws.join("a.txt")).unwrap(), "v2");
+    assert_eq!(prefill(&events), None);
+    assert_eq!(rewritten(&events), None);
+}
+
+#[tokio::test]
+async fn a_fork_can_still_restore() {
+    let mut d = direct(ok(0), &[]);
+    let (_s, ws) = workspace(&mut d);
+    std::fs::write(ws.join("a.txt"), "v1").unwrap();
+    d.write_turn("edit a", "a.txt", "v2", true, "w").await;
+    let first = d.id();
+    d.cmd("/fork").await;
+    assert_ne!(d.id(), first);
+    d.cmd_answering("/rewind 1", Answer::Yes).await;
+    assert_eq!(std::fs::read_to_string(ws.join("a.txt")).unwrap(), "v1");
+}
+
+#[tokio::test]
+async fn archiving_takes_the_file_history_along() {
+    // rp's test_trash_takes_the_file_history_along; viy archives (kb d083).
+    let mut d = direct(ok(0), &[]);
+    let (_s, ws) = workspace(&mut d);
+    std::fs::write(ws.join("a.txt"), "v1").unwrap();
+    d.write_turn("edit a", "a.txt", "v2", true, "w").await;
+    let id = d.id();
+    let ctx = d.ctx.clone();
+    d.chat.end_session(&ctx, "exit").await;
+    let dir = sessions::files_dir(&d.store.path_of(&id));
+    assert!(dir.is_dir());
+    d.store.archive(&id).unwrap();
+    assert!(!dir.exists());
+    assert!(sessions::files_dir(&d.store.archived().path_of(&id)).is_dir());
+}
+
+#[tokio::test]
+async fn the_pick_counts_each_messages_writes() {
+    let mut d = direct(ok(0), &[]);
+    let (_s, ws) = workspace(&mut d);
+    std::fs::write(ws.join("a.txt"), "v1").unwrap();
+    d.write_turn("edit a", "a.txt", "v2", true, "w1").await;
+    d.chat
+        .messages
+        .push(json!({"role": "user", "content": "thanks"}));
+    d.chat
+        .messages
+        .push(json!({"role": "assistant", "content": "ok"}));
+    let (question, _) = d.cmd_answering("/rewind", Answer::No).await;
+    assert_eq!(question.options, ["edit a  (1 write)", "thanks"]);
+}
+
+#[tokio::test]
+async fn a_link_put_in_a_written_path_is_left_alone() {
+    // Stricter than rp: undoing never writes through a link made since.
+    let mut d = direct(ok(0), &[]);
+    let (s, ws) = workspace(&mut d);
+    let outside = s.path().join("outside.txt");
+    std::fs::write(&outside, "v2").unwrap();
+    std::fs::write(ws.join("a.txt"), "v1").unwrap();
+    d.write_turn("edit a", "a.txt", "v2", true, "w").await;
+    std::fs::remove_file(ws.join("a.txt")).unwrap();
+    std::os::unix::fs::symlink(&outside, ws.join("a.txt")).unwrap();
+    let said = notices(&d.cmd_silent("/rewind 1").await);
+    assert_eq!(
+        said[0],
+        "write_file changed these files since then:\n  a.txt  (changed since by something else; stays)"
+    );
+    assert_eq!(std::fs::read_to_string(&outside).unwrap(), "v2");
+}
+
+#[tokio::test]
+async fn a_rewound_mount_note_goes_out_again() {
+    let mut d = direct(ok(0), &[]);
+    let note = viy_tools::mounts::note(&[], &[]);
+    d.chat.messages = vec![
+        json!({"role": "user", "content": [
+            {"type": "text", "text": note},
+            {"type": "text", "text": "look"}]}),
+        json!({"role": "assistant", "content": "ok"}),
+    ];
+    d.chat.mount_note = None;
+    d.cmd("/rewind 1").await;
+    assert_eq!(d.chat.mount_note.as_deref(), Some(note.as_str()));
+    assert_eq!(prefill(&d.events()).as_deref(), Some("look"));
 }
 
 // ------------------------------------------------- the whole chat drawn

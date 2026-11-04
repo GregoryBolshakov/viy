@@ -14,6 +14,7 @@ pub mod chat;
 pub mod context;
 pub mod drive;
 mod engine;
+pub mod filehistory;
 pub mod files;
 pub mod instructions;
 pub mod payload;

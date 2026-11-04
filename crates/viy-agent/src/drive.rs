@@ -69,9 +69,10 @@ impl Scenario {
                     Some("y") => Answer::Yes,
                     Some("n") => Answer::No,
                     Some("a") => Answer::Always,
+                    Some("q") => Answer::Cancel,
                     other => {
                         return Err(format!(
-                            "approval {i}: answer {other:?} is not \"y\", \"n\" or \"a\""
+                            "approval {i}: answer {other:?} is not \"y\", \"n\", \"a\" or \"q\""
                         ));
                     }
                 };

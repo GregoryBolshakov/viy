@@ -19,6 +19,7 @@
 //! said here.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
@@ -43,6 +44,7 @@ use viy_tools::resolve::resolve;
 use viy_tools::resolve::resolve_checked;
 
 use crate::engine::TurnContext;
+use crate::filehistory::Planned;
 
 /// Where the file tools say and ask things: the engine, whose chat mode may
 /// answer a question, or a test.
@@ -61,12 +63,24 @@ impl Ui for TurnContext {
     }
 }
 
-/// A tool's result for the model, and whether the user refused it (the
-/// tool loop counts refusals in a row).
+/// A tool's result for the model, whether the user refused it (the tool
+/// loop counts refusals in a row), and what write_file overwrote.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Outcome {
     pub result: Value,
     pub refused: bool,
+    /// For `/rewind`'s record ([`crate::filehistory`]): the file write_file
+    /// wrote, unless what it held before could not be read.
+    pub wrote: Option<Box<Wrote>>,
+}
+
+/// A file write_file wrote: what it held before (`None`: it did not
+/// exist) and the SHA-1 of what it holds now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Wrote {
+    pub path: PathBuf,
+    pub before: Option<Vec<u8>>,
+    pub after: String,
 }
 
 impl Outcome {
@@ -74,6 +88,7 @@ impl Outcome {
         Self {
             result,
             refused: false,
+            wrote: None,
         }
     }
 
@@ -104,7 +119,7 @@ pub struct FileTools {
     seen: HashMap<PathBuf, String>,
 }
 
-fn sha1_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha1_hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(40);
     for b in Sha1::digest(bytes) {
         let _ = write!(out, "{b:02x}");
@@ -283,6 +298,51 @@ impl FileTools {
         self.seen.retain(|p, _| keep.contains(p));
     }
 
+    /// The write guard's key for a read_file or write_file call; `None`
+    /// for other tools and for paths that do not resolve (rp's
+    /// `_call_path`).
+    fn call_path(&self, call: &Value) -> Option<PathBuf> {
+        let function = &call["function"];
+        if !matches!(function["name"].as_str(), Some("read_file" | "write_file")) {
+            return None;
+        }
+        let args: Value = match function["arguments"].as_str() {
+            None | Some("") => return None,
+            Some(text) => serde_json::from_str(text).ok()?,
+        };
+        let rel = args.get("path")?.as_str().filter(|r| !r.is_empty())?;
+        self.resolve_in_workspace(rel).ok()
+    }
+
+    /// The write guard's keys of the files `messages` read or wrote (rp's
+    /// `_paths_touched`).
+    pub fn paths_touched(&self, messages: &[Value]) -> HashSet<PathBuf> {
+        messages
+            .iter()
+            .flat_map(|m| m["tool_calls"].as_array().into_iter().flatten())
+            .filter_map(|call| self.call_path(call))
+            .collect()
+    }
+
+    /// After `/rewind` left `kept` of the history: a file only the dropped
+    /// turns touched counts as unread again, and one they wrote counts as
+    /// read as it was before that write, so writing over a file left
+    /// changed needs a read first.
+    pub fn rewound(&mut self, kept: &[Value], files: &[Planned]) {
+        let keep = self.paths_touched(kept);
+        self.seen.retain(|p, _| keep.contains(p));
+        for f in files {
+            match &f.before {
+                Some(before) if keep.contains(&f.path) => {
+                    self.seen.insert(f.path.clone(), before.clone());
+                }
+                _ => {
+                    self.seen.remove(&f.path);
+                }
+            }
+        }
+    }
+
     fn mounts_hint(&self) -> String {
         if self.mounts.is_empty() {
             return String::new();
@@ -324,6 +384,16 @@ impl FileTools {
             return Err(format!("path escapes the workspace{}", self.mounts_hint()));
         }
         Ok(target)
+    }
+
+    /// A path the file tools resolved (a [`crate::filehistory`] record) as
+    /// the workspace sees it, not resolved again: a link put there since
+    /// shows as the path written, not where it leads.
+    pub fn recorded_rel(&self, path: &Path) -> String {
+        match path.strip_prefix(resolve(&self.workspace)) {
+            Ok(rel) if !rel.as_os_str().is_empty() => rel.display().to_string(),
+            _ => self.ws_rel(path),
+        }
     }
 
     /// `path` as the workspace sees it.
@@ -383,6 +453,7 @@ impl FileTools {
                 "note": format!("the user declined to let you {verb} this file: {reason}"),
             }),
             refused: true,
+            wrote: None,
         })
     }
 
@@ -471,7 +542,7 @@ impl FileTools {
 
     /// An exclusive lock for this workspace, shared by every rp and viy
     /// process (rpctl's `_workspace_lock`: the same file).
-    fn lock(&self) -> std::io::Result<fs::File> {
+    pub(crate) fn lock(&self) -> std::io::Result<fs::File> {
         let ws = resolve(&self.workspace);
         let name = format!(
             "{}.lock",
@@ -527,6 +598,11 @@ impl FileTools {
             ));
             return Outcome::error(error);
         }
+        // What /rewind puts back; unreadable, it leaves this file alone.
+        let before = match fs::metadata(&path) {
+            Ok(meta) if meta.is_file() => fs::read(&path).ok().map(Some),
+            _ => Some(None),
+        };
         if let Some(parent) = path.parent()
             && let Err(e) = fs::create_dir_all(parent)
         {
@@ -535,8 +611,16 @@ impl FileTools {
         if let Err(e) = fs::write(&path, data.as_bytes()) {
             return Outcome::error(format!("could not write {rel}: {e}"));
         }
-        self.seen.insert(path.clone(), sha1_hex(data.as_bytes()));
+        let after = sha1_hex(data.as_bytes());
+        self.seen.insert(path.clone(), after.clone());
         drop(_lock);
+        let wrote = before.map(|before| {
+            Box::new(Wrote {
+                path: path.clone(),
+                before,
+                after,
+            })
+        });
         let mut result = json!({
             "ok": true,
             "path": self.ws_rel(&path),
@@ -582,10 +666,16 @@ impl FileTools {
                 if !moved.is_empty() {
                     out["quarantined"] = json!(moved.iter().map(|(r, _)| r).collect::<Vec<_>>());
                 }
-                return Outcome::ok(out);
+                return Outcome {
+                    wrote,
+                    ..Outcome::ok(out)
+                };
             }
         }
-        Outcome::ok(result)
+        Outcome {
+            wrote,
+            ..Outcome::ok(result)
+        }
     }
 
     pub async fn read_file(&mut self, args: &Map<String, Value>, ui: &dyn Ui) -> Outcome {

@@ -99,6 +99,6 @@ fn a_malformed_scenario_says_where() {
     );
     assert_eq!(
         Scenario::from_json(&json!({"approvals": [{"question": "q", "answer": "yes"}]})),
-        Err("approval 0: answer Some(\"yes\") is not \"y\", \"n\" or \"a\"".into())
+        Err("approval 0: answer Some(\"yes\") is not \"y\", \"n\", \"a\" or \"q\"".into())
     );
 }

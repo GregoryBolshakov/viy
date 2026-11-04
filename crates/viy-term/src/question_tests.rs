@@ -457,3 +457,37 @@ fn the_transcript_keeps_the_reason_question_and_answer() {
         "  run it with network access? [y/N/a=always]"
     );
 }
+
+#[test]
+fn a_question_that_can_be_called_off_takes_q_esc_and_ctrl_c_as_cancel() {
+    let t0 = Instant::now();
+    let question = Question::yes_no_cancel("put it back as it was?");
+    let (rows, _) = shown(question.clone(), t0).rows(50, 20, t0);
+    assert_eq!(
+        text(&rows),
+        [
+            "┌ question ──────────────────────────────────────┐",
+            "│ put it back as it was? [Y/n, q = cancel]       │",
+            "│ [y] yes (default)   [n] no   [q] cancel        │",
+            "└────────────────────────────────────────────────┘",
+        ]
+    );
+    for (key, want) in [
+        (press(KeyCode::Enter), Answer::Yes),
+        (press(KeyCode::Char('y')), Answer::Yes),
+        (press(KeyCode::Char('n')), Answer::No),
+        (press(KeyCode::Char('q')), Answer::Cancel),
+        (press(KeyCode::Esc), Answer::Cancel),
+        (ctrl_c(), Answer::Cancel),
+    ] {
+        let mut q = shown(question.clone(), t0);
+        let Some(Taken::Answered { answer, .. }) = q.key(key, t0 + AFTER, false) else {
+            panic!("{key:?}")
+        };
+        assert_eq!(answer, want, "{key:?}");
+    }
+    assert_eq!(answer_word(Answer::Cancel), "q");
+    // Not one of the others: q there is nobody's.
+    let mut q = shown(Question::yes_no(None, "go?"), t0);
+    assert_eq!(q.key(press(KeyCode::Char('q')), t0 + AFTER, false), None);
+}

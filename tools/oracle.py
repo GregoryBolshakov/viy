@@ -105,6 +105,8 @@ FUNCTIONS = {
     "redact.is_secret_name": ("rpctl.redact", "is_secret_name"),
     "redact.literal_secrets": ("rpctl.redact", "literal_secrets"),
     "redact.text": redact_text,
+    # Resolves paths and asks git about core.hooksPath (no writes).
+    "sandbox.protected_reason": ("rpctl.sandbox", "protected_reason"),
     "sandbox.secret_name_reason": ("rpctl.sandbox", "secret_name_reason"),
     "shutdown.fmt": ("rpctl.shutdown", "_fmt"),
     "shutdown.is_chat": shutdown_is_chat,

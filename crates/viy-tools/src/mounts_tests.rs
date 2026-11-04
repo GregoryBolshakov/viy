@@ -203,7 +203,8 @@ fn a_scan_finds_the_secret_files() {
     std::fs::create_dir_all(t.drive.join("node_modules/x")).unwrap();
     std::fs::write(t.drive.join("node_modules/x/.env"), "").unwrap();
     std::fs::write(t.drive.join("docs/id_rsa"), "").unwrap();
-    let m = scan(&t.drive, false);
+    let m = scan(&t.drive, false, &std::sync::atomic::AtomicBool::new(false)).unwrap();
+    assert!(scan(&t.drive, false, &std::sync::atomic::AtomicBool::new(true)).is_none());
     let mut names: Vec<_> = m
         .secrets
         .iter()
@@ -274,4 +275,19 @@ fn note_and_parse_arg_match_rpctl() {
             seed()
         );
     }
+}
+
+/// A mount point that is not UTF-8 keeps its real path and the other rows
+/// (found by the WP 4.5 review: one bad line emptied the table, and with it
+/// the rw refusals).
+#[test]
+fn a_mount_table_with_a_latin1_label() {
+    use std::os::unix::ffi::OsStrExt;
+    let raw =
+        b"/dev/sda1 /media/me/CL\xc9 vfat rw 0 0\n/dev/sdb1 /media/me/USB\\040stick ext4 ro 0 0\n";
+    let rows = parse_mount_table(raw);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].target.as_os_str().as_bytes(), b"/media/me/CL\xc9");
+    assert_eq!(rows[1].target, PathBuf::from("/media/me/USB stick"));
+    assert!(rows[1].read_only);
 }

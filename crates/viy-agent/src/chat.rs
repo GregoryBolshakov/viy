@@ -35,6 +35,7 @@ use std::sync::PoisonError;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+use viy_tools::approve::is_py_space;
 
 use serde_json::Value;
 use serde_json::json;
@@ -1388,11 +1389,6 @@ pub use commands::POD_COMMANDS;
 pub use commands::history_items;
 pub use commands::render_content;
 
-/// Python's `\s`: Unicode whitespace and `\x1c`-`\x1f`.
-fn py_space(c: char) -> bool {
-    c.is_whitespace() || ('\x1c'..='\x1f').contains(&c)
-}
-
 /// rp's `"path"\s*:\s*"/`: a file tool call on an absolute path.
 fn absolute_path_arg(args: &str) -> bool {
     key_then_quoted(args, "\"path\"", |rest| rest.starts_with('/'))
@@ -1401,9 +1397,9 @@ fn absolute_path_arg(args: &str) -> bool {
 /// rp's `"command"\s*:\s*"\s*ssh\s`: a command that starts with ssh.
 fn ssh_command_arg(args: &str) -> bool {
     key_then_quoted(args, "\"command\"", |rest| {
-        let rest = rest.trim_start_matches(py_space);
+        let rest = rest.trim_start_matches(is_py_space);
         rest.strip_prefix("ssh")
-            .is_some_and(|r| r.starts_with(py_space))
+            .is_some_and(|r| r.starts_with(is_py_space))
     })
 }
 
@@ -1411,9 +1407,9 @@ fn ssh_command_arg(args: &str) -> bool {
 /// `then` accepts.
 fn key_then_quoted(text: &str, key: &str, then: impl Fn(&str) -> bool) -> bool {
     text.match_indices(key).any(|(i, _)| {
-        let rest = text[i + key.len()..].trim_start_matches(py_space);
+        let rest = text[i + key.len()..].trim_start_matches(is_py_space);
         rest.strip_prefix(':')
-            .map(|r| r.trim_start_matches(py_space))
+            .map(|r| r.trim_start_matches(is_py_space))
             .and_then(|r| r.strip_prefix('"'))
             .is_some_and(&then)
     })

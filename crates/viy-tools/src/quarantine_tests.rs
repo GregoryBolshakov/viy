@@ -16,7 +16,8 @@ fn a_bare_repository_built_file_by_file_is_moved_out() {
     let found = bare_repo_ancestors(&repo.join("config"), &ws);
     assert_eq!(found, std::slice::from_ref(&repo));
     let dest = scratch.path().join("quarantine/20260721-120000");
-    let moved = quarantine(&found, &ws, &dest).unwrap();
+    let (moved, failed) = quarantine(&found, &ws, &dest);
+    assert!(failed.is_none());
     assert_eq!(
         moved,
         [("vendor/evil".to_string(), dest.join("vendor/evil"))]

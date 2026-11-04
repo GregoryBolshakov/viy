@@ -8,6 +8,9 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use viy_tools::mounts;
 use viy_tools::mounts::Mount;
 
@@ -566,7 +569,29 @@ impl Chat {
                 return say(NoticeLevel::Info, "  not mounted".into());
             }
         }
-        let m = mounts::scan(&path, rw);
+        // The walk runs off the engine's thread; Ctrl-C (the command
+        // cancelled) stops it, as rp's KeyboardInterrupt does.
+        let stop = Arc::new(AtomicBool::new(false));
+        let mut stopped = StopScan {
+            stop: Arc::clone(&stop),
+            ctx: Some(ctx.clone()),
+            path: path.clone(),
+        };
+        let walk = {
+            let (path, stop) = (path.clone(), Arc::clone(&stop));
+            tokio::task::spawn_blocking(move || mounts::scan(&path, rw, &stop))
+        };
+        let scanned = walk.await.ok().flatten();
+        stopped.ctx = None;
+        let Some(m) = scanned else {
+            return say(
+                NoticeLevel::Warn,
+                format!(
+                    "not mounted: stopped while looking through {}; a smaller folder is quicker",
+                    path.display()
+                ),
+            );
+        };
         let (mode, secrets) = (m.mode(), m.secrets.len());
         self.files.mounts.retain(|x| x.path != path);
         self.files.mounts.push(m);
@@ -1117,6 +1142,31 @@ impl Chat {
         if !text.is_empty() {
             ctx.emit(EventMsg::InputPrefill(InputPrefillEvent { text }));
             info("your message is back at the prompt: edit it, or Enter to send it again".into());
+        }
+    }
+}
+
+/// Stops `/mount`'s walk when the command is dropped half way (Ctrl-C),
+/// and says so; defused (no `ctx`) once the walk is over.
+struct StopScan {
+    stop: Arc<AtomicBool>,
+    ctx: Option<TurnContext>,
+    path: PathBuf,
+}
+
+impl Drop for StopScan {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(ctx) = self.ctx.take() {
+            notice(
+                &ctx,
+                NoticeLevel::Warn,
+                "mount",
+                format!(
+                    "not mounted: stopped while looking through {}; a smaller folder is quicker",
+                    self.path.display()
+                ),
+            );
         }
     }
 }

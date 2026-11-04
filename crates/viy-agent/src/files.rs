@@ -125,6 +125,8 @@ fn line(level: NoticeLevel, text: String) -> NoticeEvent {
 pub fn line_span(args: &Map<String, Value>, lines: usize) -> Option<(usize, usize)> {
     let num = |k: &str| -> Option<i64> {
         match args.get(k)? {
+            // Python's int(): any size; here clamped, which picks the same
+            // lines (a range is cut to the file).
             Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f.trunc() as i64)),
             Value::String(s) => s.trim().parse().ok(),
             Value::Bool(b) => Some(i64::from(*b)),
@@ -139,7 +141,12 @@ pub fn line_span(args: &Map<String, Value>, lines: usize) -> Option<(usize, usiz
     if b.is_none()
         && let Some(lim) = lim
     {
-        b = Some(a.filter(|a| *a != 0).unwrap_or(1) + lim - 1);
+        b = Some(
+            a.filter(|a| *a != 0)
+                .unwrap_or(1)
+                .saturating_add(lim)
+                .saturating_sub(1),
+        );
     }
     if a.is_none() && b.is_none() {
         return None;
@@ -172,26 +179,77 @@ pub fn clip(text: &str, limit: usize) -> String {
 }
 
 /// `^([fsd])(\d+)-.+\.md$`: a knowledge-base file's letter and number.
+/// As rpctl's Python pattern: `\d` is any digit (every Unicode numeric
+/// character here), and `$` also matches before a final newline.
 fn kb_id(name: &str) -> Option<(char, &str)> {
-    let mut chars = name.chars();
-    let letter = chars.next().filter(|c| matches!(c, 'f' | 's' | 'd'))?;
+    let name = name.strip_suffix('\n').unwrap_or(name);
+    let letter = name
+        .chars()
+        .next()
+        .filter(|c| matches!(c, 'f' | 's' | 'd'))?;
     let rest = &name[1..];
-    let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    let digits = rest.len() - rest.trim_start_matches(char::is_numeric).len();
     let after = &rest[digits..];
-    (digits > 0 && after.starts_with('-') && after.len() > 4 && after.ends_with(".md"))
-        .then_some((letter, &rest[..digits]))
+    (digits > 0
+        && after.starts_with('-')
+        && after.chars().count() > 4
+        && after.ends_with(".md")
+        && !after.contains('\n'))
+    .then_some((letter, &rest[..digits]))
+}
+
+/// A run of digits as rpctl's `int()` compares them: leading zeros dropped,
+/// any length. A non-ASCII digit keeps its character, so two spellings of
+/// one number may not compare equal; the check then refuses no less than
+/// it must only when the spellings agree (see [`FileTools::write_conflict`]).
+fn digits_value(digits: &str) -> String {
+    let v = digits.trim_start_matches('0');
+    if v.is_empty() {
+        "0".into()
+    } else {
+        v.to_string()
+    }
 }
 
 const KB_DIRS: [&str; 3] = ["facts", "strategy", "decisions"];
 
-/// The path the model gave: a string; a number or the like as its JSON
-/// text; nothing when absent or empty.
-fn path_arg(args: &Map<String, Value>) -> Option<String> {
-    match args.get("path")? {
-        Value::String(s) if !s.is_empty() => Some(s.clone()),
-        Value::String(_) | Value::Null => None,
-        Value::Bool(false) => None,
-        other => Some(other.to_string()),
+/// A decimal number written in ASCII digits, plus one, of any length.
+fn plus_one(n: &str) -> String {
+    let mut digits: Vec<u8> = n.bytes().map(|b| b - b'0').collect();
+    let mut i = digits.len();
+    loop {
+        if i == 0 {
+            digits.insert(0, 1);
+            break;
+        }
+        i -= 1;
+        if digits[i] == 9 {
+            digits[i] = 0;
+        } else {
+            digits[i] += 1;
+            break;
+        }
+    }
+    digits.iter().map(|d| char::from(b'0' + d)).collect()
+}
+
+/// The path the model gave. `Ok(None)` when it gave none or a false-like
+/// one (rpctl's `if not rel`: null, false, 0, "", [], {}); an error for any
+/// other value that is not a string, which rpctl's tool cannot take either.
+fn path_arg(args: &Map<String, Value>) -> Result<Option<String>, Outcome> {
+    let falsy = |v: &Value| match v {
+        Value::Null => true,
+        Value::Bool(b) => !b,
+        Value::Number(n) => n.as_f64() == Some(0.0),
+        Value::String(s) => s.is_empty(),
+        Value::Array(a) => a.is_empty(),
+        Value::Object(o) => o.is_empty(),
+    };
+    match args.get("path") {
+        None => Ok(None),
+        Some(v) if falsy(v) => Ok(None),
+        Some(Value::String(s)) => Ok(Some(s.clone())),
+        Some(_) => Err(Outcome::error("path must be a string")),
     }
 }
 
@@ -206,7 +264,7 @@ impl FileTools {
             workspace,
             project_dir,
             mounts: Vec::new(),
-            clients: Vec::new(),
+            clients: guard::client_paths(),
             write_requires_read: true,
             max_output: 20000,
             locks_dir,
@@ -369,24 +427,39 @@ impl FileTools {
         {
             return None;
         }
-        let want: u128 = num.parse().ok()?;
+        // A number in digits other than ASCII: rpctl reads its value, which
+        // viy cannot compare; refuse it rather than risk a taken id.
+        if !num.chars().all(|c| c.is_ascii_digit()) {
+            return Some((
+                format!("id {letter}{num} is not in ASCII digits"),
+                format!(
+                    "write the knowledge-base id {letter}{num} with the digits 0-9 (and use \
+                     that id in its frontmatter)."
+                ),
+            ));
+        }
+        let want = digits_value(num);
         let mut taken: Vec<String> = Vec::new();
-        let mut nums: Vec<u128> = Vec::new();
+        let mut nums: Vec<String> = Vec::new();
         for entry in fs::read_dir(parent).ok()?.flatten() {
             let other = entry.file_name().to_string_lossy().into_owned();
-            if let Some((l, n)) = kb_id(&other).filter(|(l, _)| *l == letter)
-                && let Ok(n) = n.parse::<u128>()
-            {
-                let _ = l;
-                nums.push(n);
+            if let Some((_, n)) = kb_id(&other).filter(|(l, _)| *l == letter) {
+                let n = digits_value(n);
                 if n == want {
                     taken.push(other.clone());
                 }
+                nums.push(n);
             }
         }
         let first = taken.first()?;
-        let next = nums.iter().max().copied().unwrap_or(0) + 1;
-        let next = format!("{letter}{next:0width$}", width = num.len());
+        // The largest by value: longer is larger once zeros are dropped.
+        let max = nums
+            .iter()
+            .filter(|n| n.chars().all(|c| c.is_ascii_digit()))
+            .max_by(|a, b| a.len().cmp(&b.len()).then_with(|| a.cmp(b)))
+            .cloned()
+            .unwrap_or_default();
+        let next = format!("{letter}{:0>width$}", plus_one(&max), width = num.len());
         Some((
             format!("id {letter}{num} is taken by {first}"),
             format!(
@@ -424,8 +497,10 @@ impl FileTools {
         ui: &dyn Ui,
         stamp: &str,
     ) -> Outcome {
-        let Some(rel) = path_arg(args) else {
-            return Outcome::error("no path given");
+        let rel = match path_arg(args) {
+            Ok(Some(rel)) => rel,
+            Ok(None) => return Outcome::error("no path given"),
+            Err(refused) => return refused,
         };
         let data = match args.get("content") {
             None | Some(Value::Null) => String::new(),
@@ -470,37 +545,54 @@ impl FileTools {
         // A bare git repository can be assembled one file at a time.
         let root = mounts::containing(&self.mounts, &path)
             .map_or_else(|| self.workspace.clone(), |m| m.path.clone());
+        let path_written = path.clone();
         let bare = quarantine::bare_repo_ancestors(&path, &root);
         if !bare.is_empty() {
             let dest = self.quarantine_dir.join(stamp);
-            match quarantine::quarantine(&bare, &root, &dest) {
-                Ok(moved) => {
-                    for (rel, dest) in &moved {
-                        ui.notice(line(
-                            NoticeLevel::Error,
-                            format!("  [quarantined] {rel} -> {}", dest.display()),
-                        ));
-                    }
+            let (moved, failed) = quarantine::quarantine(&bare, &root, &dest);
+            if !moved.is_empty() {
+                for (rel, dest) in &moved {
                     ui.notice(line(
-                        NoticeLevel::Info,
-                        "  (git repos, editor configs and .rpctl/ run code outside the sandbox, \
-                         so new ones are moved out)"
-                            .into(),
+                        NoticeLevel::Error,
+                        format!("  [quarantined] {rel} -> {}", dest.display()),
                     ));
-                    result["quarantined"] = json!(moved.iter().map(|(r, _)| r).collect::<Vec<_>>());
                 }
-                Err(e) => ui.notice(line(
+                ui.notice(line(
+                    NoticeLevel::Info,
+                    "  (git repos, editor configs and .rpctl/ run code outside the sandbox, \
+                     so new ones are moved out)"
+                        .into(),
+                ));
+                result["quarantined"] = json!(moved.iter().map(|(r, _)| r).collect::<Vec<_>>());
+            }
+            if let Some((path, e)) = failed {
+                // The write happened; the repository may still be there.
+                ui.notice(line(
                     NoticeLevel::Error,
-                    format!("  [quarantine failed] {}: {e}", bare[0].display()),
-                )),
+                    format!("  [quarantine failed] {}: {e}", path.display()),
+                ));
+                let mut out = json!({
+                    "error": format!(
+                        "wrote {}, but could not move the bare repository {} out of the \
+                         workspace: {e}",
+                        self.ws_rel(&path_written),
+                        self.ws_rel(&path)
+                    ),
+                });
+                if !moved.is_empty() {
+                    out["quarantined"] = json!(moved.iter().map(|(r, _)| r).collect::<Vec<_>>());
+                }
+                return Outcome::ok(out);
             }
         }
         Outcome::ok(result)
     }
 
     pub async fn read_file(&mut self, args: &Map<String, Value>, ui: &dyn Ui) -> Outcome {
-        let Some(rel) = path_arg(args) else {
-            return Outcome::error("no path given");
+        let rel = match path_arg(args) {
+            Ok(Some(rel)) => rel,
+            Ok(None) => return Outcome::error("no path given"),
+            Err(refused) => return refused,
         };
         let path = match self.resolve_in_workspace(&rel) {
             Ok(p) => p,
@@ -530,13 +622,13 @@ impl FileTools {
             let part: Vec<String> = (a..=b).map(|n| format!("{n}: {}", lines[n - 1])).collect();
             let part = part.join("\n");
             let clipped = clip(&part, self.max_output);
+            let truncated = clipped != part;
             return Outcome::ok(json!({
                 "path": shown,
                 "lines": format!("{a}-{b} of {}", lines.len()),
-                "truncated": clipped != part,
                 "content": clipped,
-            }))
-            .reorder(&["path", "lines", "content", "truncated"]);
+                "truncated": truncated,
+            }));
         }
         let clipped = clip(&data, self.max_output);
         let mut out = json!({"path": shown, "content": clipped, "truncated": clipped != data});
@@ -551,7 +643,10 @@ impl FileTools {
     }
 
     pub fn list_dir(&self, args: &Map<String, Value>) -> Outcome {
-        let rel = path_arg(args).unwrap_or_else(|| ".".into());
+        let rel = match path_arg(args) {
+            Ok(rel) => rel.unwrap_or_else(|| ".".into()),
+            Err(refused) => return refused,
+        };
         let path = match self.resolve_in_workspace(&rel) {
             Ok(p) => p,
             Err(e) => return Outcome::error(e),
@@ -585,23 +680,6 @@ impl FileTools {
             })
             .collect();
         Outcome::ok(json!({"path": self.ws_rel(&path), "entries": entries}))
-    }
-}
-
-impl Outcome {
-    /// The result's keys in `order` (rp's dict order).
-    fn reorder(mut self, order: &[&str]) -> Self {
-        if let Value::Object(map) = &mut self.result {
-            let mut sorted = Map::new();
-            for k in order {
-                if let Some(v) = map.shift_remove(*k) {
-                    sorted.insert((*k).to_string(), v);
-                }
-            }
-            sorted.extend(std::mem::take(map));
-            *map = sorted;
-        }
-        self
     }
 }
 

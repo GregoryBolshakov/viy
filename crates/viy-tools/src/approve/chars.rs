@@ -13,7 +13,7 @@
 /// Python's `\s` and `str.isspace`: Unicode White_Space plus the four
 /// information separators `\x1c`-`\x1f`, which Python counts and Rust does
 /// not.
-pub(super) fn is_py_space(c: char) -> bool {
+pub fn is_py_space(c: char) -> bool {
     c.is_whitespace() || ('\x1c'..='\x1f').contains(&c)
 }
 

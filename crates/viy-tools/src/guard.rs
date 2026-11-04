@@ -163,38 +163,57 @@ pub fn workspace_problem(ws: &Path, home: &Path, rules_path: &Path) -> Option<St
 }
 
 /// The clients' own code, which the model must never write (kb d014):
-/// viy's binary, its source tree when the binary was built in one
-/// (`<repo>/target/<profile>/viy`), and rp's installed `rpctl` package,
-/// found through the `rp` on PATH (a pipx venv, or the folder its editable
-/// install maps `rpctl` to).
+/// viy's binary; when it was built in a source tree
+/// (`<repo>/target/<profile>/viy`), that tree's sources and every file
+/// cargo reads or runs at the next build there (the manifests and lock,
+/// `.cargo/`, the toolchain pin, a build script at the root), as rpctl
+/// protects its own `pyproject.toml` and `setup.py`; and rp's installed
+/// `rpctl` package, found through the `rp` on PATH (a pipx venv, or the
+/// folder its editable install maps `rpctl` to). All resolved, as the
+/// paths they are compared with.
 pub fn client_paths() -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         let exe = resolve(&exe);
-        if let Some(repo) = exe
-            .parent()
-            .and_then(Path::parent)
-            .filter(|t| t.file_name().is_some_and(|n| n == "target"))
-            .and_then(Path::parent)
-        {
-            out.push(repo.join("crates"));
+        if let Some(repo) = source_tree(&exe) {
+            for name in [
+                "crates",
+                "Cargo.toml",
+                "Cargo.lock",
+                ".cargo",
+                "rust-toolchain.toml",
+                "rust-toolchain",
+                "build.rs",
+                "clippy.toml",
+                "rustfmt.toml",
+            ] {
+                out.push(repo.join(name));
+            }
         }
         out.push(exe);
     }
-    out.extend(rpctl_package());
+    out.extend(rpctl_package().map(|p| resolve(&p)));
     out
 }
 
+/// The source tree a binary at `<repo>/target/<profile>/viy` was built in.
+pub fn source_tree(exe: &Path) -> Option<&Path> {
+    exe.parent()
+        .and_then(Path::parent)
+        .filter(|t| t.file_name().is_some_and(|n| n == "target"))
+        .and_then(Path::parent)
+}
+
 fn rpctl_package() -> Option<PathBuf> {
-    let rp = std::env::var_os("PATH")?
+    let path = std::env::var_os("PATH")?;
+    let rp = path
         .to_string_lossy()
         .split(':')
         .filter(|d| d.starts_with('/'))
         .map(|d| Path::new(d).join("rp"))
         .find(|p| p.is_file())?;
     let venv = resolve(&rp).parent()?.parent()?.to_path_buf();
-    let lib = std::fs::read_dir(venv.join("lib")).ok()?;
-    for dir in lib.flatten() {
+    for dir in std::fs::read_dir(venv.join("lib")).ok()?.flatten() {
         let site = dir.path().join("site-packages");
         if site.join("rpctl").is_dir() {
             return Some(site.join("rpctl"));
@@ -204,10 +223,16 @@ fn rpctl_package() -> Option<PathBuf> {
             if !(name.starts_with("__editable___rpctl") && name.ends_with("_finder.py")) {
                 continue;
             }
-            let text = std::fs::read_to_string(f.path()).ok()?;
-            let at = text.find("'rpctl': '")? + "'rpctl': '".len();
-            let end = text[at..].find('\'')?;
-            return Some(PathBuf::from(&text[at..at + end]));
+            // One unreadable or odd finder does not end the search.
+            let Ok(text) = std::fs::read_to_string(f.path()) else {
+                continue;
+            };
+            let Some(at) = text.find("'rpctl': '").map(|i| i + "'rpctl': '".len()) else {
+                continue;
+            };
+            if let Some(end) = text[at..].find('\'') {
+                return Some(PathBuf::from(&text[at..at + end]));
+            }
         }
     }
     None

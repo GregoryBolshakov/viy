@@ -34,14 +34,14 @@ pub fn bare_repo_ancestors(path: &Path, ws: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// What was moved (workspace-relative, destination), and the first path
+/// that could not be, with why.
+pub type Moved = (Vec<(String, PathBuf)>, Option<(PathBuf, io::Error)>);
+
 /// Moves `paths` out of workspace `ws` into `dest_root` (the quarantine
 /// folder and a timestamp), deepest first so a parent's move cannot strand
-/// a child. Returns `(workspace-relative, destination)` of each moved.
-pub fn quarantine(
-    paths: &[PathBuf],
-    ws: &Path,
-    dest_root: &Path,
-) -> io::Result<Vec<(String, PathBuf)>> {
+/// a child. Stops at the first failure, keeping what was moved before it.
+pub fn quarantine(paths: &[PathBuf], ws: &Path, dest_root: &Path) -> Moved {
     let ws = resolve(ws);
     let mut sorted: Vec<&PathBuf> = paths.iter().collect();
     sorted.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
@@ -52,13 +52,16 @@ pub fn quarantine(
         }
         let rel = p.strip_prefix(&ws).unwrap_or(p).to_path_buf();
         let dest = dest_root.join(&rel);
-        if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)?;
+        let done = match dest.parent() {
+            Some(parent) => fs::create_dir_all(parent).and_then(|()| move_path(p, &dest)),
+            None => move_path(p, &dest),
+        };
+        if let Err(e) = done {
+            return (moved, Some((p.clone(), e)));
         }
-        move_path(p, &dest)?;
         moved.push((rel.display().to_string(), dest));
     }
-    Ok(moved)
+    (moved, None)
 }
 
 /// A rename, or across filesystems a copy and a removal (shutil.move).

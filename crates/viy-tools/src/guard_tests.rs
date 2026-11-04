@@ -195,3 +195,18 @@ fn protected_reason_never_less_strict() {
     }
     eprintln!("protected_reason: {extra} paths only viy's names protect");
 }
+
+/// viy's source tree, when the binary was built in one: its build inputs
+/// are the client's code (found by the WP 4.5 review).
+#[test]
+fn a_source_tree_and_its_build_inputs() {
+    assert_eq!(
+        source_tree(Path::new("/r/target/debug/viy")),
+        Some(Path::new("/r"))
+    );
+    assert_eq!(source_tree(Path::new("/usr/local/bin/viy")), None);
+    let clients = [PathBuf::from("/r/Cargo.toml"), PathBuf::from("/r/.cargo")];
+    let r = Path::new("/r");
+    assert!(protected_reason(&r.join(".cargo/config.toml"), r, r, &clients).is_some());
+    assert!(protected_reason(&r.join("Cargo.toml"), r, r, &clients).is_some());
+}

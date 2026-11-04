@@ -368,3 +368,90 @@ fn line_span_edges() {
     assert_eq!(line_span(&a(json!({"limit": 2})), 5), Some((1, 2)));
     let _ = Path::new("");
 }
+
+// Found by the WP 4.5 review.
+
+#[tokio::test]
+async fn a_path_that_is_not_a_string_is_refused() {
+    let mut f = fx();
+    let user = User::answering(Answer::No);
+    for (path, want) in [
+        (json!(5), "path must be a string"),
+        (json!({"a": 1}), "path must be a string"),
+        (json!(true), "path must be a string"),
+        (json!(0), "no path given"),
+        (json!([]), "no path given"),
+        (json!(false), "no path given"),
+    ] {
+        let got = f
+            .tools
+            .write_file(&args(json!({"path": path, "content": "x"})), &user, "S")
+            .await;
+        assert_eq!(got.result["error"], want, "{path}");
+    }
+    assert_eq!(std::fs::read_dir(&f.ws).unwrap().count(), 1, "only .rpctl");
+    assert_eq!(
+        f.tools.list_dir(&args(json!({"path": 0}))).result["path"],
+        "."
+    );
+    assert_eq!(
+        f.tools.list_dir(&args(json!({"path": 7}))).result["error"],
+        "path must be a string"
+    );
+}
+
+#[tokio::test]
+async fn a_huge_range_reads_to_the_end() {
+    let mut f = fx();
+    std::fs::write(f.ws.join("t.txt"), "a\nb\nc").unwrap();
+    let r = f
+        .r(json!({"path": "t.txt", "offset": 2, "limit": i64::MAX}))
+        .await;
+    assert_eq!(r["content"], "2: b\n3: c");
+    let r = f
+        .r(json!({"path": "t.txt", "offset": 2, "limit": 1e300}))
+        .await;
+    assert_eq!(r["content"], "2: b\n3: c");
+}
+
+#[tokio::test]
+async fn a_failed_quarantine_is_an_error_for_the_model() {
+    let mut f = fx();
+    f.tools.write_requires_read = false;
+    std::fs::create_dir_all(f.ws.join("evil/objects")).unwrap();
+    std::fs::create_dir_all(f.ws.join("evil/refs")).unwrap();
+    // The quarantine folder cannot be made: a file stands in its way.
+    std::fs::create_dir_all(f.root.join("state")).unwrap();
+    std::fs::write(f.root.join("state/quarantine"), "").unwrap();
+    let r = f.w("evil/HEAD", "ref: refs/heads/main\n").await;
+    let err = r["error"].as_str().unwrap();
+    assert!(
+        err.starts_with("wrote evil/HEAD, but could not move the bare repository evil"),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn kb_ids_as_rpctl_reads_them() {
+    let mut f = fx();
+    let facts = f.ws.join("kb/facts");
+    std::fs::create_dir_all(&facts).unwrap();
+    std::fs::write(facts.join("f0001-a.md"), "x").unwrap();
+    // Python's `$` matches before a final newline.
+    let r = f.w("kb/facts/f0001-b.md\n", "x").await;
+    assert!(r["error"].as_str().unwrap().contains("f0002"), "{r}");
+    // Digits Python reads and viy cannot compare: refused.
+    let r = f.w("kb/facts/f\u{661}-b.md", "x").await;
+    assert!(r["error"].as_str().unwrap().contains("digits 0-9"), "{r}");
+    // Numbers of any length.
+    let big = "9".repeat(45);
+    std::fs::write(facts.join(format!("f{big}-c.md")), "x").unwrap();
+    let r = f.w(&format!("kb/facts/f{big}-d.md"), "x").await;
+    assert!(
+        r["error"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("f1{}", "0".repeat(45))),
+        "{r}"
+    );
+}

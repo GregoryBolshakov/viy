@@ -18,8 +18,11 @@
 //! changed file runs at the next boot.
 
 use std::fs;
+use std::os::unix::ffi::OsStringExt;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -121,7 +124,10 @@ pub fn parse_arg(arg: &str) -> (String, bool) {
 
 /// /proc/self/mounts writes space, tab, newline and backslash as `\ooo`.
 pub fn unescape(field: &str) -> String {
-    let b = field.as_bytes();
+    String::from_utf8_lossy(&unescape_bytes(field.as_bytes())).into_owned()
+}
+
+fn unescape_bytes(b: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
@@ -132,29 +138,37 @@ pub fn unescape(field: &str) -> String {
             let v = u32::from(b[i + 1] - b'0') * 64
                 + u32::from(b[i + 2] - b'0') * 8
                 + u32::from(b[i + 3] - b'0');
-            out.extend(char::from_u32(v).unwrap_or('?').to_string().bytes());
+            out.push(u8::try_from(v).unwrap_or(b'?'));
             i += 4;
         } else {
             out.push(b[i]);
             i += 1;
         }
     }
-    String::from_utf8_lossy(&out).into_owned()
+    out
 }
 
-/// Everything mounted.
+/// Everything mounted. Read as bytes, so a mount point that is not UTF-8
+/// (a stick's Latin-1 label) keeps its real path and the rest stay listed.
 pub fn mount_table() -> Vec<Volume> {
-    let Ok(text) = fs::read_to_string("/proc/self/mounts") else {
-        return Vec::new();
-    };
-    text.lines()
+    fs::read("/proc/self/mounts")
+        .map(|raw| parse_mount_table(&raw))
+        .unwrap_or_default()
+}
+
+/// The rows of a mount table's text.
+pub fn parse_mount_table(raw: &[u8]) -> Vec<Volume> {
+    raw.split(|b| *b == b'\n')
         .filter_map(|line| {
-            let f: Vec<&str> = line.split_whitespace().collect();
+            let f: Vec<&[u8]> = line
+                .split(u8::is_ascii_whitespace)
+                .filter(|f| !f.is_empty())
+                .collect();
             (f.len() >= 4).then(|| Volume {
-                target: PathBuf::from(unescape(f[1])),
-                source: unescape(f[0]),
-                fstype: f[2].to_string(),
-                read_only: f[3].split(',').any(|o| o == "ro"),
+                target: PathBuf::from(std::ffi::OsString::from_vec(unescape_bytes(f[1]))),
+                source: String::from_utf8_lossy(&unescape_bytes(f[0])).into_owned(),
+                fstype: String::from_utf8_lossy(f[2]).into_owned(),
+                read_only: f[3].split(|b| *b == b',').any(|o| o == b"ro"),
             })
         })
         .collect()
@@ -355,9 +369,17 @@ pub fn problem(
 /// Secret files anywhere under `root` (at most `limit`), to be masked with
 /// empty files in the sandbox. Symlinked folders are not walked.
 pub fn secret_files(root: &Path, limit: usize) -> Vec<PathBuf> {
+    secret_files_until(root, limit, &AtomicBool::new(false)).unwrap_or_default()
+}
+
+/// [`secret_files`], given up (`None`) once `stop` is set.
+pub fn secret_files_until(root: &Path, limit: usize, stop: &AtomicBool) -> Option<Vec<PathBuf>> {
     let mut found = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
+        if stop.load(Ordering::Relaxed) {
+            return None;
+        }
         let Ok(entries) = fs::read_dir(&dir) else {
             continue;
         };
@@ -374,27 +396,27 @@ pub fn secret_files(root: &Path, limit: usize) -> Vec<PathBuf> {
             } else if is_secret_name(&name) {
                 found.push(e.path());
                 if found.len() >= limit {
-                    return found;
+                    return Some(found);
                 }
             }
         }
         // Top-down, in the directory's own order, as os.walk.
         stack.extend(dirs.into_iter().rev());
     }
-    found
+    Some(found)
 }
 
 /// A new [`Mount`] for `path`: its secret files and the time one walk
-/// takes.
-pub fn scan(path: &Path, rw: bool) -> Mount {
+/// takes; `None` when `stop` was set during the walk (rp's Ctrl-C).
+pub fn scan(path: &Path, rw: bool, stop: &AtomicBool) -> Option<Mount> {
     let t0 = Instant::now();
-    let secrets = secret_files(path, 200);
-    Mount {
+    let secrets = secret_files_until(path, 200, stop)?;
+    Some(Mount {
         path: path.to_path_buf(),
         rw,
         secrets,
         scan: t0.elapsed(),
-    }
+    })
 }
 
 /// The mount `path` is in.

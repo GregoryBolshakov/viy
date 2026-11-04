@@ -1,0 +1,224 @@
+viy License
+Version 1.0
+
+Copyright (c) 2026 Gregory Bolshakov
+All rights not expressly granted in this License are reserved.
+
+This License lets you use, study, change and share viy, and contribute to
+it, for free. It does not let you make money from viy or use it to compete
+with it. For any use this License does not allow, ask the Licensor for a
+separate written license.
+
+
+1. Definitions
+
+"Licensor" means Gregory Bolshakov, the copyright holder.
+
+"Software" means the source code, object code, documentation, artwork and
+other material published by the Licensor in the viy repository, in any
+version.
+
+"You" means the individual or legal entity exercising rights under this
+License, and every entity that controls, is controlled by or is under
+common control with that entity.
+
+"Derivative Work" means any work based on the Software or on a substantial
+part of it, whether modified, translated, extended, or combined with other
+material, including a fork of the repository.
+
+"Contribution" means any work You submit to the Licensor for inclusion in
+the Software, by pull request, patch, issue, comment or otherwise.
+
+"Branding" means the name "viy", the centipede header artwork, the title
+the Software shows in the terminal, and every other visual, textual or
+symbolic identifier that distinguishes the Software and its interfaces.
+
+"Commercial Use" means any use, copying, modification or distribution of
+the Software or of a Derivative Work that is intended for or directed
+toward commercial advantage or monetary compensation, by You or by anyone
+else. Commercial Use includes, without limitation:
+
+  (a) selling, licensing, renting or leasing the Software or a Derivative
+      Work, or charging for access to it, its installation, hosting,
+      support or updates;
+
+  (b) offering the Software, a Derivative Work, or functionality
+      substantially derived from either, to others as a hosted, managed or
+      online service;
+
+  (c) including the Software or a Derivative Work in, or bundling it with,
+      a product or service that is sold or provided for any fee or other
+      compensation;
+
+  (d) receiving payment, referral or affiliate fees, credits, sponsorship
+      or any other compensation from a third party in connection with the
+      Software or a Derivative Work, including for selecting, recommending
+      or configuring any provider, model, endpoint, service or default
+      setting;
+
+  (e) showing advertising in the Software or a Derivative Work, or
+      collecting data through it for sale or for advertising;
+
+  (f) using the Software or a Derivative Work as training data for a
+      machine learning model that is offered commercially.
+
+Using the Software as a tool in Your own work is not Commercial Use, even
+when that work is paid, as long as none of (a) to (f) applies. A developer
+who uses viy to write code for a client, or the staff of a company who use
+viy for the company's own work, are not making Commercial Use.
+
+"Competing Offering" means any product, service or project, offered or
+made available to others, free or paid, that substitutes for the Software
+or for a product or service the Licensor provides using the Software, and
+that is offered under a name or Branding other than the Software's or is a
+Commercial Use.
+
+
+2. License grant
+
+Subject to the conditions and limitations of this License, the Licensor
+grants You a worldwide, non-exclusive, royalty-free, non-sublicensable
+license to:
+
+  (a) use, copy and run the Software;
+  (b) study and modify the Software and create Derivative Works;
+  (c) distribute the Software and Derivative Works as allowed in section 4;
+  (d) submit Contributions as described in section 6.
+
+The Licensor also grants You a license, of the same scope, under any patent
+claims the Licensor can license that the Software, as published by the
+Licensor, necessarily infringes.
+
+
+3. Limitations
+
+You may not:
+
+  (a) make Commercial Use of the Software or of a Derivative Work;
+
+  (b) use the Software, a Derivative Work, or a substantial part of either,
+      to develop, offer or support a Competing Offering;
+
+  (c) remove, obscure or alter any copyright notice, license notice or
+      third-party notice in the Software;
+
+  (d) sublicense the Software, or distribute it or a Derivative Work under
+      terms other than this License.
+
+A use not allowed by this License needs the Licensor's prior written
+permission, for example a commercial license.
+
+
+4. Distribution
+
+You may distribute copies of the Software and of Derivative Works, in source
+or object form, without charge, provided that:
+
+  (a) every copy includes this License, the copyright notice and the
+      THIRD_PARTY_NOTICES file;
+
+  (b) a Derivative Work is distributed under this License, with its
+      complete source code or a clear and free way to get it;
+
+  (c) a Derivative Work carries a prominent notice that it was modified,
+      by whom, and that it is not the Licensor's official version;
+
+  (d) You add no terms that restrict the rights this License gives to
+      recipients.
+
+
+5. Branding
+
+As a material condition of this License, You may not alter, remove, obscure
+or replace the Branding in any deployment or distribution of the Software or
+of a Derivative Work, except where:
+
+  (a) the total number of end users (natural persons with direct access to
+      the deployment) does not exceed fifty (50) in any rolling thirty (30)
+      day period; or
+
+  (b) the Licensor has given You specific prior written permission.
+
+Keeping the Branding as this section requires does not give You any other
+right to the Licensor's names or marks, and You may not use them to suggest
+that the Licensor endorses or supports Your Derivative Work.
+
+
+6. Contributions
+
+By submitting a Contribution, You:
+
+  (a) grant the Licensor a perpetual, worldwide, non-exclusive, royalty-free,
+      irrevocable, transferable and sublicensable license, under Your
+      copyright and patent rights, to use, reproduce, modify, distribute,
+      sublicense and relicense the Contribution, as part of the Software or
+      otherwise, under any terms, including commercial and proprietary
+      terms;
+
+  (b) agree that the Contribution is made available to everyone else under
+      this License;
+
+  (c) confirm that the Contribution is Your original work, or that You have
+      the right to submit it under this section, and that to Your knowledge
+      it does not infringe anyone's rights;
+
+  (d) to the extent permitted by law, waive any moral rights in the
+      Contribution against the Licensor and those it licenses.
+
+The Licensor need not accept, use or credit any Contribution.
+
+
+7. Licensor's rights
+
+Nothing in this License limits the Licensor. The Licensor may use, change,
+distribute and license the Software under any other terms, including
+commercial licenses, partnerships, sponsorships and arrangements with
+providers of services the Software uses or sets as defaults.
+
+To ask for a commercial license or another permission, contact the Licensor
+through https://github.com/GregoryBolshakov.
+
+
+8. Third-party material
+
+Parts of the Software are derived from third-party works listed in
+THIRD_PARTY_NOTICES. Those parts remain under their original licenses, and
+this License does not limit any right You have under those licenses for
+those parts.
+
+
+9. Termination
+
+If You break any condition of this License, Your rights under it end
+automatically. If it is Your first breach and You stop it within thirty
+(30) days of receiving notice of it from the Licensor, Your rights are
+restored. Otherwise they are restored only by the Licensor's written
+permission.
+
+If You start a lawsuit or other proceeding claiming that the Software
+infringes a patent, every patent license granted to You under this License
+ends on the date the proceeding starts.
+
+Copies You received before Your rights ended, and rights You granted to
+others under section 4 before then, are not affected.
+
+
+10. No warranty, limitation of liability
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+SHALL THE LICENSOR OR ANY CONTRIBUTOR BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, INCLUDING DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY
+OR CONSEQUENTIAL DAMAGES, OR COSTS INCURRED WITH THIRD-PARTY SERVICES SUCH
+AS CLOUD GPU PROVIDERS, WHETHER IN CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+
+11. General
+
+If any provision of this License is held unenforceable, it is changed only
+as much as needed to make it enforceable, and the rest of this License
+stays in effect. The Licensor's failure or delay in enforcing a provision is
+not a waiver of it. A written permission or license from the Licensor
+prevails over this License where they differ.

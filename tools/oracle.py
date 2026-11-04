@@ -82,6 +82,18 @@ def approve_parse_rules(text):
         shutil.rmtree(path.parent)
 
 
+def mounts_note(mounts, gone):
+    """mounts.note over [(path, rw)] and gone paths."""
+    from rpctl import mounts as m
+    return m.note([m.Mount(pathlib.Path(p), rw) for p, rw in mounts],
+                  [pathlib.Path(p) for p in gone])
+
+
+def mounts_parse_arg(arg):
+    from rpctl import mounts as m
+    return list(m.parse_arg(arg))
+
+
 # The callable functions: request name -> (module, attribute), or a function
 # defined above. Add entries as work packages need them; every rpctl entry
 # must be free of I/O (plan 5.4).
@@ -101,6 +113,8 @@ FUNCTIONS = {
     "approve.sandbox_tmp_rm": ("rpctl.approve", "sandbox_tmp_rm"),
     "idle.decide": ("rpctl.idle", "decide"),
     "idle.limits": ("rpctl.idle", "limits"),
+    "mounts.note": mounts_note,
+    "mounts.parse_arg": mounts_parse_arg,
     "redact.any_pattern": redact_any_pattern,
     "redact.is_secret_name": ("rpctl.redact", "is_secret_name"),
     "redact.literal_secrets": ("rpctl.redact", "literal_secrets"),

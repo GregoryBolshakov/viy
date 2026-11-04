@@ -13,6 +13,7 @@
 pub mod approve;
 pub mod guard;
 pub mod modes;
+pub mod mounts;
 pub mod resolve;
 pub mod secrets;
 pub mod web;

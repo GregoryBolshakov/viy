@@ -3616,6 +3616,197 @@ def gen_ui_questions(snap):
     }
 
 
+# ------------------------------------------------------------ sandbox/*
+
+# One case: a tree under the case's root $T (`files` with their text, `dirs`,
+# `links` to a target, "$T/..." for an absolute one, `git` repositories with
+# their core.hooksPath), and the arguments of rp's bwrap_argv: the workspace
+# ($T/ws) and project folder, network, readonly, the chat's /tmp, ro_paths,
+# path_extra, mounts (path, rw, the secrets found when mounted) and git_dir.
+# HOME is $T/home, USER tester, LANG C.UTF-8; the seccomp fd is 3.
+SANDBOX_RUNNER = r"""
+import json, os, pathlib, subprocess, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import approve, mounts, sandbox
+T = pathlib.Path(sys.argv[2])
+ARITY = {"--ro-bind": 2, "--bind": 2, "--ro-bind-try": 2, "--symlink": 2, "--setenv": 2,
+         "--seccomp": 1, "--proc": 1, "--dev": 1, "--tmpfs": 1, "--dir": 1, "--chdir": 1}
+
+
+def stable(argv):
+    # rp takes the protected paths from a set and the masks from a walk:
+    # each run of self-binds, and of /dev/null masks, in (depth, path)
+    # order, so the fixture does not change from run to run.
+    opts, i = [], 0
+    while i < len(argv):
+        n = ARITY.get(argv[i], 0)
+        opts.append(argv[i:i + n + 1])
+        i += n + 1
+    kind = lambda o: (1 if len(o) == 3 and o[0] == "--ro-bind" and o[1] == o[2] else
+                      2 if len(o) == 3 and o[0] == "--ro-bind" and o[1] == "/dev/null" else 0)
+    key = lambda o: (len(pathlib.Path(o[2]).parts), o[2])
+    out, run = [], []
+    for o in opts + [None]:
+        if run and (o is None or kind(o) != kind(run[0])):
+            out += sorted(run, key=key)
+            run = []
+        if o is None:
+            break
+        (run if kind(o) else out).append(o)
+    return [x for o in out for x in o]
+
+
+out = []
+for case in json.loads(sys.argv[3]):
+    root = T / case["name"]
+    a = lambda s: s.replace("$T", str(root)) if isinstance(s, str) else s
+    for d in case.get("dirs", []):
+        (root / d).mkdir(parents=True, exist_ok=True)
+    for rel, text in case.get("files", {}).items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    for rel, target in case.get("links", {}).items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(a(target), root / rel)
+    for rel, hooks in case.get("git", {}).items():
+        subprocess.run(["git", "init", "-q", str(root / rel)], check=True)
+        if hooks:
+            subprocess.run(["git", "--git-dir", str(root / rel / ".git"), "config",
+                            "core.hooksPath", hooks], check=True)
+    (root / "home").mkdir(parents=True, exist_ok=True)
+    (root / "ws").mkdir(exist_ok=True)
+    os.environ["HOME"] = str(root / "home")
+    k = case.get("args", {})
+    ms = [mounts.Mount(pathlib.Path(a(m["path"])), m["rw"],
+                       [pathlib.Path(a(x)) for x in m.get("secrets", [])])
+          for m in k.get("mounts", [])]
+    argv = sandbox.bwrap_argv(
+        root / "ws", root / k.get("project", "ws"), k.get("network"), 3,
+        readonly=k.get("readonly", False), tmp_dir=a(k.get("tmp_dir")),
+        ro_paths=[a(x) for x in k.get("ro_paths", [])],
+        path_extra=[a(x) for x in k.get("path_extra", [])], mounts=ms,
+        git_dir=a(k.get("git_dir")))
+    auto = sorted(str(p).replace(str(root), "$T") for p in approve.autorun_paths(root / "ws"))
+    out.append({"argv": stable([x.replace(str(root), "$T") for x in argv]), "autorun": auto})
+print(json.dumps(out))
+"""
+
+_PROTECTED = {
+    "dirs": ["ws/.git", "ws/.venv", "ws/venv", "ws/.rpctl", "ws/.vscode", "ws/.idea",
+             "ws/foo.egg-info", "ws/.hidden.egg-info", "ws/sub/.git", "ws/sub/deep/.venv",
+             "ws/sub/deep/.idea/x", "ws/node_modules/pkg/.git", "ws/target/x/.git",
+             "ws/dist/.vscode", "ws/__pycache__/.git", "ws/src/venv"],
+    "files": {"ws/rp": "", "ws/pyproject.toml": "", "ws/setup.py": "", "ws/setup.cfg": "",
+              "ws/setup.sh": "", "ws/.envrc": "", "ws/Makefile": "", "ws/README.md": "",
+              "ws/c.egg-info": "", "ws/sub/pyproject.toml": "", "ws/sub/rp": ""},
+}
+SANDBOX_CASES = [
+    dict(name="bare"),
+    dict(name="protected_names", **_PROTECTED),
+    dict(name="secret_files",
+         files={"ws/.env": "K=v", "ws/.env.local": "", "ws/.env.example": "",
+                "ws/.env.sample": "", "ws/secrets.json": "{}", "ws/id_rsa": "",
+                "ws/id_rsa.pub": "", "ws/cert.pem": "", "ws/app/.env": "",
+                "ws/app/config/credentials.json": "", "ws/node_modules/x/.env": "",
+                "ws/.git/.env": "", "ws/dist/.env": "", "ws/notes.txt": "",
+                "ws/Secrets.YAML": "", "ws/my-secret.toml": ""}),
+    dict(name="symlinks",
+         dirs=["elsewhere/real.git", "venvs/v/bin", "outside/.git"],
+         links={"ws/.git": "$T/elsewhere/real.git", "ws/.venv": "$T/venvs/v",
+                "ws/setup.py": "$T/nowhere", "ws/lib": "$T/outside",
+                "ws/.vscode": "$T/missing-dir", "ws/x.egg-info": "$T/gone"}),
+    dict(name="hooks_path_inside", git={"ws": ".githooks"}, dirs=["ws/.githooks"]),
+    dict(name="hooks_path_missing", git={"ws": ".githooks"}),
+    dict(name="hooks_path_outside", git={"ws": "../hooks"}, dirs=["hooks"]),
+    dict(name="hooks_path_home", git={"ws": "~/hooks"}, dirs=["home/hooks"]),
+    dict(name="project_inside", dirs=["ws/sub/.git"],
+         files={"ws/sub/pyproject.toml": "", "ws/sub/Makefile": ""},
+         args={"project": "ws/sub"}),
+    dict(name="project_outside", dirs=["proj/.git", "ws/.idea"],
+         files={"proj/Makefile": ""}, args={"project": "proj"}),
+    dict(name="readonly", files={"ws/.env": ""}, dirs=["ws/.git"],
+         args={"readonly": True}),
+    dict(name="chat_tmp", dirs=["chat-tmp"], args={"tmp_dir": "$T/chat-tmp"}),
+    dict(name="network_proxy", args={"network": "proxy"}),
+    dict(name="network_true", args={"network": True}),
+    dict(name="network_host", args={"network": "host"}),
+    dict(name="network_bogus", args={"network": "bogus"}),
+    dict(name="toolbox", dirs=["home/.local/share/rpctl/toolbox/bin"],
+         args={"ro_paths": ["$T/home/.local/share/rpctl/toolbox", "$T/missing"],
+               "path_extra": ["$T/home/.local/share/rpctl/toolbox/bin", "/opt/x/bin"]}),
+    dict(name="own_git", dirs=["ws/.git", "sbgit"], args={"git_dir": "$T/sbgit"}),
+    dict(name="own_git_readonly", dirs=["ws/.git", "sbgit"],
+         args={"git_dir": "$T/sbgit", "readonly": True}),
+    dict(name="mounts",
+         dirs=["drive/docs/.git", "drive/.vscode", "rw/.git", "rw/sub/.venv"],
+         files={"drive/.env": "", "drive/docs/a.txt": "", "rw/.env": "", "rw/id_ed25519": "",
+                "rw/Makefile": ""},
+         args={"mounts": [
+             {"path": "$T/drive", "rw": False,
+              "secrets": ["$T/drive/.env", "$T/drive/gone.env"]},
+             {"path": "$T/rw", "rw": True, "secrets": ["$T/rw/.env"]}]}),
+    dict(name="mounts_readonly", dirs=["rw/.git"], files={"rw/.env": ""},
+         args={"readonly": True, "mounts": [
+             {"path": "$T/rw", "rw": True, "secrets": ["$T/rw/.env"]}]}),
+    dict(name="autorun",
+         dirs=["ws/a/.git/hooks", "ws/b/.vscode", "ws/c/.idea", "ws/.rpctl", "ws/bare/objects",
+               "ws/bare/refs", "ws/bare/sub/.git", "ws/node_modules/m/.git", "ws/f/.envrc",
+               "elsewhere", "ws/.viy", "ws/g/.git/inner/.vscode", "ws/nested/bare2/objects",
+               "ws/nested/bare2/refs"],
+         files={"ws/d/.envrc": "", "ws/bare/HEAD": "", "ws/.vscode": "",
+                "ws/nested/bare2/HEAD": "", "ws/nested/bare2/x/.idea": ""},
+         links={"ws/e/.git": "$T/elsewhere", "ws/h/.idea": "$T/nowhere"}),
+    dict(name="autorun_hooks", git={"ws": "tools/hooks"}, links={"ws/tools/hooks": "$T/x"}),
+    dict(name="everything", **{**_PROTECTED, "files": {**_PROTECTED["files"], ".env": "",
+                                                     "ws/.env": "", "drive/.env": ""}},
+         args={"network": "proxy", "tmp_dir": "$T/chat-tmp",
+               "mounts": [{"path": "$T/drive", "rw": False, "secrets": ["$T/drive/.env"]}]}),
+]
+
+SECCOMP_RUNNER = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import sandbox
+print(json.dumps({"hex": sandbox._seccomp_program().hex(), "argv": sandbox.LAUNCHER_ARGV,
+                  "code": sandbox._LAUNCHER, "timeout": sandbox.HANDOVER_TIMEOUT}))
+"""
+
+
+def gen_sandbox_bwrap(snap):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "USER": "tester",
+               "HOME": str(tmp), "GIT_CONFIG_NOSYSTEM": "1"}
+        out = subprocess.run([sys.executable, "-I", "-c", SANDBOX_RUNNER, str(snap), str(tmp),
+                              json.dumps(SANDBOX_CASES)],
+                             cwd=tmp, env=env, check=True, capture_output=True, text=True)
+        argvs = json.loads(out.stdout)
+    return {
+        "about": "rp's sandbox.bwrap_argv for trees under $T (HOME $T/home, USER tester, "
+                 "LANG C.UTF-8, seccomp fd 3): `dirs`, `files`, `links` and `git` "
+                 "repositories with their core.hooksPath lay the tree out, `args` are "
+                 "bwrap_argv's (the workspace is $T/ws). Each run of protected self-binds "
+                 "and of /dev/null masks is sorted by (depth, path): rp takes them from a "
+                 "set and a walk. "
+                 "`autorun` is approve.autorun_paths of the workspace, sorted",
+        "cases": [{**c, **a} for c, a in zip(SANDBOX_CASES, argvs)],
+    }
+
+
+def gen_sandbox_seccomp(snap):
+    out = subprocess.run([sys.executable, "-I", "-c", SECCOMP_RUNNER, str(snap)],
+                         check=True, capture_output=True, text=True)
+    got = json.loads(out.stdout)
+    return {
+        "about": "rp's seccomp program (sandbox._seccomp_program), as hex: 8 bytes per "
+                 "classic BPF instruction, little endian; and the proxy launcher "
+                 "(LAUNCHER_ARGV, _LAUNCHER, HANDOVER_TIMEOUT in seconds)",
+        "cases": [{"name": "program", "hex": got["hex"]},
+                  {"name": "launcher", "argv": got["argv"], "code": got["code"],
+                   "timeout": got["timeout"]}],
+    }
+
+
 GENERATORS = {
     "approve/decisions": gen_approve_decisions,
     "approve/review": gen_approve_review,
@@ -3636,6 +3827,8 @@ GENERATORS = {
     "pod/resolve": gen_pod_resolve,
     "pod/ssh": gen_pod_ssh,
     "prompt/system": gen_prompt_system,
+    "sandbox/bwrap": gen_sandbox_bwrap,
+    "sandbox/seccomp": gen_sandbox_seccomp,
     "ui/questions": gen_ui_questions,
 }
 

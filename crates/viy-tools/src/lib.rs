@@ -6,7 +6,9 @@
 //! `mounts.py` (ROADMAP phases 4 and 5).
 //!
 //! So far the command approver and its network reviewer ([`approve`]), the
-//! chat modes ([`modes`]), secret file names ([`secrets`]), the path
+//! chat modes ([`modes`]), the bubblewrap sandbox and its seccomp filter
+//! ([`sandbox`]), the quarantine of auto-running paths ([`quarantine`]),
+//! secret file names ([`secrets`]), the path
 //! resolution the guards share ([`resolve`]), and the schemas of the
 //! internet tools ([`web`]), which the chat offers from phase 3 on.
 
@@ -16,5 +18,6 @@ pub mod modes;
 pub mod mounts;
 pub mod quarantine;
 pub mod resolve;
+pub mod sandbox;
 pub mod secrets;
 pub mod web;

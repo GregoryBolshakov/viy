@@ -8,10 +8,17 @@
 //! installed package and viy's own binary and source tree
 //! ([`client_paths`]).
 
+use std::io::Read as _;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
+use std::thread;
+use std::time::Duration;
+use std::time::Instant;
+
+/// How long `git config` may take, as rpctl's.
+const GIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 use crate::resolve::resolve;
 use crate::secrets::secret_name_reason;
@@ -112,16 +119,33 @@ pub fn git_hooks_dir(root: &Path) -> Option<PathBuf> {
     if !root.join(".git").is_dir() {
         return None;
     }
-    let out = Command::new("git")
+    let mut child = Command::new("git")
         .arg("--git-dir")
         .arg(root.join(".git"))
         .args(["config", "--get", "core.hooksPath"])
         .stdin(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .output()
+        .spawn()
         .ok()?;
-    let value = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if !out.status.success() || value.is_empty() {
+    // As rpctl's timeout=10: a command can make .git/config a FIFO or a
+    // link to /dev/zero, which git would read for ever.
+    let deadline = Instant::now() + GIT_TIMEOUT;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(5)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    let mut stdout = Vec::new();
+    child.stdout.take()?.read_to_end(&mut stdout).ok()?;
+    let value = String::from_utf8_lossy(&stdout).trim().to_string();
+    if !status.success() || value.is_empty() {
         return None;
     }
     let value = match value.strip_prefix("~/") {

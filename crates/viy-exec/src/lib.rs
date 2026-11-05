@@ -16,6 +16,8 @@
 //! command gives it bytes: rpctl lets these inherit the terminal, where an
 //! `ssh` would read what the user types.
 
+pub mod sandboxed;
+
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fmt;

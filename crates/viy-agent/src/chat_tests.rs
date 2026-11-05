@@ -27,6 +27,7 @@ fn nowhere() -> Places {
         project_dir: std::path::PathBuf::from("/nonexistent/viy-workspace"),
         locks_dir: std::path::PathBuf::from("/nonexistent/locks"),
         quarantine_dir: std::path::PathBuf::from("/nonexistent/quarantine"),
+        sandbox_tmp_dir: std::path::PathBuf::from("/nonexistent/sandbox-tmp"),
         guarded: Vec::new(),
     }
 }
@@ -1108,3 +1109,17 @@ async fn the_chat_says_its_effort_context_and_name() {
 
 #[path = "commands_tests.rs"]
 mod commands;
+
+#[tokio::test]
+async fn the_sandbox_tmp_goes_with_the_session() {
+    let mut d = direct(json!([{"stream": [{"content": "hi"}]}]), &[]);
+    let scratch = ScratchDir::new("chat-sandbox-tmp").unwrap();
+    d.chat.sandbox_tmp = viy_tools::sandbox::ChatTmp::new(scratch.path().join("sandbox-tmp"));
+    let dir = d.chat.sandbox_tmp.path().unwrap().to_path_buf();
+    assert!(dir.is_dir());
+    d.send("hello").await;
+    assert!(dir.is_dir(), "kept between turns");
+    let ctx = d.ctx.clone();
+    d.chat.new_session(&ctx, None).await;
+    assert!(!dir.exists(), "removed when the session ends");
+}

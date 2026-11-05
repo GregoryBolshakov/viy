@@ -1,16 +1,71 @@
 //! Moving auto-running paths out of the workspace (rpctl approve.py
-//! `is_bare_repo`, `bare_repo_ancestors`, `quarantine`). So far the part
-//! the file tools need: a bare git repository assembled one file at a time
-//! (HEAD, objects/, refs/), which git treats as a repository, running its
-//! config, when someone cd's into it. The walk after every sandboxed
-//! command (`autorun_paths`) comes with the sandbox (WP 4.7).
+//! `AUTORUN_NAMES`, `autorun_paths`, `is_bare_repo`, `bare_repo_ancestors`,
+//! `quarantine`): what git, editors, direnv and the clients run or read
+//! when someone opens or cd's into the folder. The sandbox binds the
+//! existing ones read-only; one a command creates is found by comparing
+//! [`autorun_paths`] before and after it, and moved out. The file tools
+//! catch a bare repository assembled one file at a time (HEAD, objects/,
+//! refs/) with [`bare_repo_ancestors`].
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
 use crate::resolve::resolve;
+
+/// Names that run code outside the sandbox when found in a folder: both
+/// tools' config folders (kb d014).
+pub const AUTORUN_NAMES: [&str; 6] = [".git", ".rpctl", ".viy", ".vscode", ".idea", ".envrc"];
+
+/// How many folders [`autorun_paths`] walks at most, as rpctl.
+pub const MAX_DIRS: usize = 200_000;
+
+/// Every auto-running path in workspace `ws`: an entry with one of
+/// [`AUTORUN_NAMES`] anywhere (not walked into), a bare repository below
+/// the root (not walked into), and git's hooks folder when core.hooksPath
+/// names one inside. Links are not followed.
+pub fn autorun_paths(ws: &Path) -> BTreeSet<PathBuf> {
+    let ws = resolve(ws);
+    let mut found = BTreeSet::new();
+    let mut stack = vec![ws.clone()];
+    let mut n = 0;
+    while let Some(dir) = stack.pop() {
+        n += 1;
+        if n > MAX_DIRS {
+            break;
+        }
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut dirs = Vec::new();
+        for e in entries.flatten() {
+            let name = e.file_name();
+            let path = e.path();
+            if AUTORUN_NAMES.iter().any(|a| name == *a) {
+                found.insert(path);
+                continue;
+            }
+            // A link to a folder is a folder that is not walked into, as
+            // os.walk without followlinks.
+            if e.file_type().is_ok_and(|t| t.is_dir()) {
+                dirs.push(path);
+            }
+        }
+        if dir != ws && is_bare_repo(&dir) {
+            found.insert(dir);
+            continue;
+        }
+        stack.extend(dirs.into_iter().rev());
+    }
+    if let Some(hooks) = crate::guard::git_hooks_dir(&ws)
+        && fs::symlink_metadata(&hooks).is_ok()
+    {
+        found.insert(hooks);
+    }
+    found
+}
 
 /// A directory shaped like a bare repository.
 pub fn is_bare_repo(d: &Path) -> bool {

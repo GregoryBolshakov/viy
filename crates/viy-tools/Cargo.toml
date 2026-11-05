@@ -18,12 +18,15 @@ workspace = true
 oracle = ["viy-testkit/oracle"]
 
 [dependencies]
+libc = { workspace = true }
 serde_json = { workspace = true }
 shlex = { workspace = true }
+tokio = { workspace = true, features = ["rt", "time"] }
+viy-exec = { workspace = true }
 viy-http = { workspace = true }
 viy-protocol = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
 viy-testkit = { workspace = true }

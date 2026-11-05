@@ -107,6 +107,8 @@ pub struct Places {
     pub locks_dir: PathBuf,
     /// Where quarantined paths go.
     pub quarantine_dir: PathBuf,
+    /// Where each chat's sandbox /tmp is made (`<state>/sandbox-tmp`).
+    pub sandbox_tmp_dir: PathBuf,
     /// Besides the workspace and project, what a mount must neither hold nor
     /// sit inside: the clients' code, both tools' config, state and data.
     pub guarded: Vec<PathBuf>,
@@ -171,6 +173,9 @@ pub struct Chat {
     /// What write_file overwrote, for `/rewind`, while the chat has no
     /// session log (a saved chat keeps it in the log's `<id>.files/`).
     mem_files: FileHistory,
+    /// The sandbox's /tmp, made at the first sandboxed command and removed
+    /// when the chat's session ends.
+    pub(crate) sandbox_tmp: viy_tools::sandbox::ChatTmp,
     /// What the next user message tells the model about the mounts.
     pub(crate) mount_note: Option<String>,
     /// Why network commands need the user's yes: internet text, or files
@@ -204,6 +209,7 @@ impl Chat {
     ) -> Result<Self, String> {
         let on = |key: &str, default: &str| cfg.get(key).unwrap_or(default) == "1";
         let max_rounds = cfg.get("SEARCH_MAX_ROUNDS").unwrap_or("4");
+        let sandbox_tmp = viy_tools::sandbox::ChatTmp::new(places.sandbox_tmp_dir.clone());
         let mut files = FileTools::new(
             places.workspace.clone(),
             places.project_dir.clone(),
@@ -256,6 +262,7 @@ impl Chat {
             partial: String::new(),
             files,
             mem_files: FileHistory::in_memory(),
+            sandbox_tmp,
             mount_note: None,
             web_taint: None,
             closed_saved: false,
@@ -422,6 +429,10 @@ impl Chat {
 
     /// Flushes and releases the session's log.
     pub async fn end_session(&mut self, ctx: &TurnContext, reason: &str) {
+        // A /tmp full of downloads takes a while to remove: off the runtime.
+        if let Some(dir) = self.sandbox_tmp.detach() {
+            let _ = tokio::task::spawn_blocking(move || std::fs::remove_dir_all(dir)).await;
+        }
         if lock(&self.session).is_none() {
             return;
         }

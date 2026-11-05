@@ -446,6 +446,7 @@ pub(crate) fn chat(
         // rpctl's state folder: rp and viy lock each other out of a write.
         locks_dir: paths.pod_state_dir().join("locks"),
         quarantine_dir: paths.state_dir().join("quarantine"),
+        sandbox_tmp_dir: paths.state_dir().join("sandbox-tmp"),
         guarded: vec![
             paths.config_dir(),
             paths.state_dir(),

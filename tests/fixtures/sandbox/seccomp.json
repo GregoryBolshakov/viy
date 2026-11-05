@@ -1,0 +1,22 @@
+{
+ "rpctl_commit": "d9d678feccf1827ffb5cdf4c666eb9e238a894f4",
+ "generator": "tools/fixtures.py sandbox/seccomp",
+ "about": "rp's seccomp program (sandbox._seccomp_program), as hex: 8 bytes per classic BPF instruction, little endian; and the proxy launcher (LAUNCHER_ARGV, _LAUNCHER, HANDOVER_TIMEOUT in seconds)",
+ "cases": [
+  {
+   "name": "program",
+   "hex": "2000000004000000150001003e0000c006000000010005002000000000000000350000010000004006000000010005001500000429000000200000001000000015000001010000000600000061000500060000000000ff7f15000001a901000006000000010005001500000110010000060000000100050015000001b301000006000000260005001500000338000000200000001000000045000001000000100600000001000500060000000000ff7f"
+  },
+  {
+   "name": "launcher",
+   "argv": [
+    "python3",
+    "-I",
+    "-S",
+    "-c"
+   ],
+   "code": "\nimport os, signal, socket, sys\nfd, argv = int(sys.argv[1]), sys.argv[3:]\ntry:\n    pair = socket.socket(fileno=fd)\n    lis = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n    lis.bind(('127.0.0.1', 3128))\n    lis.listen(128)\n    socket.send_fds(pair, [b\"L\"], [lis.fileno()])\n    go = pair.recv(1)\n    lis.close()\n    pair.close()\nexcept OSError as e:\n    sys.stderr.write(\"rpctl: network launcher failed: %s\\n\" % e)\n    sys.exit(125)\nif go != b\"G\":\n    sys.stderr.write(\"rpctl: the client did not take the proxy port\\n\")\n    sys.exit(125)\nfor sig in (signal.SIGPIPE, signal.SIGXFSZ):\n    signal.signal(sig, signal.SIG_DFL)\ntry:\n    os.execvp(argv[0], argv)\nexcept OSError as e:\n    sys.stderr.write(\"rpctl: cannot run %s: %s\\n\" % (argv[0], e))\n    sys.exit(127)\n",
+   "timeout": 15.0
+  }
+ ]
+}

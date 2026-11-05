@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: 40cb811dd54629c7e3e944700f12993c9f263977
+commit: d9d678feccf1827ffb5cdf4c666eb9e238a894f4
 branch: leak-protection
-pinned: 2026-07-20
-subject: Ask about rm and git spelled as honest commands spell them
+pinned: 2026-07-22
+subject: Make /rewind leave alone a written path that has become a link

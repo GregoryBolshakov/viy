@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "40cb811dd54629c7e3e944700f12993c9f263977",
+ "rpctl_commit": "d9d678feccf1827ffb5cdf4c666eb9e238a894f4",
  "generator": "tools/fixtures.py config/model",
  "about": "`rp model ARGV` (rpctl __main__.cmd_model after config.load()) in a synthetic tree: exit status, stdout, stderr, and the files under $T/config/rpctl afterwards; HOME is $T/home, XDG_CONFIG_HOME $T/config, the project $T/project with a .rpctl/ marker",
  "cases": [

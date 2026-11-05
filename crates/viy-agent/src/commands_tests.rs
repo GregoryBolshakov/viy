@@ -456,7 +456,8 @@ async fn the_pick_counts_each_messages_writes() {
 
 #[tokio::test]
 async fn a_link_put_in_a_written_path_is_left_alone() {
-    // Stricter than rp: undoing never writes through a link made since.
+    // rp's RewindTests.test_a_link_put_in_a_written_path_is_left_alone
+    // (d9d678f): undoing never writes through a link made since.
     let mut d = direct(ok(0), &[]);
     let (s, ws) = workspace(&mut d);
     let outside = s.path().join("outside.txt");

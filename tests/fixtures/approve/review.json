@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "40cb811dd54629c7e3e944700f12993c9f263977",
+ "rpctl_commit": "d9d678feccf1827ffb5cdf4c666eb9e238a894f4",
  "generator": "tools/fixtures.py approve/review",
  "about": "rpctl's approve.review (base http://127.0.0.1:8000, key test-key, model qwen) over a workspace built from the case, requests.post replaced by the case's replies; every call's url, headers, json body and (connect, read) timeout, and the (risk, reason) returned. Files are UTF-8 text, hex:<bytes> or link:<target>; the workspace shows as $WS",
  "cases": [

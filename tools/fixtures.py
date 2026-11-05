@@ -3664,7 +3664,7 @@ for case in json.loads(sys.argv[3]):
         (root / d).mkdir(parents=True, exist_ok=True)
     for rel, text in case.get("files", {}).items():
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_text(text)
+        (root / rel).write_text(a(text))
     for rel, target in case.get("links", {}).items():
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         os.symlink(a(target), root / rel)
@@ -3757,6 +3757,12 @@ SANDBOX_CASES = [
                 "ws/nested/bare2/HEAD": "", "ws/nested/bare2/x/.idea": ""},
          links={"ws/e/.git": "$T/elsewhere", "ws/h/.idea": "$T/nowhere"}),
     dict(name="autorun_hooks", git={"ws": "tools/hooks"}, links={"ws/tools/hooks": "$T/x"}),
+    dict(name="gitdir_files",
+         dirs=["ws/real.git/hooks", "ws/mods/sub/hooks", "outside.git", "ws/c"],
+         files={"ws/.git": "gitdir: real.git\n", "ws/a/.git": "gitdir: ../mods/sub\n",
+                "ws/b/.git": "gitdir: $T/outside.git\n", "ws/c/.git": "not a gitdir\n",
+                "ws/d/.git": "gitdir: ../missing\n", "ws/e/.venv": ""},
+         links={"ws/f/.git": "$T/ws/real.git", "ws/g/.vscode": "$T/nowhere"}),
     dict(name="everything", **{**_PROTECTED, "files": {**_PROTECTED["files"], ".env": "",
                                                      "ws/.env": "", "drive/.env": ""}},
          args={"network": "proxy", "tmp_dir": "$T/chat-tmp",

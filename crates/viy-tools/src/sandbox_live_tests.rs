@@ -543,16 +543,13 @@ async fn sandboxed_commands_see_the_mount() {
         mounts: &rw,
         ..b.jail()
     };
-    let before = crate::quarantine::autorun_paths(&drive);
+    let before = crate::quarantine::autorun_snapshot(&drive);
     let r = b
         .sh_in(&jail, &format!("touch {d}/x && mkdir {d}/docs/.git"), None)
         .await;
     assert_eq!(r.exit_code, Some(0), "{r:?}");
     assert!(drive.join("x").exists());
-    let new: Vec<PathBuf> = crate::quarantine::autorun_paths(&drive)
-        .difference(&before)
-        .cloned()
-        .collect();
+    let new = crate::quarantine::autorun_new(&before, &crate::quarantine::autorun_snapshot(&drive));
     assert_eq!(new, [drive.join("docs/.git")]);
     let dest = b._scratch.path().join("quarantine/20260722-000000");
     let (moved, failed) = crate::quarantine::quarantine(&new, &drive, &dest);
@@ -584,4 +581,145 @@ async fn a_cancelled_proxied_run_still_closes_the_proxy() {
     assert!(proxy.closed.load(Ordering::SeqCst));
     assert!(proxy.served.lock().unwrap().is_none());
     assert!(!b.ws.join("late").exists());
+}
+
+// rpctl's SandboxLinkTests (test_egress.py, 8258e5c and e386614; flags F52).
+
+#[tokio::test]
+async fn a_linked_git_replaced_by_a_real_one_is_new() {
+    use crate::quarantine::{autorun_new, autorun_snapshot};
+    let Some(b) = sandbox().await else { return };
+    let real = b._scratch.path().join("real.git");
+    fs::create_dir_all(&real).unwrap();
+    std::os::unix::fs::symlink(&real, b.ws.join(".git")).unwrap();
+    let before = autorun_snapshot(&b.ws);
+    let r = b
+        .sh("rm .git && mkdir -p .git/hooks && echo x > .git/hooks/pre-commit")
+        .await;
+    assert_eq!(r.exit_code, Some(0), "{r:?}");
+    assert_eq!(
+        autorun_new(&before, &autorun_snapshot(&b.ws)),
+        [b.ws.join(".git")]
+    );
+    assert_eq!(autorun_new(&before, &before), Vec::<PathBuf>::new());
+}
+
+#[test]
+fn a_link_pointed_elsewhere_is_new() {
+    use crate::quarantine::{autorun_new, autorun_snapshot};
+    let scratch = ScratchDir::new("autorun-link").unwrap();
+    let ws = scratch.path().join("ws");
+    fs::create_dir_all(&ws).unwrap();
+    std::os::unix::fs::symlink(scratch.path().join("a"), ws.join(".vscode")).unwrap();
+    let before = autorun_snapshot(&ws);
+    fs::remove_file(ws.join(".vscode")).unwrap();
+    std::os::unix::fs::symlink(scratch.path().join("b"), ws.join(".vscode")).unwrap();
+    assert_eq!(
+        autorun_new(&before, &autorun_snapshot(&ws)),
+        [ws.join(".vscode")]
+    );
+}
+
+#[tokio::test]
+async fn a_dangling_link_whose_target_appears_is_new() {
+    use crate::quarantine::{autorun_new, autorun_snapshot};
+    let Some(b) = sandbox().await else { return };
+    std::os::unix::fs::symlink(b.ws.join("later"), b.ws.join(".git")).unwrap();
+    fs::create_dir_all(b.ws.join("sub")).unwrap();
+    std::os::unix::fs::symlink(b._scratch.path().join("nowhere"), b.ws.join("sub/.idea")).unwrap();
+    let before = autorun_snapshot(&b.ws);
+    let r = b
+        .sh("mkdir -p later/hooks && echo x > later/hooks/pre-commit")
+        .await;
+    assert_eq!(
+        r.exit_code,
+        Some(0),
+        "a broken nested link stops nothing: {r:?}"
+    );
+    assert_eq!(
+        autorun_new(&before, &autorun_snapshot(&b.ws)),
+        [b.ws.join(".git")]
+    );
+}
+
+#[tokio::test]
+async fn a_gitdir_target_in_the_workspace_is_read_only() {
+    let Some(b) = sandbox().await else { return };
+    fs::create_dir_all(b.ws.join("real.git/hooks")).unwrap();
+    fs::write(b.ws.join(".git"), "gitdir: real.git\n").unwrap();
+    fs::create_dir_all(b.ws.join("sub")).unwrap();
+    fs::write(b.ws.join("sub/.git"), "gitdir: ../real.git\n").unwrap();
+    let a = bwrap_argv(&b.host, &b.jail(), 3);
+    let w: Vec<Vec<OsString>> = a.windows(3).map(<[OsString]>::to_vec).collect();
+    for p in [b.ws.join("real.git"), b.ws.join("sub/.git")] {
+        let p = p.into_os_string();
+        assert!(w.contains(&vec!["--ro-bind".into(), p.clone(), p]));
+    }
+    let r = b
+        .sh("echo x > real.git/hooks/pre-commit; echo y > sub/.git")
+        .await;
+    assert!(!b.ws.join("real.git/hooks/pre-commit").exists());
+    assert_eq!(
+        fs::read_to_string(b.ws.join("sub/.git")).unwrap(),
+        "gitdir: ../real.git\n"
+    );
+    assert_eq!(
+        r.stderr.matches("Read-only file system").count(),
+        2,
+        "{r:?}"
+    );
+}
+
+#[test]
+fn gitdir_targets_outside_or_odd_are_not_bound() {
+    let scratch = ScratchDir::new("gitdir").unwrap();
+    let ws = scratch.path().join("ws");
+    fs::create_dir_all(&ws).unwrap();
+    let git = ws.join(".git");
+    for text in [
+        "gitdir: /nonexistent/x\n",
+        "not a gitdir line\n",
+        "",
+        "gitdir:\n",
+    ] {
+        fs::write(&git, text).unwrap();
+        assert!(
+            crate::guard::gitdir_target(&git).is_none_or(|t| !t.exists()),
+            "{text:?}"
+        );
+    }
+    let outside = scratch.path().join("outside.git");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(&git, format!("gitdir: {}\n", outside.display())).unwrap();
+    let host = Host {
+        home: scratch.path().join("home"),
+        user: "tester".into(),
+        lang: "C.UTF-8".into(),
+        clients: Vec::new(),
+    };
+    let a = bwrap_argv(&host, &Jail::new(&ws, &ws), 3);
+    assert!(!a.contains(&outside.into_os_string()));
+    fs::remove_file(&git).unwrap();
+    let made = std::process::Command::new("mkfifo")
+        .arg(&git)
+        .status()
+        .unwrap();
+    assert!(made.success());
+    assert_eq!(
+        crate::guard::gitdir_target(&git),
+        None,
+        "a FIFO is not read: no hang"
+    );
+}
+
+#[tokio::test]
+async fn a_broken_egg_info_link_does_not_stop_commands() {
+    let Some(b) = sandbox().await else { return };
+    let gone = b._scratch.path().join("gone");
+    std::os::unix::fs::symlink(&gone, b.ws.join("x.egg-info")).unwrap();
+    fs::create_dir_all(b.ws.join("y.egg-info")).unwrap();
+    let a = bwrap_argv(&b.host, &b.jail(), 3);
+    assert!(!a.contains(&gone.into_os_string()));
+    assert!(a.contains(&b.ws.join("y.egg-info").into_os_string()));
+    assert_eq!(b.sh("true").await.exit_code, Some(0));
 }

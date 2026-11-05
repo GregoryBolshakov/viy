@@ -157,6 +157,24 @@ pub fn git_hooks_dir(root: &Path) -> Option<PathBuf> {
     (hooks != root && hooks.starts_with(&root)).then_some(hooks)
 }
 
+/// The folder a `.git` file names (`gitdir: <path>`, as a worktree or a
+/// submodule has), resolved against the file's folder; `None` for a
+/// `.git` that is not such a file (rpctl sandbox.py `gitdir_target`). git
+/// takes its hooks and config from there. A FIFO or a device is not read.
+pub fn gitdir_target(git: &Path) -> Option<PathBuf> {
+    let meta = std::fs::metadata(git).ok()?;
+    if !meta.is_file() || meta.len() > 4096 {
+        return None;
+    }
+    let text = std::fs::read(git).ok()?;
+    let text = String::from_utf8_lossy(&text);
+    let value = text.lines().next()?.strip_prefix("gitdir:")?.trim();
+    if value.is_empty() {
+        return None;
+    }
+    Some(resolve(&git.parent()?.join(value)))
+}
+
 /// Why the sandbox cannot meaningfully confine workspace `ws`, or `None`.
 pub fn workspace_problem(ws: &Path, home: &Path, rules_path: &Path) -> Option<String> {
     let ws = resolve(ws);

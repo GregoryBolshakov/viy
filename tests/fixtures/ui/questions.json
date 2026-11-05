@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "d9d678feccf1827ffb5cdf4c666eb9e238a894f4",
+ "rpctl_commit": "e3866148306a766df3f541e4788926102e1ff3b4",
  "generator": "tools/fixtures.py ui/questions",
  "about": "how rp chat asks: modes.KINDS and auto-yes's kinds; the line Chat._confirm('  run it?') and pod._ask('Try the backup region?') print (colours and readline markers taken out) and their result for each typed answer; _confirm with no terminal in every mode and kind, and pod._ask's default with no terminal",
  "cases": [

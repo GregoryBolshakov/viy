@@ -2,11 +2,13 @@
 //! `AUTORUN_NAMES`, `autorun_paths`, `is_bare_repo`, `bare_repo_ancestors`,
 //! `quarantine`): what git, editors, direnv and the clients run or read
 //! when someone opens or cd's into the folder. The sandbox binds the
-//! existing ones read-only; one a command creates is found by comparing
-//! [`autorun_paths`] before and after it, and moved out. The file tools
+//! existing ones read-only; one a command creates, or puts in the place of
+//! another, is found by comparing [`autorun_snapshot`]s from before and
+//! after it ([`autorun_new`]), and moved out. The file tools
 //! catch a bare repository assembled one file at a time (HEAD, objects/,
 //! refs/) with [`bare_repo_ancestors`].
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io;
@@ -65,6 +67,64 @@ pub fn autorun_paths(ws: &Path) -> BTreeSet<PathBuf> {
         found.insert(hooks);
     }
     found
+}
+
+/// What is at an auto-running path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Kind {
+    /// A link, its target, and whether that exists: a dangling link
+    /// counts as new once its target appears, as the command may have made
+    /// it.
+    Link {
+        target: PathBuf,
+        exists: bool,
+    },
+    Dir,
+    File,
+    /// A link whose target could not be read.
+    Unknown,
+}
+
+fn kind(p: &Path) -> Kind {
+    match fs::symlink_metadata(p) {
+        Ok(m) if m.file_type().is_symlink() => match fs::read_link(p) {
+            Ok(target) => Kind::Link {
+                target,
+                exists: p.exists(),
+            },
+            Err(_) => Kind::Unknown,
+        },
+        Ok(m) if m.is_dir() => Kind::Dir,
+        _ => Kind::File,
+    }
+}
+
+/// [`autorun_paths`] with what each one is (rpctl approve.py
+/// `autorun_snapshot`), so that a path replaced by something else counts
+/// as new: a `.git` that was a link to the user's repository is bound
+/// read-only at the link's target, so the link itself can be swapped for a
+/// real `.git` with hooks (flags F52).
+pub fn autorun_snapshot(ws: &Path) -> BTreeMap<PathBuf, Kind> {
+    autorun_paths(ws)
+        .into_iter()
+        .map(|p| {
+            let k = kind(&p);
+            (p, k)
+        })
+        .collect()
+}
+
+/// The paths of snapshot `after` that `before` lacks or knew as something
+/// else (rpctl approve.py `autorun_new`).
+pub fn autorun_new(
+    before: &BTreeMap<PathBuf, Kind>,
+    after: &BTreeMap<PathBuf, Kind>,
+) -> Vec<PathBuf> {
+    after
+        .iter()
+        .filter(|(p, k)| before.get(*p) != Some(*k))
+        .map(|(p, _)| p.clone())
+        .collect()
 }
 
 /// A directory shaped like a bare repository.

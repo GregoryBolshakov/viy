@@ -181,21 +181,30 @@ impl<'a> Jail<'a> {
     }
 }
 
-/// The entries of `dir` that are folders, a link to a folder counting as
-/// one (as `os.walk` sorts them): (path, name, is a link).
-fn subdirs(dir: &Path) -> Vec<(PathBuf, String, bool)> {
-    let Ok(entries) = fs::read_dir(dir) else {
+/// An entry as `os.walk` sorts it: a folder (a link to one counting as
+/// one), or a file (anything else, a broken link included).
+enum Entry {
+    Dir { link: bool },
+    File,
+}
+
+/// The entries of `dir`: (path, name, kind).
+fn entries(dir: &Path) -> Vec<(PathBuf, String, Entry)> {
+    let Ok(read) = fs::read_dir(dir) else {
         return Vec::new();
     };
-    entries
-        .flatten()
+    read.flatten()
         .filter_map(|e| {
             let kind = e.file_type().ok()?;
             let path = e.path();
             // Only a link needs the stat that follows it.
             let link = kind.is_symlink();
-            (kind.is_dir() || link && path.is_dir())
-                .then(|| (path, e.file_name().to_string_lossy().into_owned(), link))
+            let entry = if kind.is_dir() || link && path.is_dir() {
+                Entry::Dir { link }
+            } else {
+                Entry::File
+            };
+            Some((path, e.file_name().to_string_lossy().into_owned(), entry))
         })
         .collect()
 }
@@ -235,27 +244,46 @@ pub fn protected_existing(ws: &Path, project_dir: &Path, clients: &[PathBuf]) ->
         {
             out.push(hooks);
         }
-        // As pathlib's glob: hidden names and broken links match too.
+        // As pathlib's glob, hidden names match too; a broken link has
+        // nothing to protect, and bwrap refuses a missing source.
         if let Ok(entries) = fs::read_dir(root) {
             out.extend(
                 entries
                     .flatten()
                     .filter(|e| e.file_name().to_string_lossy().ends_with(".egg-info"))
-                    .map(|e| e.path()),
+                    .map(|e| e.path())
+                    .filter(|p| p.exists()),
             );
         }
     }
-    // Nested protected folders; links to folders are not walked into.
-    let mut stack = vec![ws];
+    // Nested protected folders (a vendored repo's .git, a subproject's
+    // venv) and existing files with their names (a submodule's .git file);
+    // links to folders are not walked into.
+    let mut stack = vec![ws.clone()];
     while let Some(dir) = stack.pop() {
-        for (path, name, link) in subdirs(&dir) {
-            if guard::PROTECTED_DIRS.contains(&name.as_str()) {
-                out.push(path);
-            } else if !link && !mounts::WALK_SKIP.contains(&name.as_str()) {
-                stack.push(path);
+        for (path, name, kind) in entries(&dir) {
+            let protected = guard::PROTECTED_DIRS.contains(&name.as_str());
+            match kind {
+                Entry::Dir { link } if !protected => {
+                    if !link && !mounts::WALK_SKIP.contains(&name.as_str()) {
+                        stack.push(path);
+                    }
+                }
+                Entry::File if protected && !path.exists() => {}
+                _ if protected => out.push(path),
+                _ => {}
             }
         }
     }
+    // What a .git file points git at, when it lies in the workspace: its
+    // hooks run on the host like .git/hooks.
+    let targets: Vec<PathBuf> = out
+        .iter()
+        .filter(|p| p.file_name().is_some_and(|n| n == ".git"))
+        .filter_map(|p| guard::gitdir_target(p))
+        .filter(|t| t != &ws && t.starts_with(&ws) && t.exists())
+        .collect();
+    out.extend(targets);
     let unique: BTreeSet<PathBuf> = out.iter().map(|p| resolve(p)).collect();
     let mut sorted: Vec<PathBuf> = unique.into_iter().collect();
     sorted.sort_by_key(|p| p.components().count());

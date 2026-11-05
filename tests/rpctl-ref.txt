@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: d9d678feccf1827ffb5cdf4c666eb9e238a894f4
+commit: e3866148306a766df3f541e4788926102e1ff3b4
 branch: leak-protection
 pinned: 2026-07-22
-subject: Make /rewind leave alone a written path that has become a link
+subject: Bind nested protected files only when they exist; a dangling autorun link counts as new once its target appears

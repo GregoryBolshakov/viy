@@ -1,7 +1,8 @@
 {
   "name": "network-review-fails-user-declines",
-  "about": "Build tools on, search off, ask_claude off. The model asks to install a package with the network; the reviewer's first request gets HTTP 400 (an older server), the retry without response_format and chat_template_kwargs gets HTTP 503, so the review fails and the user is asked; the user declines and the command does not run. Covers the retry body and the question after a failed review.",
-  "config": {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "0", "CONSULT_ENABLED": "0"},
+  "viy_waits": "WP 4.8: the egress proxy and its Policy.describe, which the reviewer is told",
+ "about": "Build tools on, search off, ask_claude off. The model asks to install a package with the network; the reviewer's first request gets HTTP 400 (an older server), the retry without response_format and chat_template_kwargs gets HTTP 503, so the review fails and the user is asked; the user declines and the command does not run. Covers the retry body and the question after a failed review.",
+  "config": {"TOOLS_ENABLED": "1", "EXPLORE_ENABLED": "0", "SEARCH_ENABLED": "0", "CONSULT_ENABLED": "0"},
   "max_model_len": 65536,
   "workspace": {
     "requirements.txt": "left-pad==1.3.0\n"

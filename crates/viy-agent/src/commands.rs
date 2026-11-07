@@ -116,7 +116,7 @@ const HELP: &str = "  /help              show this
 /// The commands a later work package brings, and which.
 fn later(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
-        "tools" | "ssh" | "unssh" | "git" => "phase 4",
+        "ssh" | "unssh" | "git" => "phase 4",
         "search" | "sources" => "phase 5",
         "compact" | "autocompact" => "phase 6",
         "consult" | "toolbox" => "phase 7",
@@ -443,6 +443,7 @@ impl Chat {
                     format!("reasoning effort = {}", self.settings.reasoning_effort),
                 );
             }
+            "tools" => self.tools_command(ctx, arg).await,
             "mode" => {
                 if arg.is_empty() {
                     let now = ctx.mode();

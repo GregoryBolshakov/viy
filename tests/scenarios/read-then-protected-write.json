@@ -1,7 +1,7 @@
 {
   "name": "read-then-protected-write",
   "about": "Build tools on, search off, ask_claude off; an AGENTS.md in the workspace. The model reads a file, then tries to write .env, a protected path: the approver asks and the user declines; the model answers. Covers the startup tool preflight, tool-call deltas split across chunks, tool results and the instruction-file block.",
-  "config": {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "0", "CONSULT_ENABLED": "0"},
+  "config": {"TOOLS_ENABLED": "1", "EXPLORE_ENABLED": "0", "SEARCH_ENABLED": "0", "CONSULT_ENABLED": "0"},
   "max_model_len": 65536,
   "workspace": {
     "AGENTS.md": "Keep answers under three sentences.\n",

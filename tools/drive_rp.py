@@ -234,6 +234,27 @@ def session_lines(sessions, meta):
     return "".join(line + "\n" for line in lines)
 
 
+def same_session(cmp, want, got):
+    """Whether two session logs hold the same events with the same content
+    (kb d031): keys in order, and a string holding JSON (a tool result)
+    compared as the JSON it holds, since viy writes model-visible JSON
+    compactly (kb d030)."""
+    if want is None or got is None:
+        return False
+    a, b = want.splitlines(), got.splitlines()
+    if len(a) != len(b):
+        return False
+    for la, lb in zip(a, b):
+        ea, eb = json.loads(la), json.loads(lb)
+        if list(ea) != list(eb):
+            return False
+        wrap = lambda e: cmp._json_strings({"messages": [e["message"]], **e}) \
+            if isinstance(e.get("message"), dict) else e
+        if cmp.diff(wrap(ea), wrap(eb), "event"):
+            return False
+    return True
+
+
 def main(argv):
     if argv[:1] == ["--child"]:
         child(json.loads(argv[1]))
@@ -278,7 +299,7 @@ def main(argv):
             return 1
         want = recorded_session.read_text(encoding="utf-8") if recorded_session.exists() else None
         got = session.read_text(encoding="utf-8") if session.exists() else None
-        if want != got:
+        if want != got and not same_session(cmp, want, got):
             print(f"the session log differs from {recorded_session.relative_to(ROOT)}:\n"
                   f"--- recorded\n{want}--- this run\n{got}")
             return 1

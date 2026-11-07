@@ -1,0 +1,79 @@
+{
+ "name": "tool-cap-notice",
+ "about": "TOOLS_MAX_ROUNDS=2: the model calls list_dir, then read_file; after two tool rounds the third request carries the budget notice and tools none, and its answer closes the turn. (A repeated call would get the turn monitor's note, WP 4.11.)",
+ "config": {
+  "TOOLS_ENABLED": "1",
+  "EXPLORE_ENABLED": "0",
+  "SEARCH_ENABLED": "0",
+  "CONSULT_ENABLED": "0",
+  "CHAT_AUTO_TITLE": "0",
+  "TOOLS_MAX_ROUNDS": "2",
+  "SEARCH_MAX_ROUNDS": "1"
+ },
+ "max_model_len": 65536,
+ "workspace": {
+  "a.txt": "a\n"
+ },
+ "steps": [
+  {
+   "user": "Look at everything."
+  }
+ ],
+ "approvals": [],
+ "responses": [
+  {
+   "expect": {
+    "stream": false,
+    "tools": "auto"
+   },
+   "message": ""
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "c1",
+      "name": "list_dir",
+      "arguments": "{}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "c2",
+      "name": "read_file",
+      "arguments": "{\"path\": \"a.txt\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "none"
+   },
+   "stream": [
+    {
+     "content": "There is one file, a.txt."
+    }
+   ]
+  }
+ ]
+}

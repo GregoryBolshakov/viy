@@ -126,6 +126,7 @@ pub fn cmd_exec(
             chat.set_system(Some(system.clone()));
         }
         chat.end_with("exec");
+        chat.skip_tool_probe();
         if let Some(id) = chat.session_id().filter(|_| saved) {
             let _ = writeln!(err, "session id: {id}");
         }

@@ -805,12 +805,29 @@ fn remove_if_there(path: &Path) -> io::Result<()> {
 
 /// Takes the exclusive lock on a session's file, or says who has it.
 fn lock(file: &File, id: &str) -> Result<(), SessionError> {
+    // A lock this process just let go of can still be held for a moment by
+    // a child it is starting (a sandboxed command): between fork and exec
+    // the child has a copy of every descriptor, and a flock lives as long
+    // as any copy. So a few short tries before the log counts as another
+    // chat's.
+    for _ in 0..LOCK_TRIES {
+        match file.try_lock() {
+            Ok(()) => return Ok(()),
+            Err(fs::TryLockError::WouldBlock) => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(fs::TryLockError::Error(e)) => return Err(e.into()),
+        }
+    }
     match file.try_lock() {
         Ok(()) => Ok(()),
         Err(fs::TryLockError::WouldBlock) => Err(SessionError::Busy(id.to_string())),
         Err(fs::TryLockError::Error(e)) => Err(e.into()),
     }
 }
+
+/// Tries before a held log counts as another chat's (20 ms apart).
+const LOCK_TRIES: usize = 10;
 
 /// The live log of one chat, from [`Sessions::create`] or
 /// [`Sessions::open`]. Nothing touches disk until there is something to

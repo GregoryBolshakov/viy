@@ -1,0 +1,97 @@
+{
+ "name": "three-refusals-stop-the-turn",
+ "about": "Three destructive commands in a row, each declined: the third refusal stops the turn with no further request, and the turn ends on the stop note.",
+ "config": {
+  "TOOLS_ENABLED": "1",
+  "EXPLORE_ENABLED": "0",
+  "SEARCH_ENABLED": "0",
+  "CONSULT_ENABLED": "0",
+  "CHAT_AUTO_TITLE": "0"
+ },
+ "max_model_len": 65536,
+ "workspace": {
+  "build/x": "x\n"
+ },
+ "steps": [
+  {
+   "user": "Delete build however you can."
+  }
+ ],
+ "approvals": [
+  {
+   "question": "run it?",
+   "answer": "n"
+  },
+  {
+   "question": "run it?",
+   "answer": "n"
+  },
+  {
+   "question": "run it?",
+   "answer": "n"
+  }
+ ],
+ "responses": [
+  {
+   "expect": {
+    "stream": false,
+    "tools": "auto"
+   },
+   "message": ""
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "d1",
+      "name": "run_shell",
+      "arguments": "{\"command\": \"rm -rf build\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "d2",
+      "name": "run_shell",
+      "arguments": "{\"command\": \"rm -r -f build\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "d3",
+      "name": "run_shell",
+      "arguments": "{\"command\": \"find build -delete\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,9 @@
+{"t": "meta", "id": "{ID}", "project": "{WORKSPACE}", "model": "qwen3.8-abliterated"}
+{"t": "msg", "message": {"role": "user", "content": "Look at everything."}}
+{"t": "title", "text": "Look at everything.", "auto": true}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "list_dir", "arguments": "{}"}}]}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c1", "content": "{\"path\": \".\", \"entries\": [{\"name\": \"a.txt\", \"type\": \"file\", \"bytes\": 2}]}"}}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "c2", "type": "function", "function": {"name": "read_file", "arguments": "{\"path\": \"a.txt\"}"}}]}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c2", "content": "{\"path\": \"a.txt\", \"content\": \"a\\n\", \"truncated\": false}"}}
+{"t": "msg", "message": {"role": "assistant", "content": "There is one file, a.txt."}}
+{"t": "end", "reason": "exit"}

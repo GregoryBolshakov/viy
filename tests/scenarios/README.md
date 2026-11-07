@@ -44,6 +44,8 @@ scenario with build tools off. Keep stream text ASCII: fakellm's
 }
 ```
 
+- `viy_waits` (optional): the WP viy needs before it can run the scenario;
+  the hook skips viy's check for it until then.
 - `config`: on top of rpctl's DEFAULTS (and viy's), with `VLLM_API_KEY` set
   to `fake-key`. Set what would otherwise depend on the machine, such as
   `CONSULT_ENABLED` (a `claude` on PATH adds a tool).

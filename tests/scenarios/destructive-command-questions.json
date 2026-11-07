@@ -1,0 +1,87 @@
+{
+ "name": "destructive-command-questions",
+ "about": "Two destructive commands in the sandbox: rm -rf build, answered yes, runs; git clean -fd, answered no, gets the declined result. The model then answers. Covers the destructive question and both answers.",
+ "config": {
+  "TOOLS_ENABLED": "1",
+  "EXPLORE_ENABLED": "0",
+  "SEARCH_ENABLED": "0",
+  "CONSULT_ENABLED": "0",
+  "CHAT_AUTO_TITLE": "0"
+ },
+ "max_model_len": 65536,
+ "workspace": {
+  "build/out.o": "x\n",
+  "keep.txt": "k\n"
+ },
+ "steps": [
+  {
+   "user": "Clean up the build."
+  }
+ ],
+ "approvals": [
+  {
+   "question": "run it?",
+   "answer": "y"
+  },
+  {
+   "question": "run it?",
+   "answer": "n"
+  }
+ ],
+ "responses": [
+  {
+   "expect": {
+    "stream": false,
+    "tools": "auto"
+   },
+   "message": ""
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "c_rm",
+      "name": "run_shell",
+      "arguments": "{\"command\": \"rm -rf build && ls\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "c_git",
+      "name": "run_shell",
+      "arguments": "{\"command\": \"git clean -fd\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto"
+   },
+   "stream": [
+    {
+     "content": "build/ is gone; you declined git clean."
+    }
+   ]
+  }
+ ]
+}

@@ -182,17 +182,7 @@ fn the_chat_takes_the_key_and_model_from_the_backend() {
 }
 
 #[test]
-fn drive_refuses_build_tools_and_says_what_is_wrong() {
-    let tools = scenario::dir().join("read-then-protected-write.json");
-    let (code, _, err) = run_capture(&[
-        "dev",
-        "drive",
-        tools.to_str().unwrap(),
-        "--url",
-        "http://127.0.0.1:9",
-    ]);
-    assert_eq!(code, 1);
-    assert!(err.contains("build tools come with phase 4"), "{err}");
+fn drive_says_what_is_wrong_with_a_missing_scenario() {
     let (code, _, err) = run_capture(&[
         "dev",
         "drive",

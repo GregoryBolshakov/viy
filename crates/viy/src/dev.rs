@@ -413,9 +413,6 @@ fn config(mut cfg: Config, scenario: &Value) -> Result<Config, String> {
     if scenario["config"]["CHAT_MODE"].is_null() {
         cfg.set("CHAT_MODE", "normal");
     }
-    if cfg.get("TOOLS_ENABLED") == Some("1") {
-        return Err("build tools come with phase 4; the scenario needs TOOLS_ENABLED \"0\"".into());
-    }
     Ok(cfg)
 }
 

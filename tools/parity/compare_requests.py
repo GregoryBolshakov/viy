@@ -134,6 +134,13 @@ def _json_strings(body):
             parsed = _as_json(m.get("content"))
             if parsed is not None:
                 m["content"] = {"$json": parsed}
+            elif isinstance(m.get("content"), str) and "\n\n[" in m["content"]:
+                # A result with a notice appended for one request (the tool
+                # budget): the JSON part compared as JSON, the notice as text.
+                head, _, tail = m["content"].rpartition("\n\n[")
+                parsed = _as_json(head)
+                if parsed is not None:
+                    m["content"] = {"$json": parsed, "$notice": "[" + tail}
         for tc in m.get("tool_calls") or []:
             fn = tc.get("function") or {}
             parsed = _as_json(fn.get("arguments"))

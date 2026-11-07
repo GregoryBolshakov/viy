@@ -173,6 +173,24 @@ pub struct Chat {
     /// What write_file overwrote, for `/rewind`, while the chat has no
     /// session log (a saved chat keeps it in the log's `<id>.files/`).
     mem_files: FileHistory,
+    /// TOOLS_ENABLED: the build tools are offered.
+    pub(crate) tools_on: bool,
+    /// TOOLS_MAX_ROUNDS: tool rounds a turn may take with them on.
+    tools_max_rounds: u64,
+    /// TOOLS_SHELL_TIMEOUT, in seconds.
+    pub(crate) shell_timeout: u64,
+    /// SANDBOX_NET, `host` or `proxy`.
+    sandbox_net: String,
+    /// Refusals in a row this turn; three stop it.
+    denials: usize,
+    /// Why the turn was stopped, once it was.
+    abort_turn: Option<String>,
+    /// Whether bubblewrap works here, probed at the first command.
+    sandbox_check: Option<Result<(), String>>,
+    /// This turn's user message, for the reviewer.
+    turn_user: Option<Value>,
+    /// Whether this server was asked if it takes tool calls.
+    probed: bool,
     /// The sandbox's /tmp, made at the first sandboxed command and removed
     /// when the chat's session ends.
     pub(crate) sandbox_tmp: viy_tools::sandbox::ChatTmp,
@@ -263,6 +281,24 @@ impl Chat {
             files,
             mem_files: FileHistory::in_memory(),
             sandbox_tmp,
+            tools_on: on("TOOLS_ENABLED", "1"),
+            tools_max_rounds: number(cfg, "TOOLS_MAX_ROUNDS", "25")?,
+            shell_timeout: number(cfg, "TOOLS_SHELL_TIMEOUT", "120")?,
+            sandbox_net: if cfg
+                .get("SANDBOX_NET")
+                .unwrap_or_default()
+                .trim()
+                .eq_ignore_ascii_case("host")
+            {
+                "host".into()
+            } else {
+                "proxy".into()
+            },
+            denials: 0,
+            abort_turn: None,
+            sandbox_check: None,
+            turn_user: None,
+            probed: false,
             mount_note: None,
             web_taint: None,
             closed_saved: false,
@@ -653,6 +689,13 @@ impl Chat {
     }
 
     /// Marks this chat, not yet written, as one-shot (`viy exec`).
+    /// No tool-parser preflight: rp chat checks at its start, a one-shot
+    /// `viy exec` has no start to check at, and a pod without the parser
+    /// answers its turn with the error itself.
+    pub fn skip_tool_probe(&mut self) {
+        self.probed = true;
+    }
+
     pub fn mark_exec(&mut self) {
         if let Some(log) = lock(&self.session).as_mut() {
             log.mark_exec();
@@ -835,6 +878,7 @@ impl Chat {
             self.endpoint.base = ready.base;
             self.settings.model = ready.model;
             self.discovered = false;
+            self.probed = false;
         }
     }
 
@@ -867,6 +911,46 @@ impl Chat {
         self.max_model_len
     }
 
+    /// Whether the server accepts tool calls at all (rp's
+    /// `_tools_supported`): one launched without `--tool-call-parser`
+    /// answers a request carrying tools with HTTP 400. `None`: could not
+    /// tell.
+    pub async fn tools_supported(&self) -> (Option<bool>, String) {
+        let body = json!({
+            "model": self.settings.model,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1, "stream": false,
+            "tools": viy_tools::build::tools(self.sandbox_net == "host"),
+            "tool_choice": "auto",
+        });
+        let request = self
+            .endpoint
+            .request(Method::POST, "/v1/chat/completions")
+            .header("Content-Type", "application/json")
+            .body(body.to_string().into_bytes())
+            .timeouts(Duration::from_secs(10), Duration::from_secs(60));
+        match viy_http::send(self.endpoint.http.as_ref(), request).await {
+            Err(e) => (None, format!("could not reach the pod ({e})")),
+            Ok(r) if r.status == 200 => (Some(true), String::new()),
+            Ok(r) => {
+                let status = r.status;
+                let text = r.bytes().await.unwrap_or_default();
+                if status == 400
+                    && String::from_utf8_lossy(&text)
+                        .to_lowercase()
+                        .contains("tool")
+                {
+                    (
+                        Some(false),
+                        "this pod was launched without the tool-call parser".into(),
+                    )
+                } else {
+                    (None, format!("HTTP {status}"))
+                }
+            }
+        }
+    }
+
     /// Every tool offered to the model.
     fn tool_specs(&self) -> Vec<Value> {
         let mut specs = Vec::new();
@@ -876,7 +960,17 @@ impl Chat {
                 specs.push(viy_tools::web::fetch_tool());
             }
         }
+        if self.tools_on {
+            specs.extend(viy_tools::build::tools(self.sandbox_net == "host"));
+        }
         specs
+    }
+
+    /// The estimated tokens of `msgs` with this request's tool schemas
+    /// (rp's `_estimate_tokens`).
+    fn estimate_tokens(&self, msgs: &[Value]) -> u64 {
+        self.estimator
+            .tokens(msgs, schema_chars(&self.tool_specs()))
     }
 
     /// The instruction files in force, re-read so an edit lands on the next
@@ -906,9 +1000,8 @@ impl Chat {
         let block = instructions::render(&self.instructions());
         SystemPrompt {
             user: self.system.as_deref(),
-            // The build tools, explore, ask_claude and the toolbox come with
-            // phases 4 and 7.
-            tools_on: false,
+            // Explore, ask_claude and the toolbox come with phase 7.
+            tools_on: self.tools_on,
             search_on: self.search_on,
             guide_on: self.guide_on,
             explore_trust: false,
@@ -935,6 +1028,21 @@ impl Chat {
                 self.context_line(),
             );
         }
+        // rp chat checks at its start that the pod can take tool calls.
+        if self.tools_on && !self.probed {
+            self.probed = true;
+            if let (Some(false), note) = self.tools_supported().await {
+                notice(
+                    ctx,
+                    NoticeLevel::Error,
+                    "tools_supported",
+                    format!(
+                        "  but {note}, so the model cannot call tools. Recreate the pod to pick \
+                         up the parser: viy down && viy up."
+                    ),
+                );
+            }
+        }
         self.announce_label(ctx, content.as_str());
         let outcome = self.turn(ctx, content).await;
         self.maybe_start_title(ctx);
@@ -952,65 +1060,179 @@ impl Chat {
         }
         msgs.extend(self.messages.iter().cloned());
         msgs.push(user.clone());
+        self.turn_user = Some(content);
+        self.denials = 0;
+        self.abort_turn = None;
         self.inflight = Some(vec![user]);
         // The user's message is on disk before the reply.
         self.checkpoint(ctx);
         let specs = self.tool_specs();
+        let max_rounds = if self.tools_on {
+            self.max_rounds.max(self.tools_max_rounds)
+        } else {
+            self.max_rounds
+        };
 
-        // With no tool rounds allowed the first request is already the last:
-        // tools forbidden and the model told so.
-        let last_round = self.max_rounds == 0;
-        let first = if last_round {
-            notice(
-                ctx,
-                NoticeLevel::Warn,
-                "tool_budget",
-                format!(
-                    "[tool-call budget reached ({} rounds); asking for the answer]",
-                    self.max_rounds
-                ),
-            );
-            self.round(
-                ctx,
-                1,
-                RoundKind::CappedFinal,
-                &with_notice(&msgs, TOOL_BUDGET_NOTICE),
-                &specs,
-                Tools::None,
-            )
-            .await
-        } else {
-            self.round(ctx, 1, RoundKind::Turn, &msgs, &specs, Tools::Auto)
-                .await
-        };
-        let Some(mut out) = first else {
-            // A request that failed before anything happened is dropped.
-            self.close_inflight("interrupted: the request failed", false);
-            return TurnOutcome::Failed {
-                message: "the request failed".into(),
-            };
-        };
-        self.partial.clear();
-        // What the last request carried, for calibration: the reported
-        // prompt_tokens were measured on exactly these messages.
-        let mut sent = if last_round {
-            with_notice(&msgs, TOOL_BUDGET_NOTICE)
-        } else {
-            msgs.clone()
-        };
+        let mut out = Round::default();
+        let mut sent = msgs.clone();
+        let mut first_token = None;
+        let mut usage: Option<Value> = None;
+        let mut reasoning_chars = 0;
+        let mut text = String::new();
+        let mut stopped_full = false;
         let mut calibrate = true;
-        let first_token = out.first_token;
-        let mut reasoning_chars = out.reasoning.chars().count();
-        let mut usage = out.usage.clone();
-        let mut text = out.text.clone();
-        // A call cannot run here, so it is dropped as on rp's last round.
-        let dropped_call = !out.tool_calls.is_empty();
-        let mut answer_thought = !out.reasoning.is_empty();
+        let mut dropped_call = false;
+        let mut answer_thought = false;
+        // Requests made so far, for the retry's number.
+        let mut requests = 0u32;
+        for round_i in 0..=max_rounds {
+            if round_i > 0 && self.tool_loop_overflows(ctx, &msgs) {
+                stopped_full = true;
+                break;
+            }
+            let last_round = round_i == max_rounds;
+            let round_no = u32::try_from(round_i + 1).unwrap_or(u32::MAX);
+            requests = round_no;
+            let got = if last_round {
+                // Out of tool rounds: said, and tools forbidden, or the model
+                // asks for another and the turn ends without an answer. The
+                // tools stay in the prompt so the prefix cache still hits.
+                notice(
+                    ctx,
+                    NoticeLevel::Warn,
+                    "tool_budget",
+                    format!(
+                        "[tool-call budget reached ({max_rounds} rounds); asking for the answer]"
+                    ),
+                );
+                sent = with_notice(&msgs, TOOL_BUDGET_NOTICE);
+                self.round(
+                    ctx,
+                    round_no,
+                    RoundKind::CappedFinal,
+                    &sent,
+                    &specs,
+                    Tools::None,
+                )
+                .await
+            } else {
+                sent.clone_from(&msgs);
+                self.round(ctx, round_no, RoundKind::Turn, &msgs, &specs, Tools::Auto)
+                    .await
+            };
+            let Some(mut r) = got else {
+                // A request that failed before anything happened is dropped;
+                // once tools have run, that work is kept.
+                self.close_inflight("interrupted: the request failed", false);
+                return TurnOutcome::Failed {
+                    message: "the request failed".into(),
+                };
+            };
+            // Now part of `r`, not a fragment.
+            self.partial.clear();
+            first_token = first_token.or(r.first_token);
+            if r.usage.is_some() {
+                usage.clone_from(&r.usage);
+            }
+            reasoning_chars += r.reasoning.chars().count();
+            text.clone_from(&r.text);
+
+            // On the last round a call is dropped, never run: its result
+            // could not reach the model anyway.
+            if r.tool_calls.is_empty() || last_round {
+                dropped_call = !r.tool_calls.is_empty();
+                answer_thought = !r.reasoning.is_empty();
+                out = r;
+                break;
+            }
+
+            // Every call gets a unique id, even from a backend that sends
+            // none: /rewind finds a turn's file writes by it.
+            for c in &mut r.tool_calls {
+                if c.id.is_empty() {
+                    c.id = format!("call_{}", random_hex(6));
+                }
+            }
+            let calls: Vec<Value> = r
+                .tool_calls
+                .iter()
+                .map(|c| {
+                    // Broken arguments would make vLLM refuse every later
+                    // request.
+                    let args = if tools::args_ok(&c.arguments) {
+                        c.arguments.as_str()
+                    } else {
+                        "{}"
+                    };
+                    json!({"id": c.id, "type": "function",
+                           "function": {"name": c.name, "arguments": args}})
+                })
+                .collect();
+            let content = if r.text.is_empty() {
+                Value::Null
+            } else {
+                json!(r.text)
+            };
+            let mut assistant =
+                json!({"role": "assistant", "content": content, "tool_calls": calls});
+            // Sent back so the next round goes on with this reasoning; dropped
+            // when the turn is committed (`without_reasoning`).
+            if !r.reasoning.is_empty() {
+                assistant["reasoning"] = json!(r.reasoning);
+            }
+            msgs.push(assistant.clone());
+            if let Some(turn) = self.inflight.as_mut() {
+                turn.push(assistant);
+            }
+
+            let payloads = self.run_tool_calls(ctx, &r.tool_calls).await;
+            for (c, payload) in r.tool_calls.iter().zip(payloads) {
+                let payload =
+                    if r.finish.as_deref() == Some("length") && !tools::args_ok(&c.arguments) {
+                        // The bare JSON error does not tell the model why, and it
+                        // tends to retry the same oversized call.
+                        json!({"error": format!(
+                            "not run: your reply hit the {}-token output limit in the middle of \
+                             this call, so its arguments were cut off. Make the call smaller, e.g. \
+                             write a long file in several parts.",
+                            self.settings.max_tokens
+                        )})
+                        .to_string()
+                    } else {
+                        payload
+                    };
+                let payload = self.fit_tool_payload(ctx, &payload, &msgs);
+                let tool_msg = json!({"role": "tool", "tool_call_id": c.id, "content": payload});
+                msgs.push(tool_msg.clone());
+                if let Some(turn) = self.inflight.as_mut() {
+                    turn.push(tool_msg);
+                }
+                self.checkpoint(ctx);
+            }
+            if let Some(why) = self.abort_turn.clone() {
+                // A model that keeps rephrasing refused actions does not get
+                // to keep trying: no further round.
+                text = format!("[stopped: {why}. Tell me how you want to proceed.]");
+                notice(
+                    ctx,
+                    NoticeLevel::Error,
+                    "turn_stopped",
+                    format!("  [turn stopped: {why}]"),
+                );
+                stopped_full = true;
+                out = r;
+                break;
+            }
+            out = r;
+        }
 
         // Reasoning but no answer text, or a call made where none can run:
         // asked once more with no tools in the request at all. That misses
         // the prefix cache, but a turn without an answer is worse.
-        if (dropped_call || text.trim().is_empty()) && out.finish.as_deref() != Some("length") {
+        if (dropped_call || text.trim().is_empty())
+            && !stopped_full
+            && out.finish.as_deref() != Some("length")
+        {
             notice(
                 ctx,
                 NoticeLevel::Warn,
@@ -1020,8 +1242,9 @@ impl Chat {
             sent = with_notice(&msgs, NO_ANSWER_NOTICE);
             // The prompt carried no tool schemas.
             calibrate = false;
+            let round_no = requests + 1;
             if let Some(retry) = self
-                .round(ctx, 2, RoundKind::Retry, &sent, &specs, Tools::Omit)
+                .round(ctx, round_no, RoundKind::Retry, &sent, &specs, Tools::Omit)
                 .await
             {
                 out = retry;
@@ -1061,7 +1284,14 @@ impl Chat {
                 ),
             );
         }
-        if text.trim().is_empty() {
+        if stopped_full && text.trim().is_empty() {
+            // The loop stopped between a tool result and an answer; the
+            // history still needs a closing assistant message.
+            text = "[stopped: the tool results filled the context window before I reached an \
+                    answer. Ask again -- the history will be compacted first.]"
+                .into();
+            notice(ctx, NoticeLevel::Info, "context_full", text.clone());
+        } else if text.trim().is_empty() {
             // Never commit a silent, empty answer: the reasoning behind it
             // is dropped from history, so the next turn would have nothing.
             text = if cut {
@@ -1083,7 +1313,9 @@ impl Chat {
         self.messages.extend(without_reasoning(&turn));
 
         let prompt_tokens = usage.as_ref().and_then(|u| u["prompt_tokens"].as_i64());
-        if calibrate {
+        // Only the untouched final request can calibrate: after an overflow
+        // the messages carry tool results that were never sent.
+        if calibrate && !stopped_full {
             self.estimator
                 .calibrate(&sent, schema_chars(&specs), prompt_tokens);
         }
@@ -1108,6 +1340,65 @@ impl Chat {
         });
         ctx.emit(EventMsg::TokenCount(self.token_count(context_tokens)));
         TurnOutcome::Answered
+    }
+
+    /// How large the messages may get inside a tool loop (rp's
+    /// `_tool_loop_ceiling`): not the wall, since compaction is itself a
+    /// request and a loop up to the wall would leave a history that can
+    /// no longer be compacted.
+    fn tool_loop_ceiling(&self) -> u64 {
+        let budget = self.prompt_budget();
+        if self.auto_compact {
+            (budget as f64 * self.auto_compact_threshold.max(0.95)) as u64
+        } else {
+            budget
+        }
+    }
+
+    /// True when another tool round would not fit (rp's
+    /// `_tool_loop_overflows`): there is no safe compaction point mid-loop,
+    /// so the loop stops and the next turn compacts at a clean edge.
+    fn tool_loop_overflows(&self, ctx: &TurnContext, msgs: &[Value]) -> bool {
+        let tok = self.estimate_tokens(msgs);
+        if tok < self.tool_loop_ceiling() {
+            return false;
+        }
+        notice(
+            ctx,
+            NoticeLevel::Warn,
+            "tool_loop_full",
+            format!(
+                "  [tool results filled the context (~{tok} tokens); stopping the tool loop \
+                 rather than sending a request the pod would reject]"
+            ),
+        );
+        true
+    }
+
+    /// A tool result clipped to the room left under the loop's ceiling
+    /// (rp's `_fit_tool_payload`).
+    fn fit_tool_payload(&self, ctx: &TurnContext, payload: &str, msgs: &[Value]) -> String {
+        let room = self.tool_loop_ceiling() as i64 - self.estimate_tokens(msgs) as i64;
+        let max_chars = (room as f64 * self.estimator.chars_per_token) as i64;
+        let len = payload.chars().count() as i64;
+        if max_chars >= len {
+            return payload.to_string();
+        }
+        let note = "\n...[truncated: no more room in the context window]";
+        let note_len = note.chars().count() as i64;
+        if max_chars < note_len + 200 {
+            return "[tool result dropped: no room left in the context window]".into();
+        }
+        notice(
+            ctx,
+            NoticeLevel::Warn,
+            "tool_result_clipped",
+            "  [tool result clipped to fit the context]",
+        );
+        let keep = usize::try_from(max_chars - note_len).unwrap_or(0);
+        let mut cut: String = payload.chars().take(keep).collect();
+        cut.push_str(note);
+        cut
     }
 
     /// One request of the turn.
@@ -1138,9 +1429,24 @@ impl Chat {
         let Some(mut turn) = self.inflight.take() else {
             return;
         };
-        let partial = self.partial.trim();
+        let partial = self.partial.trim().to_string();
         if turn.len() == 1 && partial.is_empty() && !keep_bare {
             return;
+        }
+        let answered: Vec<String> = turn
+            .iter()
+            .filter(|m| m["role"] == "tool")
+            .filter_map(|m| m["tool_call_id"].as_str().map(str::to_string))
+            .collect();
+        let missing: Vec<String> = turn
+            .iter()
+            .flat_map(|m| m["tool_calls"].as_array().into_iter().flatten())
+            .filter_map(|tc| tc["id"].as_str().map(str::to_string))
+            .filter(|id| !answered.contains(id))
+            .collect();
+        for id in missing {
+            let content = json!({"error": format!("not run: {reason}")}).to_string();
+            turn.push(json!({"role": "tool", "tool_call_id": id, "content": content}));
         }
         let note = format!("[{reason}]");
         let content = if partial.is_empty() {
@@ -1443,6 +1749,35 @@ impl Turns for ChatTurns {
 
 #[path = "commands.rs"]
 mod commands;
+#[path = "tools.rs"]
+mod tools;
+
+/// `n` random bytes as hex, for a tool call that came without an id.
+fn random_hex(n: usize) -> String {
+    use rand::TryRngCore;
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let mut bytes = vec![0u8; n];
+    if rand::rngs::OsRng.try_fill_bytes(&mut bytes).is_err() {
+        // No randomness: still unique in this process, which is what
+        // /rewind needs of an id.
+        let k = NEXT.fetch_add(1, Ordering::Relaxed);
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos() as u64);
+        for (i, b) in bytes.iter_mut().enumerate() {
+            *b = ((t ^ k.rotate_left(32)) >> (8 * (i % 8))) as u8;
+        }
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A whole-number setting, an error when it is not one (as rp's `int()`).
+fn number(cfg: &Config, key: &str, default: &str) -> Result<u64, String> {
+    let raw = cfg.get(key).unwrap_or(default);
+    raw.trim()
+        .parse()
+        .map_err(|_| format!("{key}={raw:?} is not a number"))
+}
 pub use commands::POD_COMMANDS;
 pub use commands::history_items;
 pub use commands::render_content;

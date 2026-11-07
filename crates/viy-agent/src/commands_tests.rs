@@ -691,7 +691,7 @@ async fn settings_commands_say_what_they_set() {
             "/image /nonexistent/x.png",
             "no such file: /nonexistent/x.png",
         ),
-        ("/tools on", "/tools comes with phase 4"),
+        ("/ssh host", "/ssh comes with phase 4"),
         // No pod in a chat on a given address (viy dev chat).
         (
             "/up",

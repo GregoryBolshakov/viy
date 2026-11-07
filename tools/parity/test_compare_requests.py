@@ -110,6 +110,16 @@ class Differs(unittest.TestCase):
         self.assertIn("names viy", cr.compare(LOG, log))
 
 
+    def test_a_tool_result_with_a_notice_compares_its_json_and_its_notice(self):
+        notice = "\n\n[rpctl: tool-call budget for this turn is used up.]"
+        a = {"messages": [{"role": "tool", "content": '{"a": 1, "b": [2]}' + notice}]}
+        b = {"messages": [{"role": "tool", "content": '{"a":1,"b":[2]}' + notice}]}
+        self.assertIsNone(cr.diff(cr._json_strings(a), cr._json_strings(b), "body"))
+        c = {"messages": [{"role": "tool", "content": '{"a":1,"b":[2]}\n\n[other]'}]}
+        a = {"messages": [{"role": "tool", "content": '{"a": 1, "b": [2]}' + notice}]}
+        self.assertIsNotNone(cr.diff(cr._json_strings(a), cr._json_strings(c), "body"))
+
+
 class Normalize(unittest.TestCase):
     def test_workspace_before_base_and_today(self):
         meta = {"base": "/tmp/r", "workspace": "/tmp/r/workspace", "today": "2026-07-12 (Sunday)"}

@@ -6,8 +6,8 @@ settings: model="qwen3.8-abliterated" tool_choice="auto" max_tokens=1 stream=fal
 00:user:
     ping
 
-## Window 2 (after request 1: messages diverged at item 00, settings changed (chat_template_kwargs, max_tokens, stream, stream_options, temperature, tools, top_k, top_p))
-settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature=1.0 top_p=0.95 max_tokens=16384 stream_options={"include_usage":true} top_k=20 chat_template_kwargs={"reasoning_effort":"medium","preserve_thinking":false} tools=[write_file, read_file, list_dir, run_shell, explore]
+## Window 2 (after request 1: messages diverged at item 00, settings changed (chat_template_kwargs, max_tokens, stream, stream_options, temperature, top_k, top_p))
+settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature=1.0 top_p=0.95 max_tokens=16384 stream_options={"include_usage":true} top_k=20 chat_template_kwargs={"reasoning_effort":"medium","preserve_thinking":false} tools=[write_file, read_file, list_dir, run_shell]
 -- request 2 (stream, tools auto) --
 00:system:
     You are working directly inside the user's project and have tools to act on it: write_file, read_file, list_dir, and run_shell (run_shell's working directory is... (942 chars)
@@ -26,7 +26,6 @@ settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature
     - To explain code, answer from reading it. Write and run a test script only when reading cannot settle the question.
     - After a change, check it: run the tests or the code, or read the file back. Report failures as they are. Never say something works unless you checked it.
     - Call each tool only with the parameters its schema lists.
-    - Explore reports are reliable: use their findings and file:line citations directly. Re-read a file only to edit it or to check something the report marks as un... (168 chars)
 01:user:
     Install the requirements.
 
@@ -93,7 +92,7 @@ settings: model="qwen3.8-abliterated" stream=false temperature=0 max_tokens=400
     </file>
 
 ## Window 5 (after request 4: messages diverged at item 00, settings changed (chat_template_kwargs, max_tokens, stream, stream_options, temperature, tool_choice, tools, top_k, top_p))
-settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature=1.0 top_p=0.95 max_tokens=16384 stream_options={"include_usage":true} top_k=20 chat_template_kwargs={"reasoning_effort":"medium","preserve_thinking":false} tools=[write_file, read_file, list_dir, run_shell, explore]
+settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature=1.0 top_p=0.95 max_tokens=16384 stream_options={"include_usage":true} top_k=20 chat_template_kwargs={"reasoning_effort":"medium","preserve_thinking":false} tools=[write_file, read_file, list_dir, run_shell]
 -- request 5 (stream, tools auto) --
 00:system:
     You are working directly inside the user's project and have tools to act on it: write_file, read_file, list_dir, and run_shell (run_shell's working directory is... (942 chars)
@@ -112,7 +111,6 @@ settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature
     - To explain code, answer from reading it. Write and run a test script only when reading cannot settle the question.
     - After a change, check it: run the tests or the code, or read the file back. Report failures as they are. Never say something works unless you checked it.
     - Call each tool only with the parameters its schema lists.
-    - Explore reports are reliable: use their findings and file:line citations directly. Re-read a file only to edit it or to check something the report marks as un... (168 chars)
 01:user:
     Install the requirements.
 02:assistant:

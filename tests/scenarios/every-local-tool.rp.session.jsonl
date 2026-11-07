@@ -1,0 +1,16 @@
+{"t": "meta", "id": "{ID}", "project": "{WORKSPACE}", "model": "qwen3.8-abliterated"}
+{"t": "msg", "message": {"role": "user", "content": "Look around, then make hello.txt."}}
+{"t": "title", "text": "Look around, then make hello.txt.", "auto": true}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "c_list", "type": "function", "function": {"name": "list_dir", "arguments": "{\"path\": \".\"}"}}], "thought": true}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c_list", "content": "{\"path\": \".\", \"entries\": [{\"name\": \"README.md\", \"type\": \"file\", \"bytes\": 5}, {\"name\": \"src/\", \"type\": \"dir\", \"bytes\": null}]}"}}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "c_read", "type": "function", "function": {"name": "read_file", "arguments": "{\"path\": \"src/app.py\", \"start_line\": 2, \"end_line\": 3}"}}]}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c_read", "content": "{\"path\": \"src/app.py\", \"lines\": \"2-3 of 4\", \"content\": \"2: line two\\n3: line three\", \"truncated\": false}"}}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "c_l2", "type": "function", "function": {"name": "list_dir", "arguments": "{\"path\": \"src\"}"}}, {"id": "c_r2", "type": "function", "function": {"name": "read_file", "arguments": "{\"path\": \"README.md\"}"}}]}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c_l2", "content": "{\"path\": \"src\", \"entries\": [{\"name\": \"app.py\", \"type\": \"file\", \"bytes\": 29}]}"}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c_r2", "content": "{\"path\": \"README.md\", \"content\": \"demo\\n\", \"truncated\": false}"}}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "c_write", "type": "function", "function": {"name": "write_file", "arguments": "{\"path\": \"hello.txt\", \"content\": \"hello\\n\"}"}}]}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c_write", "content": "{\"ok\": true, \"path\": \"hello.txt\", \"bytes\": 6}"}}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "c_run", "type": "function", "function": {"name": "run_shell", "arguments": "{\"command\": \"cat hello.txt && echo made > out.txt && cat out.txt\"}"}}]}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c_run", "content": "{\"command\": \"cat hello.txt && echo made > out.txt && cat out.txt\", \"exit_code\": 0, \"timed_out\": false, \"stdout\": \"hello\\nmade\\n\", \"stderr\": \"\"}"}}
+{"t": "msg", "message": {"role": "assistant", "content": "hello.txt holds hello; out.txt holds made."}}
+{"t": "end", "reason": "exit"}

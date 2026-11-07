@@ -125,6 +125,11 @@ FUNCTIONS = {
     "shutdown.fmt": ("rpctl.shutdown", "_fmt"),
     "shutdown.is_chat": shutdown_is_chat,
     "shutdown.parse_when": shutdown_parse_when,
+    "untrusted.clean": ("rpctl.untrusted", "clean"),
+    "untrusted.neutralize": ("rpctl.untrusted", "neutralize"),
+    "untrusted.suspicious": ("rpctl.untrusted", "suspicious"),
+    "untrusted.terminal_safe": ("rpctl.untrusted", "terminal_safe"),
+    "untrusted.wrap": ("rpctl.untrusted", "wrap"),
 }
 
 

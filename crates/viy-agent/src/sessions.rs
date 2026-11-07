@@ -552,9 +552,15 @@ impl Sessions {
 
     /// A fresh id: the local time and four random hex digits.
     fn new_id(&self, at: DateTime<Utc>) -> String {
+        static NEXT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
         let mut bytes = [0u8; 2];
-        // Without the OS's randomness the time alone still names the chat.
-        let _ = OsRng.try_fill_bytes(&mut bytes);
+        if OsRng.try_fill_bytes(&mut bytes).is_err() {
+            // Without the OS's randomness, a counter keeps this process's
+            // ids apart; the create_new in `create_file` keeps the rest.
+            bytes = NEXT
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                .to_be_bytes();
+        }
         format!(
             "{}-{:02x}{:02x}",
             at.with_timezone(&Local).format("%Y%m%d-%H%M%S"),
@@ -826,6 +832,9 @@ fn lock(file: &File, id: &str) -> Result<(), SessionError> {
     }
 }
 
+/// Fresh ids a new log may take when its id is already on disk.
+const ID_TRIES: usize = 16;
+
 /// Tries before a held log counts as another chat's (20 ms apart).
 const LOCK_TRIES: usize = 10;
 
@@ -1027,10 +1036,31 @@ impl SessionLog {
     }
 
     fn create_file(&mut self) -> io::Result<()> {
-        self.acquire().map_err(|e| match e {
+        // A new log is never appended to an existing one: two chats started
+        // in the same second can draw the same id, and the second then
+        // takes a fresh one.
+        let mut tries = 0;
+        let file = loop {
+            match OpenOptions::new()
+                .append(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&self.path)
+            {
+                Ok(file) => break file,
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists && tries < ID_TRIES => {
+                    tries += 1;
+                    self.id = self.store.new_id(self.clock.now());
+                    self.path = self.store.path_of(&self.id);
+                }
+                Err(e) => return Err(e),
+            }
+        };
+        lock(&file, &self.id).map_err(|e| match e {
             SessionError::Io(e) => e,
             busy => io::Error::new(io::ErrorKind::WouldBlock, busy.to_string()),
         })?;
+        self.file = Some(file);
         let created = seconds(self.clock.now());
         self.created = Some(created);
         let mut ev = json!({

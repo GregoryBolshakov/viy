@@ -982,3 +982,27 @@ mod rp_and_back {
         again.close("exit").unwrap();
     }
 }
+
+// From the WP 4.9 review: two chats started in the same second can draw the
+// same id; the second takes a fresh one instead of appending to the
+// first's log.
+#[test]
+fn a_new_log_never_appends_to_an_existing_one() {
+    let s = store();
+    let mut first = s.new_log();
+    first
+        .sync(None, &[json!({"role": "user", "content": "one"})], false)
+        .unwrap();
+    let mut second = s.new_log();
+    second.id = first.id().to_string();
+    second.path = s.sessions.path_of(first.id());
+    second
+        .sync(None, &[json!({"role": "user", "content": "two"})], false)
+        .unwrap();
+    assert_ne!(second.id(), first.id());
+    assert_eq!(s.files().len(), 2);
+    let one = replay(&s.sessions.path_of(first.id())).unwrap();
+    assert_eq!(one.messages, [json!({"role": "user", "content": "one"})]);
+    let two = replay(&s.sessions.path_of(second.id())).unwrap();
+    assert_eq!(two.messages, [json!({"role": "user", "content": "two"})]);
+}

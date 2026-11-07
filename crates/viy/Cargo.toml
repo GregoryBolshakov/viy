@@ -3,7 +3,12 @@ name = "viy"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
+description = "A Rust harness for abliterated models, treats them as hostile, but keeps them useful"
+license-file.workspace = true
+repository.workspace = true
+readme = "../../README.md"
+keywords = ["llm", "agent", "sandbox", "vllm", "cli"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "viy"

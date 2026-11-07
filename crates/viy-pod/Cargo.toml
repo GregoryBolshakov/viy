@@ -3,7 +3,9 @@ name = "viy-pod"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
+description = "viy's pod side: the RunPod API, boot, the SSH tunnel and idle reaping"
+license-file.workspace = true
+repository.workspace = true
 
 [lib]
 name = "viy_pod"

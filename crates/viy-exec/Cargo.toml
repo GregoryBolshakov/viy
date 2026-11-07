@@ -3,7 +3,9 @@ name = "viy-exec"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
+description = "The process seam viy starts commands through"
+license-file.workspace = true
+repository.workspace = true
 
 [lib]
 name = "viy_exec"

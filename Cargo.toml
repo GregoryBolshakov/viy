@@ -18,22 +18,23 @@ resolver = "3"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.97.1"
-# viy is private: never published, the name reserved nowhere (CLAUDE.md,
-# implementation-plan.md 7).
-publish = false
+# Published to crates.io from the public copy (target/publish/viy), where
+# LICENSE and README.md sit at the root (kb d104).
+license-file = "LICENSE"
+repository = "https://github.com/GregoryBolshakov/viy"
 
 [workspace.dependencies]
 # Internal
-viy-agent = { path = "crates/viy-agent" }
-viy-config = { path = "crates/viy-config" }
-viy-exec = { path = "crates/viy-exec" }
-viy-http = { path = "crates/viy-http" }
-viy-pod = { path = "crates/viy-pod" }
-viy-protocol = { path = "crates/viy-protocol" }
-viy-term = { path = "crates/viy-term" }
-viy-testkit = { path = "crates/viy-testkit" }
-viy-time = { path = "crates/viy-time" }
-viy-tools = { path = "crates/viy-tools" }
+viy-agent = { path = "crates/viy-agent", version = "0.1.0" }
+viy-config = { path = "crates/viy-config", version = "0.1.0" }
+viy-exec = { path = "crates/viy-exec", version = "0.1.0" }
+viy-http = { path = "crates/viy-http", version = "0.1.0" }
+viy-pod = { path = "crates/viy-pod", version = "0.1.0" }
+viy-protocol = { path = "crates/viy-protocol", version = "0.1.0" }
+viy-term = { path = "crates/viy-term", version = "0.1.0" }
+viy-testkit = { path = "crates/viy-testkit", version = "0.1.0" }
+viy-time = { path = "crates/viy-time", version = "0.1.0" }
+viy-tools = { path = "crates/viy-tools", version = "0.1.0" }
 
 # External crates are added when a work package first needs one, each version
 # recorded as a fact (ROADMAP phase 0).

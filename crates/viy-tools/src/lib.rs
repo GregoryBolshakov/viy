@@ -20,4 +20,5 @@ pub mod quarantine;
 pub mod resolve;
 pub mod sandbox;
 pub mod secrets;
+pub mod untrusted;
 pub mod web;

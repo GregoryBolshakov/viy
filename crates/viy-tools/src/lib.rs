@@ -13,6 +13,7 @@
 //! internet tools ([`web`]), which the chat offers from phase 3 on.
 
 pub mod approve;
+pub mod build;
 pub mod guard;
 pub mod modes;
 pub mod mounts;

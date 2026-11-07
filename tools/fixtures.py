@@ -3813,12 +3813,69 @@ def gen_sandbox_seccomp(snap):
     }
 
 
+# --------------------------------------------------------------- chat/tools
+
+# The tools rp offers per request (Chat._tool_specs) for each config, in
+# order and with their keys in order (the chat template renders them with
+# tojson), and the loop's notices. The workspace has no .git, so the model's
+# own repository (sandboxgit) is not offered.
+TOOLS_RUNNER = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import chat, config
+out = []
+for name, over in json.loads(sys.argv[2]):
+    cfg = dict(config.DEFAULTS, VLLM_API_KEY="k", TRACE_ENABLED="0", CONSULT_ENABLED="0",
+               EXPLORE_ENABLED="0", TOOLBOX_ENABLED="0", INSTRUCTIONS_ENABLED="0")
+    cfg.update(over)
+    c = chat.Chat(cfg, "http://127.0.0.1:1")
+    c._auto_ready = lambda: (True, "")
+    out.append({"name": name, "config": over, "tools": c._tool_specs()})
+out.append({"name": "notices", "tool_budget": chat.TOOL_BUDGET_NOTICE,
+            "no_answer": chat.NO_ANSWER_NOTICE,
+            "parallel_safe": list(chat.Chat.PARALLEL_SAFE),
+            "build_tool_names": list(chat.Chat.BUILD_TOOL_NAMES)})
+print(json.dumps(out))
+"""
+TOOLS_CONFIGS = [
+    ("build_tools", {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "0"}),
+    ("build_and_web_tools", {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "1"}),
+    ("build_tools_host_net", {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "0", "SANDBOX_NET": "host"}),
+    ("search_without_fetch", {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "1", "FETCH_ENABLED": "0"}),
+    ("tools_off", {"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0"}),
+]
+
+
+def gen_chat_tools(snap):
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+        for name, sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"),
+                          ("XDG_STATE_HOME", "state"), ("XDG_DATA_HOME", "data"),
+                          ("XDG_CACHE_HOME", "cache")):
+            (tmp / sub).mkdir()
+            env[name] = str(tmp / sub)
+        (tmp / "ws").mkdir()
+        env["WORKSPACE_DIR"] = str(tmp / "ws")
+        out = subprocess.run([sys.executable, "-I", "-c", TOOLS_RUNNER, str(snap),
+                              json.dumps(TOOLS_CONFIGS)],
+                             cwd=tmp / "ws", env=env, check=True, capture_output=True, text=True)
+    return {
+        "about": "rp's Chat._tool_specs() per config over DEFAULTS (consult, explore, toolbox "
+                 "and instructions off, the sandbox taken as working, a workspace without "
+                 ".git), keys in order; and the tool loop's notices, PARALLEL_SAFE and "
+                 "BUILD_TOOL_NAMES",
+        "cases": json.loads(out.stdout),
+    }
+
+
 GENERATORS = {
     "approve/decisions": gen_approve_decisions,
     "approve/review": gen_approve_review,
     "chat/context": gen_chat_context,
     "chat/modes": gen_chat_modes,
     "chat/sessions": gen_chat_sessions,
+    "chat/tools": gen_chat_tools,
     "cli/flags": gen_cli_flags,
     "cli/parse": gen_cli_parse,
     "config/init": gen_config_init,

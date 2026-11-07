@@ -1,0 +1,533 @@
+{
+ "rpctl_commit": "e3866148306a766df3f541e4788926102e1ff3b4",
+ "generator": "tools/fixtures.py chat/tools",
+ "about": "rp's Chat._tool_specs() per config over DEFAULTS (consult, explore, toolbox and instructions off, the sandbox taken as working, a workspace without .git), keys in order; and the tool loop's notices, PARALLEL_SAFE and BUILD_TOOL_NAMES",
+ "cases": [
+  {
+   "name": "build_tools",
+   "config": {
+    "TOOLS_ENABLED": "1",
+    "SEARCH_ENABLED": "0"
+   },
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Create or overwrite a file in the workspace with the given text. Use this to lay down code, configs, Dockerfiles, scripts -- the setup you are building. Parent directories are created as needed.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace, e.g. app/main.py."
+        },
+        "content": {
+         "type": "string",
+         "description": "The full file contents to write."
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "read_file",
+      "description": "Read a text file from the workspace and return its contents. Use this to inspect what already exists before changing it. Large files are cut in the middle; pass start_line/end_line (1-based) to read a part, which comes back with line numbers.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace."
+        },
+        "start_line": {
+         "type": "integer",
+         "description": "Optional first line to return (1-based)."
+        },
+        "end_line": {
+         "type": "integer",
+         "description": "Optional last line to return (inclusive)."
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "list_dir",
+      "description": "List the files and folders in a workspace directory.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Directory relative to the workspace; defaults to the root."
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "run_shell",
+      "description": "Run a shell command in the workspace and return its exit code, stdout and stderr. Use this to install dependencies, build, run tests, or start the setup. Commands run in a sandbox: the workspace is writable, the home directory is empty, secret files (.env*, private keys, credentials) are hidden, .git and the tool's own code are read-only, and there is NO network unless you set needs_network. With it, the command reaches the internet only by HTTP(S) through a proxy that is already set in HTTPS_PROXY/HTTP_PROXY, and only package registries (PyPI, npm, crates.io, Go, GitHub, Hugging Face), hosts written in the command and hosts the user allowed; other hosts are blocked and listed in the result. No ssh, ping or UDP. Background processes end when the command ends; /tmp is kept for the rest of this chat. To read a web page use fetch_url if you have it, not curl. Destructive or risky commands are shown to the user, who may decline.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "The command line to run, e.g. 'python -m pytest'."
+        },
+        "needs_network": {
+         "type": "boolean",
+         "description": "Set true only when the command must reach the internet (pip/npm install, git clone, curl). It is then reviewed before it runs. Leave false for everything else."
+        }
+       },
+       "required": [
+        "command"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "build_and_web_tools",
+   "config": {
+    "TOOLS_ENABLED": "1",
+    "SEARCH_ENABLED": "1"
+   },
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "web_search",
+      "description": "Search the live web. Returns titles, URLs and an excerpt of each page. Use this whenever the answer depends on facts you may not know, on anything recent, or when the user asks for links -- your own memory of URLs is unreliable and often produces dead pages. Cite the URLs returned here. To read a result in full, pass its URL to fetch_url.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "query": {
+         "type": "string",
+         "description": "The search query, phrased as you would type it into a search engine."
+        },
+        "max_results": {
+         "type": "integer",
+         "description": "How many results to return (1-10). Defaults to 5."
+        },
+        "recency": {
+         "type": "string",
+         "enum": [
+          "day",
+          "week",
+          "month",
+          "year"
+         ],
+         "description": "Only results from the last day, week, month or year."
+        },
+        "site": {
+         "type": "string",
+         "description": "Only results from this domain, e.g. docs.python.org."
+        }
+       },
+       "required": [
+        "query"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "fetch_url",
+      "description": "Read a web page and return its text (Markdown-like; links appear as [n] with their URLs listed after the text). Long pages come in parts: pass start=<the next start it gives> for the next part, or look_for=<words> to get only the passages about them. Use this, not curl or a script, to read web pages. Public http(s) URLs only.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "url": {
+         "type": "string",
+         "description": "The http(s) URL to read."
+        },
+        "look_for": {
+         "type": "string",
+         "description": "Words to find in the page; returns only the passages that match."
+        },
+        "start": {
+         "type": "integer",
+         "description": "Character offset to continue from, as given by the previous part."
+        }
+       },
+       "required": [
+        "url"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Create or overwrite a file in the workspace with the given text. Use this to lay down code, configs, Dockerfiles, scripts -- the setup you are building. Parent directories are created as needed.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace, e.g. app/main.py."
+        },
+        "content": {
+         "type": "string",
+         "description": "The full file contents to write."
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "read_file",
+      "description": "Read a text file from the workspace and return its contents. Use this to inspect what already exists before changing it. Large files are cut in the middle; pass start_line/end_line (1-based) to read a part, which comes back with line numbers.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace."
+        },
+        "start_line": {
+         "type": "integer",
+         "description": "Optional first line to return (1-based)."
+        },
+        "end_line": {
+         "type": "integer",
+         "description": "Optional last line to return (inclusive)."
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "list_dir",
+      "description": "List the files and folders in a workspace directory.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Directory relative to the workspace; defaults to the root."
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "run_shell",
+      "description": "Run a shell command in the workspace and return its exit code, stdout and stderr. Use this to install dependencies, build, run tests, or start the setup. Commands run in a sandbox: the workspace is writable, the home directory is empty, secret files (.env*, private keys, credentials) are hidden, .git and the tool's own code are read-only, and there is NO network unless you set needs_network. With it, the command reaches the internet only by HTTP(S) through a proxy that is already set in HTTPS_PROXY/HTTP_PROXY, and only package registries (PyPI, npm, crates.io, Go, GitHub, Hugging Face), hosts written in the command and hosts the user allowed; other hosts are blocked and listed in the result. No ssh, ping or UDP. Background processes end when the command ends; /tmp is kept for the rest of this chat. To read a web page use fetch_url if you have it, not curl. Destructive or risky commands are shown to the user, who may decline.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "The command line to run, e.g. 'python -m pytest'."
+        },
+        "needs_network": {
+         "type": "boolean",
+         "description": "Set true only when the command must reach the internet (pip/npm install, git clone, curl). It is then reviewed before it runs. Leave false for everything else."
+        }
+       },
+       "required": [
+        "command"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "build_tools_host_net",
+   "config": {
+    "TOOLS_ENABLED": "1",
+    "SEARCH_ENABLED": "0",
+    "SANDBOX_NET": "host"
+   },
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Create or overwrite a file in the workspace with the given text. Use this to lay down code, configs, Dockerfiles, scripts -- the setup you are building. Parent directories are created as needed.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace, e.g. app/main.py."
+        },
+        "content": {
+         "type": "string",
+         "description": "The full file contents to write."
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "read_file",
+      "description": "Read a text file from the workspace and return its contents. Use this to inspect what already exists before changing it. Large files are cut in the middle; pass start_line/end_line (1-based) to read a part, which comes back with line numbers.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace."
+        },
+        "start_line": {
+         "type": "integer",
+         "description": "Optional first line to return (1-based)."
+        },
+        "end_line": {
+         "type": "integer",
+         "description": "Optional last line to return (inclusive)."
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "list_dir",
+      "description": "List the files and folders in a workspace directory.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Directory relative to the workspace; defaults to the root."
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "run_shell",
+      "description": "Run a shell command in the workspace and return its exit code, stdout and stderr. Use this to install dependencies, build, run tests, or start the setup. Commands run in a sandbox: the workspace is writable, the home directory is empty, secret files (.env*, private keys, credentials) are hidden, .git and the tool's own code are read-only, and there is NO network unless you set needs_network. Background processes end when the command ends; /tmp is kept for the rest of this chat. To read a web page use fetch_url if you have it, not curl. Destructive or risky commands are shown to the user, who may decline.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "The command line to run, e.g. 'python -m pytest'."
+        },
+        "needs_network": {
+         "type": "boolean",
+         "description": "Set true only when the command must reach the internet (pip/npm install, git clone, curl). It is then reviewed before it runs. Leave false for everything else."
+        }
+       },
+       "required": [
+        "command"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "search_without_fetch",
+   "config": {
+    "TOOLS_ENABLED": "1",
+    "SEARCH_ENABLED": "1",
+    "FETCH_ENABLED": "0"
+   },
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "web_search",
+      "description": "Search the live web. Returns titles, URLs and an excerpt of each page. Use this whenever the answer depends on facts you may not know, on anything recent, or when the user asks for links -- your own memory of URLs is unreliable and often produces dead pages. Cite the URLs returned here. To read a result in full, pass its URL to fetch_url.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "query": {
+         "type": "string",
+         "description": "The search query, phrased as you would type it into a search engine."
+        },
+        "max_results": {
+         "type": "integer",
+         "description": "How many results to return (1-10). Defaults to 5."
+        },
+        "recency": {
+         "type": "string",
+         "enum": [
+          "day",
+          "week",
+          "month",
+          "year"
+         ],
+         "description": "Only results from the last day, week, month or year."
+        },
+        "site": {
+         "type": "string",
+         "description": "Only results from this domain, e.g. docs.python.org."
+        }
+       },
+       "required": [
+        "query"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Create or overwrite a file in the workspace with the given text. Use this to lay down code, configs, Dockerfiles, scripts -- the setup you are building. Parent directories are created as needed.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace, e.g. app/main.py."
+        },
+        "content": {
+         "type": "string",
+         "description": "The full file contents to write."
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "read_file",
+      "description": "Read a text file from the workspace and return its contents. Use this to inspect what already exists before changing it. Large files are cut in the middle; pass start_line/end_line (1-based) to read a part, which comes back with line numbers.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace."
+        },
+        "start_line": {
+         "type": "integer",
+         "description": "Optional first line to return (1-based)."
+        },
+        "end_line": {
+         "type": "integer",
+         "description": "Optional last line to return (inclusive)."
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "list_dir",
+      "description": "List the files and folders in a workspace directory.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Directory relative to the workspace; defaults to the root."
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "run_shell",
+      "description": "Run a shell command in the workspace and return its exit code, stdout and stderr. Use this to install dependencies, build, run tests, or start the setup. Commands run in a sandbox: the workspace is writable, the home directory is empty, secret files (.env*, private keys, credentials) are hidden, .git and the tool's own code are read-only, and there is NO network unless you set needs_network. With it, the command reaches the internet only by HTTP(S) through a proxy that is already set in HTTPS_PROXY/HTTP_PROXY, and only package registries (PyPI, npm, crates.io, Go, GitHub, Hugging Face), hosts written in the command and hosts the user allowed; other hosts are blocked and listed in the result. No ssh, ping or UDP. Background processes end when the command ends; /tmp is kept for the rest of this chat. To read a web page use fetch_url if you have it, not curl. Destructive or risky commands are shown to the user, who may decline.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "The command line to run, e.g. 'python -m pytest'."
+        },
+        "needs_network": {
+         "type": "boolean",
+         "description": "Set true only when the command must reach the internet (pip/npm install, git clone, curl). It is then reviewed before it runs. Leave false for everything else."
+        }
+       },
+       "required": [
+        "command"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "tools_off",
+   "config": {
+    "TOOLS_ENABLED": "0",
+    "SEARCH_ENABLED": "0"
+   },
+   "tools": []
+  },
+  {
+   "name": "notices",
+   "tool_budget": "[rpctl: tool-call budget for this turn is used up. Do not call any more tools. Give your final answer now from what you already have, and say briefly what you could not verify.]",
+   "no_answer": "[rpctl: your last reply ended without an answer to the user. Do not call any more tools. Give your final answer now from what you already have, and say briefly what you could not verify.]",
+   "parallel_safe": [
+    "read_file",
+    "list_dir",
+    "web_search",
+    "fetch_url",
+    "explore",
+    "find_tool"
+   ],
+   "build_tool_names": [
+    "write_file",
+    "read_file",
+    "list_dir",
+    "run_shell"
+   ]
+  }
+ ]
+}

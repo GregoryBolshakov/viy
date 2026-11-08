@@ -20,6 +20,7 @@ workspace = true
 oracle = ["viy-testkit/oracle"]
 
 [dependencies]
+futures-util = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 rand = { workspace = true }
@@ -37,6 +38,7 @@ viy-time = { workspace = true }
 viy-tools = { workspace = true }
 
 [dev-dependencies]
+libc = { workspace = true }
 pretty_assertions = { workspace = true }
 viy-tools = { workspace = true, features = ["test-support"] }
 viy-testkit = { workspace = true }

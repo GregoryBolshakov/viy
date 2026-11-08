@@ -179,6 +179,8 @@ pub struct Chat {
     tools_max_rounds: u64,
     /// TOOLS_SHELL_TIMEOUT, in seconds.
     pub(crate) shell_timeout: u64,
+    /// TOOLS_PARALLEL: a read-only batch of tool calls runs side by side.
+    pub(crate) parallel_tools: bool,
     /// SANDBOX_NET, `host` or `proxy`.
     sandbox_net: String,
     /// SANDBOX_NET_ALLOW: hosts every proxied command may reach.
@@ -301,6 +303,7 @@ impl Chat {
                 "proxy".into()
             },
             sandbox_net_allow: cfg.get("SANDBOX_NET_ALLOW").unwrap_or_default().to_string(),
+            parallel_tools: cfg.get("TOOLS_PARALLEL").unwrap_or("1") == "1",
             denials: 0,
             abort_turn: None,
             sandbox_check: None,

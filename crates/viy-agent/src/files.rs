@@ -679,46 +679,96 @@ impl FileTools {
     }
 
     pub async fn read_file(&mut self, args: &Map<String, Value>, ui: &dyn Ui) -> Outcome {
-        let rel = match path_arg(args) {
-            Ok(Some(rel)) => rel,
-            Ok(None) => return Outcome::error("no path given"),
+        let (rel, path) = match self.read_target(args) {
+            Ok(target) => target,
             Err(refused) => return refused,
         };
-        let path = match self.resolve_in_workspace(&rel) {
-            Ok(p) => p,
-            Err(e) => return Outcome::error(e),
-        };
-        if !path.exists() {
-            return Outcome::error(format!("no such file: {rel}"));
-        }
-        if path.is_dir() {
-            return Outcome::error(format!("{rel} is a directory; use list_dir"));
-        }
         if let Some(refused) = self.guard_path(&path, false, ui).await {
             return refused;
         }
-        let raw = match fs::read(&path) {
+        let (out, seen) = self.read_resolved(&rel, &path, args);
+        if let Some(seen) = seen {
+            self.seen.insert(path, seen);
+        }
+        out
+    }
+
+    /// read_file without its question, for a parallel batch: `None` when
+    /// the file is secret, and the read must ask (it then runs on its own).
+    /// What was read comes back for [`FileTools::remember_read`].
+    pub fn read_quietly(
+        &self,
+        args: &Map<String, Value>,
+    ) -> Option<(Outcome, Option<(PathBuf, String)>)> {
+        let (rel, path) = match self.read_target(args) {
+            Ok(target) => target,
+            Err(refused) => return Some((refused, None)),
+        };
+        if guard::secret_reason(&path).is_some() {
+            return None;
+        }
+        let (out, seen) = self.read_resolved(&rel, &path, args);
+        Some((out, seen.map(|s| (path, s))))
+    }
+
+    /// Records a read [`FileTools::read_quietly`] made: the write guard's
+    /// "read in this chat".
+    pub fn remember_read(&mut self, path: PathBuf, sha1: String) {
+        self.seen.insert(path, sha1);
+    }
+
+    /// The path read_file's arguments name, or its refusal.
+    fn read_target(&self, args: &Map<String, Value>) -> Result<(String, PathBuf), Outcome> {
+        let rel = match path_arg(args) {
+            Ok(Some(rel)) => rel,
+            Ok(None) => return Err(Outcome::error("no path given")),
+            Err(refused) => return Err(refused),
+        };
+        let path = self.resolve_in_workspace(&rel).map_err(Outcome::error)?;
+        if !path.exists() {
+            return Err(Outcome::error(format!("no such file: {rel}")));
+        }
+        if path.is_dir() {
+            return Err(Outcome::error(format!(
+                "{rel} is a directory; use list_dir"
+            )));
+        }
+        Ok((rel, path))
+    }
+
+    /// The file's text as read_file gives it, and its digest when it was
+    /// read.
+    fn read_resolved(
+        &self,
+        rel: &str,
+        path: &Path,
+        args: &Map<String, Value>,
+    ) -> (Outcome, Option<String>) {
+        let raw = match fs::read(path) {
             Ok(r) => r,
-            Err(e) => return Outcome::error(format!("could not read {rel}: {e}")),
+            Err(e) => return (Outcome::error(format!("could not read {rel}: {e}")), None),
         };
         let Ok(text) = std::str::from_utf8(&raw) else {
-            return Outcome::error(format!("{rel} is not a text file"));
+            return (Outcome::error(format!("{rel} is not a text file")), None);
         };
         let data = text.replace("\r\n", "\n").replace('\r', "\n");
-        self.seen.insert(path.clone(), sha1_hex(&raw));
-        let shown = self.ws_rel(&path);
+        let seen = sha1_hex(&raw);
+        let shown = self.ws_rel(path);
         let lines: Vec<&str> = data.split('\n').collect();
         if let Some((a, b)) = line_span(args, lines.len()) {
             let part: Vec<String> = (a..=b).map(|n| format!("{n}: {}", lines[n - 1])).collect();
             let part = part.join("\n");
             let clipped = clip(&part, self.max_output);
             let truncated = clipped != part;
-            return Outcome::ok(json!({
-                "path": shown,
-                "lines": format!("{a}-{b} of {}", lines.len()),
-                "content": clipped,
-                "truncated": truncated,
-            }));
+            return (
+                Outcome::ok(json!({
+                    "path": shown,
+                    "lines": format!("{a}-{b} of {}", lines.len()),
+                    "content": clipped,
+                    "truncated": truncated,
+                })),
+                Some(seen),
+            );
         }
         let clipped = clip(&data, self.max_output);
         let mut out = json!({"path": shown, "content": clipped, "truncated": clipped != data});
@@ -729,7 +779,7 @@ impl FileTools {
                 data.matches('\n').count() + 1
             ));
         }
-        Outcome::ok(out)
+        (Outcome::ok(out), Some(seen))
     }
 
     pub fn list_dir(&self, args: &Map<String, Value>) -> Outcome {

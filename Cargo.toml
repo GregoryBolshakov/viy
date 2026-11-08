@@ -49,6 +49,9 @@ crossterm = "0.29.0"
 # crossterm's EventStream is a futures-core Stream (Codex takes the futures
 # facade; the trait alone is enough here).
 futures-core = { version = "0.3.34", default-features = false }
+# join_all for a parallel batch of read-only tool calls, as Codex joins
+# its own; already in the tree through reqwest.
+futures-util = { version = "0.3.34", default-features = false, features = ["alloc"] }
 # Non-ASCII host names, UTS 46 (flags F53); already in the tree through url.
 idna = "1.1.0"
 indexmap = "2.14.0"

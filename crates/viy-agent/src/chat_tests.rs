@@ -1794,3 +1794,222 @@ async fn a_pip_install_whose_setup_py_phones_home() {
     );
     assert_eq!(out["network"]["reached"], json!([]));
 }
+
+// ------------------------------------- parallel read-only batches (WP 4.10)
+
+fn call(id: &str, name: &str, args: Value) -> crate::stream::ToolCall {
+    crate::stream::ToolCall {
+        id: id.into(),
+        name: name.into(),
+        arguments: args.to_string(),
+    }
+}
+
+// rpctl's ParallelToolTests.test_read_only_batch_runs_in_parallel_and_keeps_order.
+// rp slows its dispatch down; here each read is of a FIFO whose writer
+// opens them last to first, which only finishes if all three are read at
+// once. The results come back in call order.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_read_only_batch_runs_in_parallel_and_keeps_order() {
+    let (mut d, s) = shell_chat(json!([]), &[]);
+    let ws = s.path().join("ws");
+    for i in 0..3 {
+        let made = std::process::Command::new("mkfifo")
+            .arg(ws.join(format!("f{i}")))
+            .status()
+            .unwrap();
+        assert!(made.success());
+    }
+    // Opens each FIFO without blocking, last first, until 5 s pass; a read
+    // one at a time never opens f2 first, so it gives up and writes them in
+    // call order instead, which a one-at-a-time read gets through.
+    let writer = {
+        let ws = ws.clone();
+        std::thread::spawn(move || {
+            use std::io::Write as _;
+            use std::os::unix::fs::OpenOptionsExt as _;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            for i in (0..3).rev() {
+                loop {
+                    let opened = std::fs::OpenOptions::new()
+                        .write(true)
+                        .custom_flags(libc::O_NONBLOCK)
+                        .open(ws.join(format!("f{i}")));
+                    match opened {
+                        Ok(mut f) => {
+                            f.write_all(format!("text {i}\n").as_bytes()).unwrap();
+                            break;
+                        }
+                        Err(_) if std::time::Instant::now() < deadline => {
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        }
+                        Err(_) => {
+                            for j in 0..3 {
+                                let _ = std::fs::write(ws.join(format!("f{j}")), "late\n");
+                            }
+                            return false;
+                        }
+                    }
+                }
+            }
+            true
+        })
+    };
+    let calls: Vec<_> = (0..3)
+        .map(|i| {
+            call(
+                &format!("c{i}"),
+                "read_file",
+                json!({"path": format!("f{i}")}),
+            )
+        })
+        .collect();
+    assert!(d.chat.parallel_ok(&calls));
+    let ctx = d.ctx.clone();
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        d.chat.run_tool_calls(&ctx, &calls),
+    )
+    .await
+    .expect("the reads finished");
+    assert!(writer.join().unwrap(), "the reads ran side by side");
+    let paths: Vec<String> = out
+        .iter()
+        .map(|r| {
+            serde_json::from_str::<Value>(r).unwrap()["content"]
+                .as_str()
+                .unwrap()
+                .into()
+        })
+        .collect();
+    assert_eq!(paths, ["text 0\n", "text 1\n", "text 2\n"]);
+}
+
+// rpctl's ParallelToolTests.test_batch_with_a_command_runs_one_by_one.
+#[test]
+fn a_batch_with_a_command_runs_one_by_one() {
+    let (mut d, _s) = shell_chat(json!([]), &[]);
+    let read = call("c1", "read_file", json!({"path": "a"}));
+    assert!(!d.chat.parallel_ok(&[
+        read.clone(),
+        call("c2", "run_shell", json!({"command": "ls"}))
+    ]));
+    assert!(
+        d.chat
+            .parallel_ok(&[read.clone(), call("c2", "list_dir", json!({}))])
+    );
+    assert!(!d.chat.parallel_ok(&[
+        call("c1", "read_file", json!({"path": ".env"})),
+        call("c2", "list_dir", json!({})),
+    ]));
+    assert!(
+        !d.chat.parallel_ok(std::slice::from_ref(&read)),
+        "one call runs alone"
+    );
+    d.chat.parallel_tools = false;
+    assert!(
+        !d.chat
+            .parallel_ok(&[read, call("c2", "list_dir", json!({}))])
+    );
+}
+
+#[test]
+fn tools_parallel_follows_rp_reading_of_the_setting() {
+    for (value, on) in [("1", true), ("0", false), ("true", false), (" 1", false)] {
+        let d = direct(json!([]), &[("TOOLS_PARALLEL", value)]);
+        assert_eq!(d.chat.parallel_tools, on, "{value:?}");
+    }
+}
+
+// What a parallel batch read counts for the write guard, as the reads one by
+// one do: the file may be written afterwards.
+#[tokio::test]
+async fn a_parallel_read_counts_for_the_write_guard() {
+    let (mut d, _s) = shell_chat(json!([]), &[]);
+    let calls = [
+        call("c1", "read_file", json!({"path": "a.txt"})),
+        call("c2", "list_dir", json!({})),
+    ];
+    assert!(d.chat.parallel_ok(&calls));
+    let ctx = d.ctx.clone();
+    let out = d.chat.run_tool_calls(&ctx, &calls).await;
+    assert!(out[0].contains("alpha"), "{}", out[0]);
+    assert!(out[1].contains("a.txt"), "{}", out[1]);
+    let wrote = d
+        .chat
+        .run_tool_calls(
+            &ctx,
+            &[call(
+                "c3",
+                "write_file",
+                json!({"path": "a.txt", "content": "beta\n"}),
+            )],
+        )
+        .await;
+    assert!(!wrote[0].contains("error"), "{}", wrote[0]);
+}
+
+// A read that has turned secret since the batch was admitted is not read in
+// the batch: it runs on its own, with rp's question.
+#[tokio::test]
+async fn a_secret_read_in_a_batch_still_asks() {
+    let (mut d, s) = shell_chat(json!([]), &[]);
+    std::fs::write(s.path().join("ws/.env"), "K=v\n").unwrap();
+    let ctx = d.ctx.clone();
+    let old = std::mem::replace(&mut d.rx, tokio::sync::mpsc::unbounded_channel().1);
+    let answering = tokio::spawn(async move {
+        let mut old = old;
+        while let Some(e) = old.recv().await {
+            if let EventMsg::QuestionRequest(q) = e.msg {
+                ctx.answer(&q.question_id, viy_protocol::Answer::No);
+                return q.question.prompt;
+            }
+        }
+        String::new()
+    });
+    let ctx = d.ctx.clone();
+    let calls = [
+        call("c1", "read_file", json!({"path": ".env"})),
+        call("c2", "list_dir", json!({})),
+    ];
+    let out = d.chat.run_parallel(&ctx, &calls).await;
+    assert_eq!(answering.await.unwrap(), "  let the model read it?");
+    assert!(out[0].contains("declined"), "{}", out[0]);
+    assert!(out[1].contains("a.txt"), "{}", out[1]);
+}
+
+// rpctl's AnswerGuaranteeTests.test_a_failing_tool_costs_one_call_not_the_turn.
+// rp raises from a patched dispatch; a Rust tool returns its failure, so
+// here the system's own error does it: a name too long for the file system.
+#[tokio::test]
+async fn a_failing_tool_costs_one_call_not_the_turn() {
+    let long = format!("{{\"path\": \"{}\"}}", "x".repeat(300));
+    let (mut d, _s) = tooled(
+        json!([
+            {"stream": [{"tool_call": {"index": 0, "id": "c1", "name": "read_file", "arguments": long}},
+                        {"tool_call": {"index": 1, "id": "c2", "name": "read_file",
+                                       "arguments": "{\"path\": \"a.txt\"}"}},
+                        {"finish": "tool_calls"}]},
+            {"stream": [{"content": "the answer"}]},
+        ]),
+        &[("TOOLS_MAX_ROUNDS", "2"), ("SEARCH_MAX_ROUNDS", "1")],
+    );
+    d.send("look around").await;
+    let sent = d.mock.chat_bodies();
+    let results: std::collections::HashMap<String, String> = sent[2]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["role"] == "tool")
+        .map(|m| {
+            (
+                m["tool_call_id"].as_str().unwrap().to_string(),
+                m["content"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert!(results["c1"].contains("\"error\""), "{}", results["c1"]);
+    assert!(results["c2"].contains("alpha"), "{}", results["c2"]);
+    let last = d.chat.messages().last().cloned().unwrap();
+    assert_eq!(last["content"], "the answer");
+}

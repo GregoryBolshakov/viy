@@ -51,6 +51,7 @@ use viy_tools::build;
 use viy_tools::egress;
 use viy_tools::egress::Policy;
 use viy_tools::egress::Proxy;
+use viy_tools::guard;
 use viy_tools::quarantine;
 use viy_tools::sandbox;
 use viy_tools::sandbox::Jail;
@@ -277,9 +278,90 @@ impl Chat {
         ctx: &TurnContext,
         calls: &[ToolCall],
     ) -> Vec<String> {
+        if self.abort_turn.is_none() && self.parallel_ok(calls) {
+            return self.run_parallel(ctx, calls).await;
+        }
         let mut out = Vec::with_capacity(calls.len());
         for c in calls {
             out.push(self.call_one(ctx, c).await);
+        }
+        out
+    }
+
+    /// Whether a batch runs side by side (rp's `_parallel_ok`): every call
+    /// only reads and none of them would stop to ask the user (a secret
+    /// file), since a batch never holds a question.
+    pub(crate) fn parallel_ok(&self, calls: &[ToolCall]) -> bool {
+        if !self.parallel_tools || calls.len() < 2 {
+            return false;
+        }
+        calls.iter().all(|c| {
+            if !PARALLEL_SAFE.contains(&c.name.as_str()) {
+                return false;
+            }
+            // fetch_url's question check comes with it (phase 5); until then
+            // it is off and asks nothing.
+            c.name != "read_file" || self.reads_without_asking(&c.arguments)
+        })
+    }
+
+    /// Whether read_file with these arguments reads without a question.
+    fn reads_without_asking(&self, arguments: &str) -> bool {
+        let Ok(Value::Object(args)) = serde_json::from_str::<Value>(if arguments.is_empty() {
+            "{}"
+        } else {
+            arguments
+        }) else {
+            return false;
+        };
+        let Some(rel) = args
+            .get("path")
+            .and_then(Value::as_str)
+            .filter(|r| !r.is_empty())
+        else {
+            return false;
+        };
+        self.files
+            .resolve_in_workspace(rel)
+            .is_ok_and(|path| guard::secret_reason(&path).is_none())
+    }
+
+    /// A read-only batch side by side (rp's thread pool): the file tools on
+    /// blocking threads, their results and what they read taken in call
+    /// order. A read that has turned secret since [`Chat::parallel_ok`]
+    /// runs on its own afterwards, with its question.
+    pub(crate) async fn run_parallel(
+        &mut self,
+        ctx: &TurnContext,
+        calls: &[ToolCall],
+    ) -> Vec<String> {
+        for c in calls {
+            begin_call(ctx, c);
+        }
+        let files = Arc::new(self.files.clone());
+        let tools_on = self.tools_on;
+        let runs = calls.iter().map(|c| {
+            let files = Arc::clone(&files);
+            let (name, arguments) = (c.name.clone(), c.arguments.clone());
+            async move {
+                let started = Instant::now();
+                let got = quiet_call(files, name, &arguments, tools_on).await;
+                (got, started)
+            }
+        });
+        let results = futures_util::future::join_all(runs).await;
+        let mut out = Vec::with_capacity(calls.len());
+        for (c, (got, started)) in calls.iter().zip(results) {
+            let (result, card) = match got {
+                Some((result, card, seen)) => {
+                    if let Some((path, sha1)) = seen {
+                        self.files.remember_read(path, sha1);
+                    }
+                    (result, card)
+                }
+                None => self.dispatch(ctx, c).await,
+            };
+            out.push(self.end_call(ctx, c, &result, card, started));
         }
         out
     }
@@ -292,16 +374,23 @@ impl Chat {
             return json!({"error": "not run: the turn was stopped"}).to_string();
         }
         let started = Instant::now();
-        let args = parse_args(&c.arguments).unwrap_or_default();
-        ctx.emit(EventMsg::ToolCallBegin(ToolCallBeginEvent {
-            call_id: c.id.clone(),
-            tool: c.name.clone(),
-            summary: summary(&c.name, &args),
-        }));
+        begin_call(ctx, c);
         let (result, card) = self.dispatch(ctx, c).await;
+        self.end_call(ctx, c, &result, card, started)
+    }
+
+    /// Shows a call's end and gives its result, defused.
+    fn end_call(
+        &self,
+        ctx: &TurnContext,
+        c: &ToolCall,
+        result: &Value,
+        card: Card,
+        started: Instant,
+    ) -> String {
         ctx.emit(EventMsg::ToolCallEnd(ToolCallEndEvent {
             call_id: c.id.clone(),
-            status: status_of(&result),
+            status: status_of(result),
             detail: card.detail,
             duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             sandboxed: card.sandboxed,
@@ -831,6 +920,70 @@ pub(crate) fn report_egress(
         );
     }
     rep
+}
+
+/// Tools that only read, so a batch of them can run side by side (rp's
+/// `PARALLEL_SAFE`).
+const PARALLEL_SAFE: [&str; 6] = [
+    "read_file",
+    "list_dir",
+    "web_search",
+    "fetch_url",
+    "explore",
+    "find_tool",
+];
+
+/// Shows a call starting.
+fn begin_call(ctx: &TurnContext, c: &ToolCall) {
+    let args = parse_args(&c.arguments).unwrap_or_default();
+    ctx.emit(EventMsg::ToolCallBegin(ToolCallBeginEvent {
+        call_id: c.id.clone(),
+        tool: c.name.clone(),
+        summary: summary(&c.name, &args),
+    }));
+}
+
+/// One call of a parallel batch, as [`Chat::dispatch`] answers it but with
+/// no question: `None` when the read would ask, and must run on its own.
+/// What read_file read comes along, for the write guard.
+async fn quiet_call(
+    files: Arc<files::FileTools>,
+    name: String,
+    arguments: &str,
+    tools_on: bool,
+) -> Option<(Value, Card, Option<(PathBuf, String)>)> {
+    if !build::NAMES.contains(&name.as_str()) {
+        // The internet tools and explore (phases 5 and 7), off as in dispatch.
+        let e = format!("the {name} tool is off");
+        return Some((json!({"error": e}), Card::default(), None));
+    }
+    if !tools_on {
+        let e = format!("the {name} tool is off; enable it with /tools on");
+        return Some((json!({"error": e}), Card::default(), None));
+    }
+    let args = match parse_args(arguments) {
+        Ok(a) => a,
+        Err(e) => return Some((e, Card::default(), None)),
+    };
+    let read = tokio::task::spawn_blocking(move || {
+        if name == "read_file" {
+            files
+                .read_quietly(&args)
+                .map(|(out, seen)| (out.result, seen))
+        } else {
+            Some((files.list_dir(&args).result, None))
+        }
+    })
+    .await;
+    match read {
+        Ok(Some((result, seen))) => Some((result, Card::files(), seen)),
+        Ok(None) => None,
+        Err(e) => Some((
+            json!({"error": format!("the read failed: {e}")}),
+            Card::files(),
+            None,
+        )),
+    }
 }
 
 /// What the tool card shows besides the status.

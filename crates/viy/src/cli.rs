@@ -37,7 +37,7 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     #[command(about = "mark the current folder as a project (.viy/)")]
-    Init,
+    Init(InitArgs),
     #[command(about = "copy rp's config and model profiles to viy's (rp's stay in place)")]
     Migrate,
     #[command(about = "create/resume the pod and wait for vLLM")]
@@ -139,7 +139,7 @@ impl Command {
     /// The subcommand's name, as typed.
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Init => "init",
+            Self::Init(_) => "init",
             Self::Migrate => "migrate",
             Self::Up { .. } => "up",
             Self::Status => "status",
@@ -216,6 +216,33 @@ pub enum DevCommand {
 pub enum BootsAction {
     List,
     Show,
+}
+
+/// `viy init`'s flags: rp's `init` has none; `--kb` and the three that
+/// need it write the knowledge base (kb d112).
+#[derive(Debug, Args)]
+pub struct InitArgs {
+    #[arg(
+        long,
+        help = "also set up a self-checking knowledge base here: the agent's guide, kb/, its checkers and their git hook"
+    )]
+    pub kb: bool,
+    #[arg(
+        long,
+        requires = "kb",
+        value_name = "NAME",
+        help = "the project's name in README.md and the guide (default: the folder's)"
+    )]
+    pub project: Option<String>,
+    #[arg(
+        long,
+        requires = "kb",
+        value_name = "TEXT",
+        help = "one line on what the project is betting on"
+    )]
+    pub context: Option<String>,
+    #[arg(long, requires = "kb", value_name = "YYYY-MM-DD", value_parser = viy_agent::kb::parse_day0, help = "pin a validation calendar from this date")]
+    pub day0: Option<chrono::NaiveDate>,
 }
 
 #[derive(Debug, Args)]

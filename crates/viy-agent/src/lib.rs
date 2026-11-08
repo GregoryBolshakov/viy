@@ -17,6 +17,7 @@ mod engine;
 pub mod filehistory;
 pub mod files;
 pub mod instructions;
+pub mod kb;
 pub mod payload;
 pub mod prompt;
 pub mod server;

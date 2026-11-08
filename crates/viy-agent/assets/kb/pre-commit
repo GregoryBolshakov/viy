@@ -1,0 +1,18 @@
+#!/bin/sh
+# Written by viy init --kb. Blocks a commit that breaks the KB contract, whoever
+# wrote the facts - an agent or a human. Bypass once with
+# `git commit --no-verify`. Checks the working tree, not just the index.
+#
+# git runs this outside any agent's sandbox, so it runs its own copies of the
+# checkers, from this folder, which viy keeps agents from writing (it is
+# core.hooksPath); the ones in tools/ are for the agent. python3 -I keeps a
+# module planted beside a checker out of its imports.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+for f in kb_lint.py kb_facts.py; do
+    cmp -s ".githooks/$f" "tools/$f" || {
+        echo "pre-commit: tools/$f differs from .githooks/$f - check both and make them equal" >&2; exit 1; }
+done
+python3 -I .githooks/kb_lint.py --quiet || {
+    echo "pre-commit: kb_lint.py failed - fix the errors above" >&2; exit 1; }
+python3 -I .githooks/kb_facts.py check --strict --quiet || {
+    echo "pre-commit: kb_facts.py found HARD problems above" >&2; exit 1; }

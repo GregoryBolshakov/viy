@@ -149,9 +149,12 @@ fn subcommands_and_flags_are_rps() {
             json!(rp["description"].as_str().map(viy_description)),
             "{name}"
         );
+        // `init --kb` and the flags that need it are viy's own (kb d112).
+        let viy_own = |a: &clap::Arg| name == "init" && a.get_long().is_some();
         let args: Vec<Value> = sub
             .get_arguments()
             .filter(|a| !matches!(a.get_action(), clap::ArgAction::Help))
+            .filter(|a| !viy_own(a))
             .map(as_argparse)
             .collect();
         let rp_args: Vec<Value> = rp["args"]
@@ -182,7 +185,7 @@ fn word(value: &impl clap::ValueEnum) -> String {
 /// values as the fixture writes them (numbers as strings).
 fn namespace(cli: &Cli) -> Value {
     let mut ns = match &cli.command {
-        Command::Init | Command::Migrate | Command::Status | Command::Stop | Command::Down => {
+        Command::Init(_) | Command::Migrate | Command::Status | Command::Stop | Command::Down => {
             json!({})
         }
         Command::Up { timeout } => json!({"timeout": timeout.to_string()}),

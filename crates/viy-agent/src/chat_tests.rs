@@ -2394,3 +2394,47 @@ async fn the_model_cannot_write_a_doctrine() {
     answering.abort();
     assert_eq!(asked.lock().unwrap().len(), 2);
 }
+
+// ------------------------------------------------------------------ /kb
+
+// `/kb` writes the knowledge base into the workspace (kb d112), and the
+// guide is in the next request's system prompt.
+#[tokio::test]
+async fn kb_writes_the_knowledge_base_and_the_guide_reaches_the_model() {
+    let (mut d, _s) = shell_chat(
+        json!([{"stream": [{"content": "ok"}]}]),
+        &[("INSTRUCTIONS_ENABLED", "1")],
+    );
+    d.chat.instructions_on = true;
+    let ctx = d.ctx.clone();
+    let ws = d.chat.places.workspace.clone();
+    d.chat.command(&ctx, "/kb --project 'Test KB' --day0").await;
+    assert_eq!(
+        d.said(),
+        ["--day0 needs a value; usage: /kb [--project NAME] [--context TEXT] [--day0 YYYY-MM-DD]"]
+    );
+    assert!(!ws.join("kb").exists());
+    d.chat.command(&ctx, "/kb --project 'Test KB'").await;
+    let said = d.said().join("\n");
+    assert!(said.contains("  wrote QWEN.md\n"), "{said}");
+    assert!(
+        said.ends_with("QWEN.md is in the system prompt from your next message")
+            || said.contains("python3 not found"),
+        "{said}"
+    );
+    assert!(ws.join("kb/00-index.md").is_file() && ws.join(".viy").is_dir());
+    d.send("hi").await;
+    let bodies = d.mock.chat_bodies();
+    let system = bodies.last().unwrap()["messages"][0]["content"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(system.contains("# How you work in this repo"), "{system}");
+    // Once more: nothing is overwritten.
+    d.chat.command(&ctx, "/kb").await;
+    let said = d.said().join("\n");
+    assert!(
+        said.contains("viy overwrites nothing. Nothing written"),
+        "{said}"
+    );
+}

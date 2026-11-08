@@ -78,6 +78,12 @@ pub const COMMANDS: &[Command] = &[
         &[],
     ),
     cmd(
+        "kb",
+        "[--project NAME] [--context TEXT] [--day0 DATE]",
+        "set up a self-checking knowledge base here",
+        &[],
+    ),
+    cmd(
         "sources",
         "",
         "list the URLs from this turn's searches",

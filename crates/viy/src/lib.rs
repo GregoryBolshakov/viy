@@ -152,7 +152,15 @@ fn dispatch(
         viy_config::config::load(paths, &project).map_err(|e| e.to_string())
     };
     match command {
-        Command::Init => Ok(init::cmd_init(&paths()?, &cwd()?, out)?),
+        Command::Init(args) => {
+            let paths = paths()?;
+            init::cmd_init(&paths, &cwd()?, out)?;
+            if args.kb {
+                let cfg = config(&paths)?;
+                init::cmd_init_kb(args, &cfg, &cwd()?, out)?;
+            }
+            Ok(())
+        }
         Command::Migrate => Ok(migrate::cmd_migrate(&paths()?, out)?),
         Command::Model(args) => {
             let paths = paths()?;

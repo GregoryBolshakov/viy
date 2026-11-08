@@ -170,3 +170,73 @@ fn the_hint_names_migrate_when_rp_has_a_config() {
         )
     );
 }
+
+// `viy init --kb` (kb d112): the marker, then the knowledge base and the
+// script's "Next:"; a second run writes nothing and fails.
+#[test]
+fn viy_init_kb_writes_the_knowledge_base() {
+    let scratch = ScratchDir::new("init-kb").unwrap();
+    let dir = scratch.path().join("new-thing");
+    fs::create_dir(&dir).unwrap();
+    let cli = crate::cli::parse(
+        [
+            "init",
+            "--kb",
+            "--context",
+            "Bets on X.",
+            "--day0",
+            "2026-07-28",
+        ]
+        .map(Into::into),
+    )
+    .unwrap();
+    let crate::cli::Command::Init(args) = &cli.command else {
+        panic!("{cli:?}")
+    };
+    let mut out = Vec::new();
+    cmd_init(&paths(scratch.path()), &dir, &mut out).unwrap();
+    let cfg = Config::defaults();
+    let done = cmd_init_kb(args, &cfg, &dir, &mut out);
+    let text = String::from_utf8(out).unwrap();
+    if text.contains("python3 not found") {
+        return;
+    }
+    done.unwrap();
+    assert!(
+        text.contains("  wrote QWEN.md\n  wrote kb/00-index.md\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("  wrote kb/strategy/s001-pinned-calendar.md\n"),
+        "{text}"
+    );
+    assert!(text.ends_with(
+        "Next:\n  git add -A && git commit -m \"KB skeleton\"\n  viy chat\n\nThen open kb/00-index.md, write the project premise into QWEN.md, and delete\nkb/facts/f001-example.md once you have a real fact.\n"
+    ), "{text}");
+    assert!(
+        fs::read_to_string(dir.join("README.md"))
+            .unwrap()
+            .starts_with("# new-thing\n\nBets on X.\n")
+    );
+    let e = cmd_init_kb(args, &cfg, &dir, &mut Vec::new()).unwrap_err();
+    assert!(e.contains("viy overwrites nothing"), "{e}");
+}
+
+#[test]
+fn the_kb_flags_need_kb_and_an_iso_day0() {
+    let parse = |args: &[&str]| crate::cli::parse(args.iter().map(Into::into));
+    for args in [
+        &["init", "--project", "X"][..],
+        &["init", "--context", "X"],
+        &["init", "--day0", "2026-07-28"],
+    ] {
+        let e = parse(args).unwrap_err().to_string();
+        assert!(e.contains("--kb"), "{args:?}: {e}");
+    }
+    let e = parse(&["init", "--kb", "--day0", "11/10"])
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("--day0 must be ISO YYYY-MM-DD"), "{e}");
+    let cli = parse(&["init"]).unwrap();
+    assert!(matches!(cli.command, crate::cli::Command::Init(ref a) if !a.kb));
+}

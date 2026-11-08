@@ -72,6 +72,9 @@ const HELP: &str = "  /help              show this
   /doctrines         show the doctrine files the network reviewer reads: your
                      rules in ~/.config/viy/doctrines/ and .viy/doctrines/ (and
                      rp's places), which can only make it stricter
+  /kb [--project NAME] [--context TEXT] [--day0 YYYY-MM-DD]  set up a
+                     self-checking knowledge base here (as viy init --kb): the
+                     agent's guide, kb/, its checkers and their git hook
   /sources           list the URLs from this turn's searches
   /compact [full] [focus]  shrink the context: drops old tool output if that
                      is enough, else summarizes (full or a focus: always
@@ -478,6 +481,7 @@ impl Chat {
                     info("doctrines", line);
                 }
             }
+            "kb" => self.kb(ctx, arg).await,
             "mount" => self.mount(ctx, arg).await,
             "unmount" => self.unmount(ctx, arg),
             "instructions" => {
@@ -526,6 +530,46 @@ impl Chat {
                 ),
             },
         }
+    }
+
+    /// `/kb`: writes the self-checking knowledge base into the workspace
+    /// ([`crate::kb`], kb d112). The user's command: no approver, no
+    /// sandbox, and `/rewind` does not undo it. The guide is read with the
+    /// other instruction files on the next message.
+    async fn kb(&mut self, ctx: &TurnContext, arg: &str) {
+        let opts = match crate::kb::Options::parse(arg) {
+            Ok(opts) => opts,
+            Err(e) => return notice(ctx, NoticeLevel::Warn, "kb", e),
+        };
+        let (root, cfg) = (self.places.workspace.clone(), self.cfg.clone());
+        let today = chrono::Local::now().date_naive();
+        let done =
+            tokio::task::spawn_blocking(move || crate::kb::init(&root, &cfg, &opts, today)).await;
+        let report = match done {
+            Ok(Ok(report)) => report,
+            Ok(Err(e)) => return notice(ctx, NoticeLevel::Warn, "kb", e),
+            Err(e) => return notice(ctx, NoticeLevel::Warn, "kb", format!("/kb: {e}")),
+        };
+        let mut text = report.lines.join("\n");
+        let level = match &report.failed {
+            Some(why) => {
+                text += &format!("\n{why}");
+                NoticeLevel::Warn
+            }
+            None => {
+                text += &format!(
+                    "\n\n{} is in the system prompt from your next message{}",
+                    report.guide,
+                    if self.instructions_on {
+                        ""
+                    } else {
+                        " (instruction files are off: /instructions on)"
+                    }
+                );
+                NoticeLevel::Info
+            }
+        };
+        notice(ctx, level, "kb", text);
     }
 
     /// `/mount`: lists the drives, or lends the model a drive or folder (rp's

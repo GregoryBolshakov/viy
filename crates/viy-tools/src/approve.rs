@@ -60,6 +60,7 @@ pub use review::Verdict;
 pub use review::files_for_review;
 pub use review::parse_verdict;
 pub use review::review_schema;
+pub use review::review_with_doctrines;
 pub use tmp_rm::sandbox_tmp_rm;
 
 /// After this many refusals in a row the turn is stopped, so a model that

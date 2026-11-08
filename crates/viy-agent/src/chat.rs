@@ -118,6 +118,9 @@ pub struct Places {
     /// viy's own state folder: the chats' traces, turns and alarms
     /// ([`crate::trace`]).
     pub state_dir: PathBuf,
+    /// Where the network reviewer's doctrines are read from, in order
+    /// ([`viy_tools::doctrines::sources`]).
+    pub doctrine_sources: Vec<viy_tools::doctrines::Source>,
     /// Besides the workspace and project, what a mount must neither hold nor
     /// sit inside: the clients' code, both tools' config, state and data.
     pub guarded: Vec<PathBuf>,
@@ -726,6 +729,16 @@ impl Chat {
             self.tracer.event("web_taint", json!({"why": why}));
             self.web_taint = Some(why);
         }
+    }
+
+    /// The user's doctrines, read now (each review reads them afresh).
+    pub fn doctrines(&self) -> viy_tools::doctrines::Loaded {
+        viy_tools::doctrines::load(&self.places.doctrine_sources)
+    }
+
+    /// `/doctrines`' lines.
+    pub fn report_doctrines(&self) -> Vec<String> {
+        viy_tools::doctrines::report(&self.doctrines(), &self.places.doctrine_sources)
     }
 
     /// The chat's trace.

@@ -72,6 +72,12 @@ pub const COMMANDS: &[Command] = &[
         &["normal", "auto-yes"],
     ),
     cmd(
+        "doctrines",
+        "",
+        "show the network reviewer's doctrine files",
+        &[],
+    ),
+    cmd(
         "sources",
         "",
         "list the URLs from this turn's searches",

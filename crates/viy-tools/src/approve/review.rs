@@ -95,8 +95,8 @@ const WHOLE_NETWORK: &str = "this machine's whole network, including its own ser
 const FILE_LIMIT: usize = 4;
 const FILE_CHARS: usize = 4000;
 
-/// The reviewer's rating.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The reviewer's rating, lowest first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Risk {
     Low,
     Medium,
@@ -150,6 +150,11 @@ pub struct Review<'a> {
     /// The command runs on a server lent with /ssh, described by this text;
     /// no workspace files are attached, since it does not run here.
     pub server: Option<&'a str>,
+    /// The user's doctrines as the system message's last section
+    /// ([`crate::doctrines::policy`]), new in viy; `None` leaves the
+    /// request rpctl's. [`review_with_doctrines`] sets it for its second
+    /// request.
+    pub policy: Option<&'a str>,
 }
 
 impl<'a> Review<'a> {
@@ -172,6 +177,7 @@ impl<'a> Review<'a> {
             network: None,
             private_git: false,
             server: None,
+            policy: None,
         }
     }
 
@@ -207,6 +213,8 @@ impl<'a> Review<'a> {
             };
             format!("{REVIEW_SYSTEM}{git}")
         };
+        // After rpctl's prompt, so every review still shares its prefix.
+        let system = system + self.policy.unwrap_or_default();
         Ok(json!({
             "model": self.model,
             "messages": [
@@ -265,6 +273,40 @@ impl<'a> Review<'a> {
             .body(serde_json::to_vec(body).unwrap_or_default())
             .timeouts(Duration::from_secs(10), self.timeout);
         viy_http::send(http, request).await.map_err(unreachable)
+    }
+}
+
+/// The verdict with the user's doctrines (new in viy, kb d109): the
+/// command reviewed as rpctl reviews it, then, when there are doctrines,
+/// again with their section, and the higher rating holds. So a doctrine,
+/// which may come with a repository someone else wrote, can make the
+/// review stricter and never weaker, whatever it tells the reviewer. A
+/// failure of either review is the failure (the user is asked).
+pub async fn review_with_doctrines(
+    review: &Review<'_>,
+    policy: Result<Option<String>, String>,
+    http: &dyn HttpClient,
+) -> Verdict {
+    let plain = Review {
+        policy: None,
+        ..review.clone()
+    };
+    let (risk, reason) = plain.run(http).await?;
+    let policy = match policy {
+        // Nothing is above critical.
+        _ if risk == Risk::Critical => return Ok((risk, reason)),
+        Ok(None) => return Ok((risk, reason)),
+        Ok(Some(policy)) => policy,
+        Err(why) => return Err(format!("the doctrines could not be read: {why}")),
+    };
+    let strict = Review {
+        policy: Some(&policy),
+        ..review.clone()
+    };
+    match strict.run(http).await {
+        Ok((by_doctrine, why)) if by_doctrine > risk => Ok((by_doctrine, why)),
+        Ok(_) => Ok((risk, reason)),
+        Err(why) => Err(format!("review with your doctrines: {why}")),
     }
 }
 

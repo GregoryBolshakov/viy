@@ -445,6 +445,12 @@ pub(crate) fn chat(
         quarantine_dir: paths.state_dir().join("quarantine"),
         sandbox_tmp_dir: paths.state_dir().join("sandbox-tmp"),
         state_dir: paths.state_dir(),
+        doctrine_sources: viy_tools::doctrines::sources(
+            &paths.config_dir(),
+            &paths.rpctl_config_dir(),
+            project.root(),
+            &paths.home,
+        ),
         guarded: vec![
             paths.config_dir(),
             paths.state_dir(),

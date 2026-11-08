@@ -11,11 +11,13 @@
 //! secret file names ([`secrets`]), the path
 //! resolution the guards share ([`resolve`]), the egress proxy of network
 //! commands ([`egress`]) with the host rules of netguard it uses
-//! ([`netguard`]), and the schemas of the internet tools ([`web`]), which
-//! the chat offers from phase 3 on.
+//! ([`netguard`]), the schemas of the internet tools ([`web`]), which
+//! the chat offers from phase 3 on, and the user's doctrines for the
+//! network reviewer ([`doctrines`]), new in viy.
 
 pub mod approve;
 pub mod build;
+pub mod doctrines;
 pub mod egress;
 pub mod guard;
 pub mod modes;

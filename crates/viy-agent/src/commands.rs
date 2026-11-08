@@ -69,6 +69,9 @@ const HELP: &str = "  /help              show this
                      into the system prompt, or stop/start loading them
   /mode [normal|auto-yes]  who answers the approver's questions: you, or
                      yes by itself for some kinds (Shift+Tab cycles the modes)
+  /doctrines         show the doctrine files the network reviewer reads: your
+                     rules in ~/.config/viy/doctrines/ and .viy/doctrines/ (and
+                     rp's places), which can only make it stricter
   /sources           list the URLs from this turn's searches
   /compact [full] [focus]  shrink the context: drops old tool output if that
                      is enough, else summarizes (full or a focus: always
@@ -464,6 +467,15 @@ impl Chat {
                         "mode",
                         format!("no mode {arg}; the modes are {}", names.join(", ")),
                     );
+                }
+            }
+            "doctrines" => {
+                if !arg.is_empty() {
+                    warn("doctrines", "usage: /doctrines".into());
+                    return;
+                }
+                for line in self.report_doctrines() {
+                    info("doctrines", line);
                 }
             }
             "mount" => self.mount(ctx, arg).await,

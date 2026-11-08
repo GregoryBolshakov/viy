@@ -48,6 +48,7 @@ use viy_tools::approve::Pending;
 use viy_tools::approve::Review;
 use viy_tools::approve::Verdict;
 use viy_tools::build;
+use viy_tools::doctrines;
 use viy_tools::egress;
 use viy_tools::egress::Policy;
 use viy_tools::egress::Proxy;
@@ -181,6 +182,9 @@ fn summary(name: &str, args: &Map<String, Value>) -> String {
 /// file, from inside a turn.
 struct ChatHearing<'a> {
     ctx: &'a TurnContext,
+    /// Where the user's doctrines are read from when the reviewer is asked
+    /// (new in viy, kb d109).
+    doctrines: Vec<doctrines::Source>,
     review: Review<'a>,
     http: &'a dyn viy_http::HttpClient,
     rules_path: &'a Path,
@@ -195,8 +199,19 @@ impl Hearing for ChatHearing<'_> {
         self.ctx.ask(&question)
     }
 
+    /// rpctl's review, and a second one with the user's doctrines when
+    /// there are any; the stricter holds. They are read only now, when a
+    /// command reaches the reviewer, off the engine's thread.
     fn review(&mut self) -> Pending<'_, Verdict> {
-        Box::pin(self.review.run(self.http))
+        let sources = self.doctrines.clone();
+        Box::pin(async move {
+            let policy = tokio::task::spawn_blocking(move || {
+                doctrines::policy(&doctrines::load(&sources).doctrines)
+            })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()));
+            approve::review_with_doctrines(&self.review, policy, self.http).await
+        })
     }
 
     fn rules(&mut self) -> Vec<Vec<String>> {
@@ -603,6 +618,7 @@ impl Chat {
             let endpoint = self.endpoint.clone();
             let mut hearing = ChatHearing {
                 ctx,
+                doctrines: self.places.doctrine_sources.clone(),
                 review: Review {
                     network: reach.as_deref(),
                     ..Review::new(

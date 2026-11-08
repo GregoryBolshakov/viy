@@ -144,6 +144,105 @@ fn prompts_are_rpctls() {
     assert_eq!(system("server_no_files"), REVIEW_REMOTE_SYSTEM);
 }
 
+/// The doctrines' section (new in viy, kb d109) goes last in the system
+/// message, after rpctl's prompt and the private-git note, local or
+/// remote; the user's message is untouched.
+#[test]
+fn a_policy_follows_rpctls_prompt() {
+    let ws = std::env::temp_dir();
+    let users = ["fetch the data".to_string()];
+    let base = Review::new("http://x", "k", "m", &users, "curl https://a.test", &ws);
+    let plain = base.body().unwrap();
+    let policy = "\n\n# The user's security policy\n\nNo tunnels.";
+    let with = Review {
+        policy: Some(policy),
+        ..base.clone()
+    };
+    let body = with.body().unwrap();
+    assert_eq!(
+        body["messages"][0]["content"],
+        format!("{REVIEW_SYSTEM}{policy}")
+    );
+    assert_eq!(body["messages"][1], plain["messages"][1]);
+    let git = Review {
+        private_git: true,
+        ..with.clone()
+    };
+    assert_eq!(
+        git.body().unwrap()["messages"][0]["content"],
+        format!("{REVIEW_SYSTEM}{REVIEW_PRIVATE_GIT}{policy}")
+    );
+    let remote = Review {
+        server: Some("host a"),
+        ..with
+    };
+    assert_eq!(
+        remote.body().unwrap()["messages"][0]["content"],
+        format!("{REVIEW_REMOTE_SYSTEM}{policy}")
+    );
+}
+
+fn rated(risk: &str, reason: &str) -> Reply {
+    ok(&json!({"risk": risk, "reason": reason}).to_string())
+}
+
+/// The review with doctrines (kb d109): rpctl's request first, the
+/// doctrines' second, the higher rating holds, whatever the doctrine said.
+#[tokio::test]
+async fn doctrines_can_only_make_the_review_stricter() {
+    let ws = std::env::temp_dir();
+    let users = ["get it".to_string()];
+    let review = Review::new("http://x", "k", "m", &users, "curl https://a.test", &ws);
+    let policy = || Ok(Some("\n\n# The user's security policy".to_string()));
+    let systems = |http: &FakeHttp| -> Vec<String> {
+        http.sent()
+            .iter()
+            .map(|r| {
+                let b: Value = serde_json::from_slice(r.body.as_deref().unwrap()).unwrap();
+                b["messages"][0]["content"].as_str().unwrap().to_string()
+            })
+            .collect()
+    };
+
+    // Stricter: the doctrine's rating and reason.
+    let http = FakeHttp::new([rated("low", "routine"), rated("high", "breaks rule 2")]);
+    let got = review_with_doctrines(&review, policy(), &http).await;
+    assert_eq!(got, Ok((Risk::High, "breaks rule 2".into())));
+    assert_eq!(
+        systems(&http),
+        [
+            REVIEW_SYSTEM.to_string(),
+            format!("{REVIEW_SYSTEM}\n\n# The user's security policy")
+        ]
+    );
+
+    // A doctrine that talked the reviewer down changes nothing.
+    let http = FakeHttp::new([rated("high", "unknown host"), rated("low", "allowed")]);
+    let got = review_with_doctrines(&review, policy(), &http).await;
+    assert_eq!(got, Ok((Risk::High, "unknown host".into())));
+
+    // Critical needs no second request; none without doctrines either.
+    let http = FakeHttp::new([rated("critical", "a paste site")]);
+    let got = review_with_doctrines(&review, policy(), &http).await;
+    assert_eq!(got, Ok((Risk::Critical, "a paste site".into())));
+    assert_eq!(http.sent().len(), 1);
+    let http = FakeHttp::new([rated("low", "routine")]);
+    let got = review_with_doctrines(&review, Ok(None), &http).await;
+    assert_eq!(got, Ok((Risk::Low, "routine".into())));
+    assert_eq!(http.sent().len(), 1);
+
+    // A failure of either is the failure: the user is asked.
+    let http = FakeHttp::new([rated("low", "routine"), ok("no verdict")]);
+    let got = review_with_doctrines(&review, policy(), &http).await;
+    assert_eq!(
+        got,
+        Err("review with your doctrines: reviewer reply had no verdict".into())
+    );
+    let http = FakeHttp::new([rated("low", "routine")]);
+    let got = review_with_doctrines(&review, Err("no fence".into()), &http).await;
+    assert_eq!(got, Err("the doctrines could not be read: no fence".into()));
+}
+
 // ------------------------------------------------- rpctl tests, ported
 
 /// test_egress ChatEgressTests.test_reviewer_sees_the_network

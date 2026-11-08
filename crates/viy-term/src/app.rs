@@ -860,6 +860,20 @@ impl App {
         self.dirty = false;
     }
 
+    /// The header's art shows only while nothing has been sent in this
+    /// chat and the input box is empty: typing hides it, clearing the box
+    /// brings it back, the first message sent (or a resumed chat's) ends
+    /// it, as Codex's welcome logo. The title and directory stay.
+    fn header_art(&mut self) {
+        let show = self.points.is_empty() && self.turn.is_none() && self.composer.is_empty();
+        if let Some(Cell::Header(header)) = self.cells.first_mut()
+            && header.art != show
+        {
+            header.art = show;
+            self.view.changed(0);
+        }
+    }
+
     fn render<B>(&mut self, term: &mut Terminal<B>, now: Instant) -> io::Result<()>
     where
         B: Backend<Error = io::Error> + Write,
@@ -914,6 +928,7 @@ impl App {
         let top_height = size.height - bottom_height;
         self.view
             .set_live(self.tail_lines(usize::from(size.width.max(1))));
+        self.header_art();
         self.view.prepare(&self.cells, size.width, top_height);
         bottom.push(self.footer(usize::from(size.width)));
         let bottom: Vec<Line<'static>> = bottom.into_iter().map(clean_row).collect();

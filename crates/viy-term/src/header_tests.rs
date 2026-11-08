@@ -14,6 +14,8 @@ fn header(colors: Colors) -> Header {
         colors,
         version: "0.1.0".into(),
         directory: "~/Documents/Projects/viy".into(),
+        ghost: false,
+        art: true,
     }
 }
 
@@ -233,7 +235,7 @@ fn only_colour_sequences_are_read_from_the_art() {
 /// Under the art, as Codex's session header: a blank row, `  >_ viy (vX)`
 /// (the prompt sign in cyan, the name bold, the version dim) and the
 /// directory, dim, five columns in. Narrower than the narrowest art, they
-/// remain.
+/// remain, at the top.
 #[test]
 fn the_title_and_directory_are_under_the_art() {
     let h = header(Colors::True);
@@ -259,7 +261,7 @@ fn the_title_and_directory_are_under_the_art() {
     let narrow: Vec<String> = h.lines(31).iter().map(text).collect();
     assert_eq!(
         narrow,
-        ["", "  >_ viy (v0.1.0)", "     ~/Documents/Projects/viy"]
+        ["  >_ viy (v0.1.0)", "     ~/Documents/Projects/viy"]
     );
 }
 
@@ -275,4 +277,81 @@ fn a_long_directory_is_cut_in_the_middle() {
     assert_eq!(fit_path("~/Documents/Projects/viy", 5), "…/viy");
     assert_eq!(fit_path("/a-very-long-folder-name", 10), "…lder-name");
     assert_eq!(fit_path("~", 0), "");
+}
+
+/// The ghost (CHAT_HEADER=1): Braille cells with a foreground only, never
+/// a background, so whatever is behind the terminal shows between the
+/// dots; built in at the coloured art's widths (the larva's at 32); no
+/// row wider than the width less the indent; none below [`MIN_WIDTH`].
+#[test]
+fn the_ghost_is_braille_on_the_terminals_own_background() {
+    let h = Header {
+        ghost: true,
+        ..header(Colors::True)
+    };
+    assert!(h.art(MIN_WIDTH - 1).is_empty());
+    assert_eq!(
+        GHOSTS.iter().map(|(w, _)| *w).collect::<Vec<_>>(),
+        widths().collect::<Vec<_>>()
+    );
+    for &(w, _) in GHOSTS {
+        let art = h.art(w);
+        assert_eq!(art.len(), 11, "g{w}");
+        for line in &art {
+            assert!(line.width() <= w, "g{w}");
+            for span in &line.spans {
+                assert_eq!(span.style.bg, None, "g{w}");
+                assert!(
+                    span.content
+                        .chars()
+                        .all(|c| c == ' ' || ('\u{2801}'..='\u{28ff}').contains(&c)),
+                    "g{w}"
+                );
+            }
+        }
+    }
+}
+
+/// Its ink is a faint step from the terminal's background toward the
+/// tone: on a dark terminal a little lighter, on a light one a little
+/// darker, never the tone itself.
+#[test]
+fn the_ghosts_ink_is_close_to_the_background() {
+    let dark = crate::palette::DefaultColors {
+        fg: (210, 214, 220),
+        bg: (24, 24, 30),
+    };
+    let light = crate::palette::DefaultColors {
+        fg: (40, 40, 46),
+        bg: (250, 249, 246),
+    };
+    let tone = (139, 91, 97);
+    let ink = ghost_ink(tone, dark, 1.0);
+    assert!(ink.0 > dark.bg.0 && ink.0 < 90, "{ink:?}");
+    let ink = ghost_ink(tone, light, 1.0);
+    assert!(ink.0 < light.bg.0 && ink.0 > 180, "{ink:?}");
+    // A cell's own opacity takes it nearer the background still.
+    let faint = ghost_ink(tone, dark, 0.5);
+    assert!(
+        faint.0 > dark.bg.0 && faint.0 < ghost_ink(tone, dark, 1.0).0,
+        "{faint:?}"
+    );
+}
+
+/// With the ghost the title and the directory come first, at the very
+/// top, then a blank row and the ghost under them; below the art's
+/// narrowest width only the two lines.
+#[test]
+fn the_ghost_sits_under_the_title_and_directory() {
+    let h = Header {
+        ghost: true,
+        ..header(Colors::True)
+    };
+    let lines = h.lines(140);
+    assert_eq!(text(&lines[0]), "  >_ viy (v0.1.0)");
+    assert_eq!(text(&lines[1]), "     ~/Documents/Projects/viy");
+    assert_eq!(text(&lines[2]), "");
+    assert_eq!(lines.len(), 3 + 11);
+    assert_eq!(&lines[3..], h.art(140).as_slice());
+    assert_eq!(h.lines(MIN_WIDTH - 1).len(), 2);
 }

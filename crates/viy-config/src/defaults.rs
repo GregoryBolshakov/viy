@@ -63,8 +63,9 @@ pub const DEFAULTS: &[(&str, &str)] = &[
     // static mark when it waits for you. 0 leaves the title alone.
     ("CHAT_TAB_TITLE", "1"),
     // Client-side, viy only. viy chat draws the centipede header at the top
-    // of the transcript (it scrolls away with it), on a terminal at least 60
-    // columns wide, unless NO_COLOR is set. 0 leaves it out.
+    // of the transcript (it scrolls away with it), unless NO_COLOR is set:
+    // 1 its ghost (faint Braille dots in the terminal's own colours, no
+    // background), colour the coloured art, 0 (or anything else) none.
     ("CHAT_HEADER", "1"),
     // Client-side. 1 masks API tokens (known key formats, and the values of
     // this config's own secrets) before a chat is written to disk. Off by

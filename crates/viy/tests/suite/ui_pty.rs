@@ -138,10 +138,20 @@ const POP: &[u8] = b"\x1b[23;0t";
 /// OSC 0 sets the icon name and the title, and the title stack is xterm's
 /// window manipulation, which vt100 does not handle.
 fn foreign(parser: &vt100::Parser<viy_testkit::screen::Recorder>) -> Vec<String> {
-    parser
-        .callbacks()
-        .foreign()
-        .into_iter()
+    let mut seen = parser.callbacks().foreign();
+    // viy's own question at start, once: the terminal's default colours
+    // (OSC 10 and 11, each ended by ST) and DA1 (crates/viy-term/src/palette.rs).
+    let probe = [
+        "osc [\"10\", \"?\"]",
+        "escape None None '\\\\'",
+        "osc [\"11\", \"?\"]",
+        "escape None None '\\\\'",
+        "csi [[0]] c",
+    ];
+    if let Some(at) = seen.windows(probe.len()).position(|w| w == probe) {
+        seen.drain(at..at + probe.len());
+    }
+    seen.into_iter()
         .filter(|e| {
             !(e.starts_with("title ")
                 || e.starts_with("icon name ")
@@ -165,7 +175,10 @@ fn own_titles(bytes: &[u8]) -> (Vec<String>, Vec<u8>) {
         titles.push(title.to_string());
         rest.push_str(after);
     }
-    let rest = rest.replace("\x1b[22;0t", "").replace("\x1b[23;0t", "");
+    let rest = rest
+        .replace("\x1b[22;0t", "")
+        .replace("\x1b[23;0t", "")
+        .replacen(viy_term::palette::QUESTION, "", 1);
     (titles, rest.into_bytes())
 }
 

@@ -328,6 +328,8 @@ fn the_header_tops_the_transcript_and_survives_a_repaint() {
         colors: crate::header::Colors::True,
         version: "0.1.0".into(),
         directory: "~/project".into(),
+        ghost: false,
+        art: true,
     };
     f.app.header(header.clone());
     let screen = f.screen();
@@ -348,4 +350,38 @@ fn the_header_tops_the_transcript_and_survives_a_repaint() {
     ));
     assert_eq!(f.screen()[..art.len()], art[..]);
     assert!(matches!(f.app.cells[0], Cell::Header(_)));
+}
+
+/// The header's art, as Codex's welcome logo: shown on a chat nothing has
+/// been sent in while the input box is empty, gone as soon as anything is
+/// typed and back when the box is cleared, gone for good once a message
+/// is sent. The title and directory stay at the top throughout.
+#[test]
+fn typing_hides_the_headers_art_and_a_message_ends_it() {
+    let mut f = fixture(160, 40);
+    let header = crate::header::Header {
+        colors: crate::header::Colors::True,
+        version: "0.1.0".into(),
+        directory: "~/project".into(),
+        ghost: true,
+        art: true,
+    };
+    f.app.header(header);
+    let drawn = |screen: &[String]| screen[3..14].iter().any(|row| !row.trim().is_empty());
+    let screen = f.screen();
+    assert_eq!(screen[0], "  >_ viy (v0.1.0)");
+    assert!(drawn(&screen), "{screen:#?}");
+    f.type_text("h");
+    let screen = f.screen();
+    assert_eq!(screen[0], "  >_ viy (v0.1.0)");
+    assert!(!drawn(&screen), "{screen:#?}");
+    f.key(KeyCode::Backspace);
+    assert!(drawn(&f.screen()));
+    f.app.event(started("hello"));
+    let screen = f.screen();
+    assert_eq!(screen[0], "  >_ viy (v0.1.0)");
+    assert!(
+        !screen.iter().any(|row| row.contains('\u{28ff}')),
+        "{screen:#?}"
+    );
 }

@@ -228,10 +228,12 @@ pub(crate) fn tab_title(cfg: &Config) -> bool {
 }
 
 /// The centipede header for the chat's transcript, with viy's version
-/// and the chat's directory under the art: on unless CHAT_HEADER is set
-/// to anything but `1` (viy's own key) or NO_COLOR is set.
+/// and the chat's directory under the art: its ghost for `1` (viy's own
+/// key, its default), the coloured art for `colour`, none for anything
+/// else or when NO_COLOR is set.
 pub(crate) fn chat_header(cfg: &Config) -> Option<Header> {
-    let on = cfg.get("CHAT_HEADER").unwrap_or("1") == "1";
+    let value = cfg.get("CHAT_HEADER").unwrap_or("1");
+    let on = matches!(value, "1" | "colour");
     let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
     let directory = std::env::current_dir().unwrap_or_default();
     let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
@@ -239,6 +241,8 @@ pub(crate) fn chat_header(cfg: &Config) -> Option<Header> {
         colors: Colors::detect(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         directory: home_relative(&directory, home.as_deref()),
+        ghost: value == "1",
+        art: true,
     })
 }
 

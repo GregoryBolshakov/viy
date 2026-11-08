@@ -75,6 +75,9 @@ impl Tui {
             let _ = restore();
             return Err(e);
         }
+        // Before anything reads input: the header's ghost blends into
+        // the terminal's own colours.
+        crate::palette::probe();
         match Terminal::new(CrosstermBackend::new(ScreenWriter::default())) {
             Ok(terminal) => Ok(Self {
                 terminal,

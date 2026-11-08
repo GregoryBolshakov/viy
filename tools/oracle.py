@@ -94,6 +94,94 @@ def mounts_parse_arg(arg):
     return list(m.parse_arg(arg))
 
 
+def egress_hosts_in_command(cmd):
+    """egress.hosts_in_command with each set of ports as a sorted list."""
+    from rpctl import egress
+    return {h: sorted(p) for h, p in egress.hosts_in_command(cmd).items()}
+
+
+def egress_parse_allow(text):
+    from rpctl import egress
+    exact, suffixes = egress.parse_allow(text)
+    return [sorted(exact), sorted(suffixes)]
+
+
+def egress_policy(command, user_hosts, allow, probes):
+    """A Policy's describe() and its why_not() for each [host, port]."""
+    from rpctl import egress
+    p = egress.Policy(command, user_hosts, allow)
+    return {"describe": p.describe(),
+            "why_not": [p.why_not(h, port) for h, port in probes]}
+
+
+PUBLIC = "93.184.216.34"
+
+
+def egress_handle(head, command, answers):
+    """One connection through rpctl's Proxy._handle, over socketpairs: the
+    command sends `head` (bytes) and stops sending. A name resolves to
+    answers[name] (a list of addresses, or a string: the lookup fails with
+    it), PUBLIC by default; upstream reads what it is sent until the proxy
+    half-closes, then closes. Returns what the command read, what upstream
+    read (None: never connected), the lookups, the connections, the report
+    and the printed lines. No network and no files: local socket pairs."""
+    import socket
+    import threading
+    import time
+    from rpctl import egress
+    resolved, connected, peers = [], [], []
+
+    def resolver(host, port):
+        resolved.append(host)
+        a = answers.get(host, [PUBLIC])
+        if isinstance(a, str):
+            raise egress.netguard.FetchError(a)
+        return a
+
+    def connector(ip, port, timeout):
+        connected.append([ip, port])
+        a, b = socket.socketpair()
+        peers.append(b)
+        return a
+
+    proxy = egress.Proxy(egress.Policy(command), resolver=resolver,
+                         connector=connector, idle_timeout=2.0)
+    client, conn = socket.socketpair()
+    proxy._active = 1                       # _handle counts itself out
+    t = threading.Thread(target=proxy._handle, args=(conn,), daemon=True)
+    t.start()
+    client.settimeout(5)
+    client.sendall(head)
+    client.shutdown(socket.SHUT_WR)
+    end = time.monotonic() + 5
+    while t.is_alive() and not peers and time.monotonic() < end:
+        time.sleep(0.002)
+    upstream = None
+    if peers:
+        b = peers[0]
+        b.settimeout(5)
+        upstream = b""
+        while True:
+            chunk = b.recv(65536)
+            if not chunk:
+                break
+            upstream += chunk
+        b.close()
+    out = b""
+    while True:
+        try:
+            chunk = client.recv(65536)
+        except OSError:
+            break
+        if not chunk:
+            break
+        out += chunk
+    t.join(5)
+    client.close()
+    return {"client": out, "upstream": upstream, "resolved": resolved,
+            "connected": connected, "report": proxy.report(), "lines": proxy.lines()}
+
+
 # The callable functions: request name -> (module, attribute), or a function
 # defined above. Add entries as work packages need them; every rpctl entry
 # must be free of I/O (plan 5.4).
@@ -111,7 +199,16 @@ FUNCTIONS = {
     "approve.rules_allow_net": ("rpctl.approve", "rules_allow_net"),
     # Resolves the workspace and /tmp (file system reads, no writes).
     "approve.sandbox_tmp_rm": ("rpctl.approve", "sandbox_tmp_rm"),
+    "egress.canonical_host": ("rpctl.egress", "canonical_host"),
+    # Local socket pairs, no network.
+    "egress.handle": egress_handle,
+    "egress.hosts_in_command": egress_hosts_in_command,
+    "egress.parse_allow": egress_parse_allow,
+    "egress.policy": egress_policy,
+    "egress.response": ("rpctl.egress", "_response"),
     "idle.decide": ("rpctl.idle", "decide"),
+    "netguard.address_problem": ("rpctl.netguard", "address_problem"),
+    "netguard.check_host": ("rpctl.netguard", "check_host"),
     "idle.limits": ("rpctl.idle", "limits"),
     "mounts.note": mounts_note,
     "mounts.parse_arg": mounts_parse_arg,

@@ -10,16 +10,18 @@
 //!
 //! run_shell runs each command in the sandbox (`viy_tools::sandbox`) after
 //! the approval decision (`approve::decide`), moves out what a command
-//! made that runs code outside the sandbox, and reports the output. Until
-//! the egress proxy (WP 4.8), a proxied network command does not run: it
-//! gets rpctl's "network unavailable" result, with no fallback to the
-//! host's network. The model's own repository (sandboxgit.py) is not
+//! made that runs code outside the sandbox, and reports the output. A
+//! network command's only way out is the egress proxy
+//! (`viy_tools::egress`): its policy is shown before the question and told
+//! to the reviewer, and what it reached and blocked comes back in the
+//! result. The model's own repository (sandboxgit.py) is not
 //! offered, as rpctl in a workspace where it does not apply; the toolbox
 //! and /ssh servers come with phases 7 and later.
 
 use std::ffi::OsString;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::LazyLock;
 use std::time::Duration;
 use std::time::Instant;
@@ -46,6 +48,9 @@ use viy_tools::approve::Pending;
 use viy_tools::approve::Review;
 use viy_tools::approve::Verdict;
 use viy_tools::build;
+use viy_tools::egress;
+use viy_tools::egress::Policy;
+use viy_tools::egress::Proxy;
 use viy_tools::quarantine;
 use viy_tools::sandbox;
 use viy_tools::sandbox::Jail;
@@ -63,6 +68,16 @@ static NET_ERROR: LazyLock<Regex> = LazyLock::new(|| {
     rx(
         r"(?i)Temporary failure in name resolution|Could not resolve host|Network is unreachable|Name or service not known|getaddrinfo|ENOTFOUND|EAI_AGAIN|NewConnectionError|Failed to establish a new connection",
     )
+});
+
+/// A tool that connected directly instead of through the egress proxy
+/// (rpctl's `_DIRECT_NET_ERROR`).
+static DIRECT_NET_ERROR: LazyLock<Regex> = LazyLock::new(|| {
+    rx(&format!(
+        "{}|Couldn't connect to server|Connection refused|ECONNREFUSED|ENETUNREACH|connect: \
+         Network|No route to host|Failed to connect",
+        NET_ERROR.as_str()
+    ))
 });
 
 /// Commands that usually need the network (some, like `curl -s`, fail
@@ -419,33 +434,20 @@ impl Chat {
             sandboxed: boxed,
             network: net.is_some(),
         };
-        if net == Some(Net::Host) {
+        let policy = (net == Some(Net::Proxy)).then(|| {
+            // fetch_url's hosts the user allowed come with phase 5.
+            Policy::new(&cmd, [], &self.sandbox_net_allow)
+        });
+        let reach = policy.as_ref().map(Policy::describe);
+        if let Some(reach) = &reach {
+            reason.push(say(NoticeLevel::Info, format!("  network: {reach}")));
+        } else if net == Some(Net::Host) {
             reason.push(say(
                 NoticeLevel::Error,
                 "  SANDBOX_NET=host: this command shares your machine's network and can reach \
                  your machine's services and the LAN"
                     .into(),
             ));
-        }
-        if net == Some(Net::Proxy) {
-            // No egress proxy before WP 4.8: nothing is asked, nothing runs.
-            let why = "the egress proxy is not built yet; the command did not run. There is no \
-                       fallback to the host network";
-            for r in reason {
-                ctx.emit(EventMsg::Notice(r));
-            }
-            notice(
-                ctx,
-                NoticeLevel::Error,
-                "run_shell",
-                format!("  [network unavailable] {why}"),
-            );
-            card.detail = Some("network unavailable".into());
-            return (
-                json!({"command": cmd, "exit_code": null, "timed_out": false, "error": why,
-                       "stdout": "", "stderr": ""}),
-                card,
-            );
         }
         if !boxed {
             let question = Question {
@@ -479,14 +481,17 @@ impl Chat {
             let endpoint = self.endpoint.clone();
             let mut hearing = ChatHearing {
                 ctx,
-                review: Review::new(
-                    &endpoint.base,
-                    &endpoint.key,
-                    &self.settings.model,
-                    &users,
-                    &cmd,
-                    &ws,
-                ),
+                review: Review {
+                    network: reach.as_deref(),
+                    ..Review::new(
+                        &endpoint.base,
+                        &endpoint.key,
+                        &self.settings.model,
+                        &users,
+                        &cmd,
+                        &ws,
+                    )
+                },
                 http: endpoint.http.as_ref(),
                 rules_path: &rules,
             };
@@ -504,6 +509,7 @@ impl Chat {
         }
 
         let timeout = Duration::from_secs(self.shell_timeout);
+        let proxy = policy.map(|p| Arc::new(Proxy::new(p)));
         let argv: [OsString; 3] = ["bash".into(), "-c".into(), cmd.clone().into()];
         let mut moved: Vec<(String, PathBuf)> = Vec::new();
         let mut failed_move = None;
@@ -536,7 +542,17 @@ impl Chat {
                 mounts: &mounts,
                 ..Jail::new(&ws, &project)
             };
-            let ran = sandbox::run(&self.sandbox_host(), &jail, &argv, timeout, None).await;
+            let egress = proxy.clone().map(|p| p as Arc<dyn sandbox::Egress>);
+            let launcher = self.sandbox_launcher;
+            let ran = sandbox::run_with(
+                &self.sandbox_host(),
+                &jail,
+                &argv,
+                timeout,
+                egress,
+                launcher,
+            )
+            .await;
             let dest = self
                 .places
                 .quarantine_dir
@@ -611,6 +627,9 @@ impl Chat {
         });
         let mut result = json!({"command": cmd, "exit_code": ran.exit_code,
                                 "timed_out": ran.timed_out, "stdout": out, "stderr": err});
+        if let Some(proxy) = &proxy {
+            result["network"] = report_egress(ctx, proxy, &ran).into();
+        }
         if !moved.is_empty() {
             self.report_quarantine(ctx, &moved);
             result["quarantined"] = json!(moved.iter().map(|(r, _)| r).collect::<Vec<_>>());
@@ -768,6 +787,50 @@ async fn run_unsandboxed(
         stderr: done.stderr,
         net_error: None,
     })
+}
+
+/// Shows the proxy's `[net]` lines and gives the result's `network` entry
+/// with its hints (rp's `_report_egress`). The tracer's egress events come
+/// with WP 4.11.
+pub(crate) fn report_egress(
+    ctx: &TurnContext,
+    proxy: &Proxy,
+    ran: &sandbox::Ran,
+) -> Map<String, Value> {
+    for line in proxy.lines() {
+        let level = if line.starts_with("[net blocked]") || line.starts_with("[net failed]") {
+            NoticeLevel::Warn
+        } else {
+            NoticeLevel::Info
+        };
+        let shown = untrusted::terminal_safe(&line, Some(600));
+        notice(ctx, level, "run_shell", format!("  {shown}"));
+    }
+    let mut rep = proxy.report();
+    let blocked_host = rep
+        .get("blocked")
+        .and_then(Value::as_array)
+        .is_some_and(|b| b.iter().any(|e| e["why"] == egress::NOT_ALLOWED));
+    if blocked_host {
+        rep.insert(
+            "hint".into(),
+            "write the host in the command if it is needed; it then goes through review (or to \
+             the user)"
+                .into(),
+        );
+    } else if proxy.total() == 0
+        && !matches!(ran.exit_code, Some(0) | None)
+        && DIRECT_NET_ERROR.is_match(&format!("{}\n{}", ran.stderr, ran.stdout))
+    {
+        rep.insert(
+            "hint".into(),
+            "this tool ignored HTTPS_PROXY: the sandbox has no direct route or DNS, only the \
+             proxy in HTTPS_PROXY/HTTP_PROXY. Use the tool's proxy option or a tool that honours \
+             it."
+            .into(),
+        );
+    }
+    rep
 }
 
 /// What the tool card shows besides the status.

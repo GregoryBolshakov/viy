@@ -49,6 +49,8 @@ crossterm = "0.29.0"
 # crossterm's EventStream is a futures-core Stream (Codex takes the futures
 # facade; the trait alone is enough here).
 futures-core = { version = "0.3.34", default-features = false }
+# Non-ASCII host names, UTS 46 (flags F53); already in the tree through url.
+idna = "1.1.0"
 indexmap = "2.14.0"
 # Frame snapshots, as Codex's TUI tests (codex-rs/Cargo.toml); no colours.
 insta = { version = "1.46.3", default-features = false }

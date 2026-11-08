@@ -20,7 +20,7 @@ pub fn is_py_space(c: char) -> bool {
 /// A word character for boundary tests. ASCII only, so every character
 /// Python's `\w` rejects is a boundary here too, and so are a few it
 /// accepts (`\bgit` matches after `é`, where rpctl's does not).
-pub(super) fn is_ascii_word(c: char) -> bool {
+pub(crate) fn is_ascii_word(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 

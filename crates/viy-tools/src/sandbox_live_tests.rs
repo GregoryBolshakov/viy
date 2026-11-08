@@ -723,3 +723,115 @@ async fn a_broken_egg_info_link_does_not_stop_commands() {
     assert!(a.contains(&b.ws.join("y.egg-info").into_os_string()));
     assert_eq!(b.sh("true").await.exit_code, Some(0));
 }
+
+// ------------------------------------------------- with the egress proxy
+
+use crate::egress::Limits;
+use crate::egress::Policy;
+use crate::egress::Proxy;
+use crate::egress::TcpConnector;
+use crate::egress::fakes::FakeResolver;
+use crate::egress::fakes::PUBLIC;
+use crate::egress::fakes::ToUpstream;
+use crate::egress::fakes::Upstream;
+use crate::egress::fakes::ip;
+
+/// A proxy for `cmd` whose every upstream is a local [`Upstream`].
+fn faked(cmd: &str, up: &Upstream) -> Proxy {
+    Proxy::with(
+        Policy::new(cmd, [], ""),
+        Arc::new(FakeResolver {
+            resolved: Arc::default(),
+            answers: Box::new(|_| Ok(vec![ip(PUBLIC)])),
+        }),
+        Arc::new(ToUpstream {
+            port: up.port,
+            connected: Arc::default(),
+        }),
+        Limits::default(),
+    )
+}
+
+// rpctl's SandboxProxyTests.test_curl_through_the_proxy_reaches_upstream.
+#[tokio::test]
+async fn curl_through_the_proxy_reaches_upstream() {
+    let Some(b) = sandbox().await else { return };
+    let cmd = "curl -sS http://example.com/plain; echo; curl -sS -p http://example.com/tunnel; \
+               echo; printenv HTTPS_PROXY";
+    let up = Upstream::start();
+    let proxy = faked(cmd, &up);
+    let r = b
+        .sh_in(&proxied(&b), cmd, Some(Arc::new(proxy.clone())))
+        .await;
+    assert_eq!(
+        r.stdout.split_whitespace().collect::<Vec<_>>(),
+        ["ok", "ok", PROXY_URL],
+        "{r:?}"
+    );
+    let paths: Vec<String> = up
+        .heads()
+        .iter()
+        .map(|h| h.split(' ').nth(1).unwrap_or_default().to_string())
+        .collect();
+    assert_eq!(paths, ["/plain", "/tunnel"]);
+    assert_eq!(
+        proxy.report()["reached"],
+        serde_json::json!([{"host": "example.com", "connections": 2}])
+    );
+}
+
+// rpctl's SandboxProxyTests.test_host_loopback_is_unreachable_directly_and_through_the_proxy
+// (netaccess kb f024), through the proxy: the real connector, so only the
+// policy stands between the command and the host's server.
+// rebind.example.com "resolves" to 127.0.0.1.
+#[tokio::test]
+async fn host_loopback_is_unreachable_through_the_proxy() {
+    let Some(b) = sandbox().await else { return };
+    let server = TcpListener::bind("127.0.0.1:0").unwrap();
+    server.set_nonblocking(true).unwrap();
+    let port = server.local_addr().unwrap().port();
+    let code = "curl -s -o /dev/null -w '%{http_code}\\n'";
+    let cmd = format!(
+        "{code} http://127.0.0.1:{port}/a; {code} http://localhost:{port}/b; \
+         {code} http://rebind.example.com:{port}/c; \
+         curl -s --noproxy '*' -m 3 http://127.0.0.1:{port}/d; echo direct=$?"
+    );
+    let proxy = Proxy::with(
+        Policy::new(&cmd, [], ""),
+        Arc::new(FakeResolver {
+            resolved: Arc::default(),
+            answers: Box::new(|_| Ok(vec![ip("127.0.0.1")])),
+        }),
+        Arc::new(TcpConnector),
+        Limits::default(),
+    );
+    let r = b
+        .sh_in(&proxied(&b), &cmd, Some(Arc::new(proxy.clone())))
+        .await;
+    assert_eq!(
+        r.stdout.split_whitespace().collect::<Vec<_>>(),
+        ["403", "403", "403", "direct=7"],
+        "{r:?}"
+    );
+    assert!(server.accept().is_err(), "nothing reached the host");
+    assert_eq!(proxy.report()["reached"], serde_json::json!([]));
+}
+
+// rpctl's SandboxProxyTests.test_background_process_cannot_use_the_proxy_afterwards,
+// with curl and the real proxy.
+#[tokio::test]
+async fn a_background_curl_cannot_use_the_proxy_afterwards() {
+    let Some(b) = sandbox().await else { return };
+    let cmd =
+        "(sleep 1; curl -s http://example.com/late > /tmp/late) >/dev/null 2>&1 & echo started";
+    let up = Upstream::start();
+    let proxy = faked(cmd, &up);
+    let r = b
+        .sh_in(&proxied(&b), cmd, Some(Arc::new(proxy.clone())))
+        .await;
+    assert_eq!(r.stdout.trim(), "started");
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert!(!b.tmp.join("late").exists());
+    assert!(up.heads().is_empty());
+    assert!(proxy.listener_closed(), "the listener is closed");
+}

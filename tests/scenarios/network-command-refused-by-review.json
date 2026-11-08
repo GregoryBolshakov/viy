@@ -1,6 +1,5 @@
 {
   "name": "network-command-refused-by-review",
-  "viy_waits": "WP 4.8: the egress proxy and its Policy.describe, which the reviewer is told",
  "about": "Build tools on, search off, ask_claude off. The model asks to run a network command that uploads a workspace file; the network reviewer (a non-streamed reply) rates it critical, so it is refused without a question and without running; the model answers. Covers the reviewer request (system prompt, <user_request>, <command>, <network> from the egress policy, the attached file) and the refusal the model reads.",
   "config": {"TOOLS_ENABLED": "1", "EXPLORE_ENABLED": "0", "SEARCH_ENABLED": "0", "CONSULT_ENABLED": "0"},
   "max_model_len": 65536,

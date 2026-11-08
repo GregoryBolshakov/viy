@@ -31,6 +31,7 @@ mod tmp_rm;
 
 use std::path::Path;
 
+pub(crate) use chars::is_ascii_word;
 pub use chars::is_py_space;
 pub use decide::Decision;
 pub use decide::Facts;

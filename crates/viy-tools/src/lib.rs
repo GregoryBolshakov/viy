@@ -9,14 +9,18 @@
 //! chat modes ([`modes`]), the bubblewrap sandbox and its seccomp filter
 //! ([`sandbox`]), the quarantine of auto-running paths ([`quarantine`]),
 //! secret file names ([`secrets`]), the path
-//! resolution the guards share ([`resolve`]), and the schemas of the
-//! internet tools ([`web`]), which the chat offers from phase 3 on.
+//! resolution the guards share ([`resolve`]), the egress proxy of network
+//! commands ([`egress`]) with the host rules of netguard it uses
+//! ([`netguard`]), and the schemas of the internet tools ([`web`]), which
+//! the chat offers from phase 3 on.
 
 pub mod approve;
 pub mod build;
+pub mod egress;
 pub mod guard;
 pub mod modes;
 pub mod mounts;
+pub mod netguard;
 pub mod quarantine;
 pub mod resolve;
 pub mod sandbox;

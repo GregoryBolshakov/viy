@@ -181,6 +181,8 @@ pub struct Chat {
     pub(crate) shell_timeout: u64,
     /// SANDBOX_NET, `host` or `proxy`.
     sandbox_net: String,
+    /// SANDBOX_NET_ALLOW: hosts every proxied command may reach.
+    pub(crate) sandbox_net_allow: String,
     /// Refusals in a row this turn; three stop it.
     denials: usize,
     /// Why the turn was stopped, once it was.
@@ -194,6 +196,9 @@ pub struct Chat {
     /// The sandbox's /tmp, made at the first sandboxed command and removed
     /// when the chat's session ends.
     pub(crate) sandbox_tmp: viy_tools::sandbox::ChatTmp,
+    /// The program that hands a proxied sandbox's port over (rpctl's
+    /// launcher; tests put a failing one here).
+    pub(crate) sandbox_launcher: viy_tools::sandbox::Launcher<'static>,
     /// What the next user message tells the model about the mounts.
     pub(crate) mount_note: Option<String>,
     /// Why network commands need the user's yes: internet text, or files
@@ -281,6 +286,7 @@ impl Chat {
             files,
             mem_files: FileHistory::in_memory(),
             sandbox_tmp,
+            sandbox_launcher: viy_tools::sandbox::Launcher::RPCTL,
             tools_on: on("TOOLS_ENABLED", "1"),
             tools_max_rounds: number(cfg, "TOOLS_MAX_ROUNDS", "25")?,
             shell_timeout: number(cfg, "TOOLS_SHELL_TIMEOUT", "120")?,
@@ -294,6 +300,7 @@ impl Chat {
             } else {
                 "proxy".into()
             },
+            sandbox_net_allow: cfg.get("SANDBOX_NET_ALLOW").unwrap_or_default().to_string(),
             denials: 0,
             abort_turn: None,
             sandbox_check: None,

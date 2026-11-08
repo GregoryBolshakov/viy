@@ -210,6 +210,15 @@ pub enum DevCommand {
         #[arg(long)]
         plain: bool,
     },
+    /// Runs a command with the model server in its environment:
+    /// VLLM_BASE_URL, VLLM_API_KEY and SERVED_MODEL_NAME from viy's config
+    /// and the pod, as `viy chat` finds them, for live benches. The pod's
+    /// activity is touched while it runs; its exit status is viy's.
+    WithModel {
+        /// The command and its arguments.
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<std::ffi::OsString>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

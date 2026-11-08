@@ -74,7 +74,7 @@ impl DevArgs {
     pub fn live(&self) -> bool {
         match &self.command {
             DevCommand::Drive { live, .. } => *live,
-            DevCommand::Chat { .. } => true,
+            DevCommand::Chat { .. } | DevCommand::WithModel { .. } => true,
         }
     }
 }
@@ -116,6 +116,54 @@ pub fn run(
             let plain = *plain || !terminal.tty || !terminal.stdin_tty;
             chat_ui(url, dir.as_deref(), plain, paths, base, out)
         }
+        DevCommand::WithModel { command } => with_model(command, paths, &base, out),
+    }
+}
+
+/// `viy dev with-model CMD...`: CMD with the model server in its
+/// environment, the pod's activity touched while it runs (a bench sends
+/// requests, not chat turns, and rpctl's reaper goes by that file). The
+/// key goes into CMD's environment only; nothing prints it.
+fn with_model(
+    command: &[std::ffi::OsString],
+    paths: &Paths,
+    cfg: &Config,
+    out: &mut (dyn Write + Send),
+) -> Result<(), Failure> {
+    let http: Arc<dyn HttpClient> =
+        Arc::new(ReqwestHttp::new().map_err(|e| Failure::from(e.to_string()))?);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| Failure::from(e.to_string()))?;
+    let url = runtime.block_on(crate::exec::base_url(cfg, None, paths, &http, out))?;
+    let backend = Backend::resolve(cfg)?;
+    if backend.api_key(cfg).is_empty() {
+        return Err(Failure::from(backend.missing_key_hint(paths)));
+    }
+    let (program, args) = command.split_first().ok_or("no command given")?;
+    let mut child = std::process::Command::new(program)
+        .args(args)
+        .env("VLLM_BASE_URL", url.trim_end_matches('/'))
+        .env("VLLM_API_KEY", backend.api_key(cfg))
+        .env("SERVED_MODEL_NAME", backend.model_name(cfg))
+        .spawn()
+        .map_err(|e| Failure::from(format!("{}: {e}", program.to_string_lossy())))?;
+    let status = loop {
+        idle::touch(paths, &SystemTimeProvider, false);
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => std::thread::sleep(std::time::Duration::from_secs(1)),
+            Err(e) => return Err(Failure::from(e.to_string())),
+        }
+    };
+    match status.code() {
+        Some(0) => Ok(()),
+        Some(code) => Err(Failure::silent(code)),
+        None => Err(Failure::from(format!(
+            "{} was killed",
+            program.to_string_lossy()
+        ))),
     }
 }
 
@@ -519,3 +567,7 @@ fn write_result(
 #[cfg(test)]
 #[path = "dev_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "dev_model_tests.rs"]
+mod model_tests;

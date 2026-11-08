@@ -11,12 +11,12 @@ Each night she rises from her coffin and calls up darker forces to get him,
 and the student must hold out until dawn.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/GregoryBolshakov/viy/main/images/church.png" alt="The third night in the church: the student in his chalk circle, Viy at the back wall, the witch in her coffin and the creatures around them">
+  <img src="images/church.png" alt="The third night in the church: the student in his chalk circle, Viy at the back wall, the witch in her coffin and the creatures around them">
 </p>
 
 <table>
   <tr>
-    <td width="260" align="center" valign="top"><img src="https://raw.githubusercontent.com/GregoryBolshakov/viy/main/images/viy.png" width="240" alt="Viy, his iron eyelids pried up by two imps"></td>
+    <td width="260" align="center" valign="top"><img src="images/viy.png" width="240" alt="Viy, his iron eyelids pried up by two imps"></td>
     <td valign="top"><details>
       <summary><b>Viy</b> <sub>(click to expand)</sub><br>
       is the model. He lives underground, on a rented GPU, and sees nothing
@@ -62,7 +62,7 @@ and the student must hold out until dawn.
     </details></td>
   </tr>
   <tr>
-    <td width="260" align="center" valign="top"><img src="https://raw.githubusercontent.com/GregoryBolshakov/viy/main/images/envoy.png" width="240" alt="The envoy, a centipede bursting up through the floorboards with a sealed scroll"></td>
+    <td width="260" align="center" valign="top"><img src="images/envoy.png" width="240" alt="The envoy, a centipede bursting up through the floorboards with a sealed scroll"></td>
     <td valign="top"><details>
       <summary><b>The envoy</b> <sub>(click to expand)</sub><br>
       is the SSH tunnel. It carries your words down to Viy and his answers
@@ -110,7 +110,7 @@ and the student must hold out until dawn.
     </details></td>
   </tr>
   <tr>
-    <td width="260" align="center" valign="top"><img src="https://raw.githubusercontent.com/GregoryBolshakov/viy/main/images/witch.png" width="240" alt="The witch sitting up in her coffin"></td>
+    <td width="260" align="center" valign="top"><img src="images/witch.png" width="240" alt="The witch sitting up in her coffin"></td>
     <td valign="top"><details>
       <summary><b>The witch</b> <sub>(click to expand)</sub><br>
       is the attacker, or the prompt injection. Her coffin lid is the fence viy
@@ -198,7 +198,7 @@ and the student must hold out until dawn.
     </details></td>
   </tr>
   <tr>
-    <td width="260" align="center" valign="top"><img src="https://raw.githubusercontent.com/GregoryBolshakov/viy/main/images/spider.png" width="240" alt="A spider with a www mark on its back, in the middle of its web"></td>
+    <td width="260" align="center" valign="top"><img src="images/spider.png" width="240" alt="A spider with a www mark on its back, in the middle of its web"></td>
     <td valign="top"><details>
       <summary><b>The spider</b> <sub>(click to expand)</sub><br>
       is web search and fetch. Its web catches pages for the model, and it
@@ -242,7 +242,7 @@ and the student must hold out until dawn.
     </details></td>
   </tr>
   <tr>
-    <td width="260" align="center" valign="top"><img src="https://raw.githubusercontent.com/GregoryBolshakov/viy/main/images/familiar.png" width="169" alt="The familiar, a small bat-eared imp holding a pair of brass scales"></td>
+    <td width="260" align="center" valign="top"><img src="images/familiar.png" width="169" alt="The familiar, a small bat-eared imp holding a pair of brass scales"></td>
     <td valign="top"><details>
       <summary><b>The familiar</b> <sub>(click to expand)</sub><br>
       is the auto-approver. It sits on your shoulder and weighs the model's
@@ -290,7 +290,7 @@ and the student must hold out until dawn.
     </details></td>
   </tr>
   <tr>
-    <td width="260" align="center" valign="top"><img src="https://raw.githubusercontent.com/GregoryBolshakov/viy/main/images/changeling.png" width="125" alt="The changeling, a small grey copy of the student holding a book"></td>
+    <td width="260" align="center" valign="top"><img src="images/changeling.png" width="125" alt="The changeling, a small grey copy of the student holding a book"></td>
     <td valign="top"><details>
       <summary><b>The changeling</b> <sub>(click to expand)</sub><br>
       is the model's own git repository in the sandbox. It looks like yours
@@ -342,7 +342,7 @@ and the student must hold out until dawn.
     </details></td>
   </tr>
   <tr>
-    <td width="260" align="center" valign="top"><img src="https://raw.githubusercontent.com/GregoryBolshakov/viy/main/images/toolbox.png" width="240" alt="One of the horde leaning over an open chest of tools"></td>
+    <td width="260" align="center" valign="top"><img src="images/toolbox.png" width="240" alt="One of the horde leaning over an open chest of tools"></td>
     <td valign="top"><details>
       <summary><b>The horde's chest</b> <sub>(click to expand)</sub><br>
       is the model's toolbox, the command-line tools it keeps from one chat
@@ -376,7 +376,7 @@ and the student must hold out until dawn.
     </details></td>
   </tr>
   <tr>
-    <td width="260" align="center" valign="top"><img src="https://raw.githubusercontent.com/GregoryBolshakov/viy/main/images/crayfish.png" width="240" alt="A crayfish walking backwards with a page in its claws"></td>
+    <td width="260" align="center" valign="top"><img src="images/crayfish.png" width="240" alt="A crayfish walking backwards with a page in its claws"></td>
     <td valign="top"><details>
       <summary><b>The crayfish</b> <sub>(click to expand)</sub><br>
       is <code>/rewind</code>. It walks backwards to one of your earlier
@@ -411,7 +411,7 @@ and the student must hold out until dawn.
     </details></td>
   </tr>
   <tr>
-    <td width="260" align="center" valign="top"><img src="https://raw.githubusercontent.com/GregoryBolshakov/viy/main/images/rooster.png" width="185" alt="A rooster on a wattle fence, seen through the church window at night"></td>
+    <td width="260" align="center" valign="top"><img src="images/rooster.png" width="185" alt="A rooster on a wattle fence, seen through the church window at night"></td>
     <td valign="top"><details>
       <summary><b>The rooster</b> <sub>(click to expand)</sub><br>
       is the reap timer. In the story the night ends when the rooster crows.

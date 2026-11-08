@@ -11,21 +11,38 @@ use viy_testkit::scratch::ScratchDir;
 
 use crate::Terminal;
 
-fn run_capture(args: &[&str]) -> (i32, Vec<Value>, String) {
+/// Runs `viy dev ARGS` as `crate::run` does, but with `home` as its home
+/// (`Paths::under`), as the other session-writing tests have their own: the
+/// env's `target/test-home` is shared by every test and every `cargo test`
+/// running at once, and two chats saved there in the same second could get
+/// the same session id and write to one log.
+fn run_capture(home: &std::path::Path, args: &[&str]) -> (i32, Vec<Value>, String) {
+    let cli = crate::cli::parse(args.iter().map(std::ffi::OsString::from)).unwrap();
+    let crate::cli::Command::Dev(dev) = &cli.command else {
+        panic!("not a dev command: {args:?}")
+    };
+    assert!(!dev.live(), "a live run reads the real config");
+    let paths = viy_config::Paths::under(home);
     let mut out = Vec::new();
-    let mut err = Vec::new();
-    let code = crate::run(
-        args.iter().map(std::ffi::OsString::from),
+    let (code, err) = match super::run(
+        dev,
+        &paths,
+        super::scripted_base(),
         &mut out,
-        &mut err,
         Terminal::default(),
-    );
+    ) {
+        Ok(()) => (0, String::new()),
+        Err(failure) => (
+            failure.code,
+            failure.message.map(|m| m + "\n").unwrap_or_default(),
+        ),
+    };
     let events = String::from_utf8(out)
         .unwrap()
         .lines()
         .map(|l| serde_json::from_str(l).unwrap())
         .collect();
-    (code, events, String::from_utf8(err).unwrap())
+    (code, events, err)
 }
 
 /// Drives scenario `name` through viy against the scripted server, from a
@@ -46,17 +63,20 @@ fn drive(name: &str) -> (Vec<Value>, Vec<Value>, Option<Vec<Value>>) {
         std::fs::write(path, text.as_str().unwrap()).unwrap();
     }
     let result = base.join("result.json");
-    let (code, events, err) = run_capture(&[
-        "dev",
-        "drive",
-        file.to_str().unwrap(),
-        "--url",
-        &mock.uri(),
-        "--result",
-        result.to_str().unwrap(),
-        "--dir",
-        workspace.to_str().unwrap(),
-    ]);
+    let (code, events, err) = run_capture(
+        &base.join("home"),
+        &[
+            "dev",
+            "drive",
+            file.to_str().unwrap(),
+            "--url",
+            &mock.uri(),
+            "--result",
+            result.to_str().unwrap(),
+            "--dir",
+            workspace.to_str().unwrap(),
+        ],
+    );
     assert_eq!((code, err.as_str()), (0, ""), "{name}");
     let result: Value = serde_json::from_str(&std::fs::read_to_string(result).unwrap()).unwrap();
     let today = result["today"].as_str().unwrap();
@@ -166,15 +186,19 @@ fn the_chat_takes_the_key_and_model_from_the_backend() {
     });
     std::fs::write(&file, script.to_string()).unwrap();
     let mock = MockLlm::start(&script).unwrap();
-    let (code, _, err) = run_capture(&[
-        "dev",
-        "drive",
-        file.to_str().unwrap(),
-        "--url",
-        &mock.uri(),
-        "--dir",
-        scratch.path().to_str().unwrap(),
-    ]);
+    let home = ScratchDir::new("dev-home").unwrap();
+    let (code, _, err) = run_capture(
+        home.path(),
+        &[
+            "dev",
+            "drive",
+            file.to_str().unwrap(),
+            "--url",
+            &mock.uri(),
+            "--dir",
+            scratch.path().to_str().unwrap(),
+        ],
+    );
     assert_eq!((code, err.as_str()), (0, ""));
     let post = &mock.requests()[1];
     assert_eq!(post.header("authorization"), Some("Bearer ek"));
@@ -183,13 +207,17 @@ fn the_chat_takes_the_key_and_model_from_the_backend() {
 
 #[test]
 fn drive_says_what_is_wrong_with_a_missing_scenario() {
-    let (code, _, err) = run_capture(&[
-        "dev",
-        "drive",
-        "/nonexistent/scenario.json",
-        "--url",
-        "http://127.0.0.1:9",
-    ]);
+    let home = ScratchDir::new("dev-home").unwrap();
+    let (code, _, err) = run_capture(
+        home.path(),
+        &[
+            "dev",
+            "drive",
+            "/nonexistent/scenario.json",
+            "--url",
+            "http://127.0.0.1:9",
+        ],
+    );
     assert_eq!(code, 1);
     assert!(err.starts_with("/nonexistent/scenario.json: "), "{err}");
 }
@@ -236,15 +264,19 @@ fn a_scripted_run_refuses_instruction_files_from_outside_the_workspace() {
     let inner = outer.join("ws");
     std::fs::create_dir(&inner).unwrap();
     let file = scenario::dir().join("plain-two-turns.json");
-    let (code, events, err) = run_capture(&[
-        "dev",
-        "drive",
-        file.to_str().unwrap(),
-        "--url",
-        "http://127.0.0.1:9",
-        "--dir",
-        inner.to_str().unwrap(),
-    ]);
+    let home = ScratchDir::new("dev-home").unwrap();
+    let (code, events, err) = run_capture(
+        home.path(),
+        &[
+            "dev",
+            "drive",
+            file.to_str().unwrap(),
+            "--url",
+            "http://127.0.0.1:9",
+            "--dir",
+            inner.to_str().unwrap(),
+        ],
+    );
     assert_eq!(code, 1);
     assert!(events.is_empty());
     assert!(
@@ -269,15 +301,19 @@ fn a_scripted_run_in_a_project_refuses_the_projects_own_files() {
     let dir = scratch.path().join("src");
     std::fs::create_dir(&dir).unwrap();
     let file = scenario::dir().join("plain-two-turns.json");
-    let (code, _, err) = run_capture(&[
-        "dev",
-        "drive",
-        file.to_str().unwrap(),
-        "--url",
-        "http://127.0.0.1:9",
-        "--dir",
-        dir.to_str().unwrap(),
-    ]);
+    let home = ScratchDir::new("dev-home").unwrap();
+    let (code, _, err) = run_capture(
+        home.path(),
+        &[
+            "dev",
+            "drive",
+            file.to_str().unwrap(),
+            "--url",
+            "http://127.0.0.1:9",
+            "--dir",
+            dir.to_str().unwrap(),
+        ],
+    );
     assert_eq!(code, 1, "{err}");
     assert!(
         err.starts_with("an instruction file from outside the scenario would be sent: "),
@@ -297,7 +333,8 @@ fn dev_chat_in_plain_answers_each_line_then_closes() {
     for (key, value) in script["config"].as_object().unwrap() {
         cfg.set(key, value.as_str().unwrap());
     }
-    let paths = viy_config::Paths::from_env().unwrap();
+    let home = ScratchDir::new("dev-home").unwrap();
+    let paths = viy_config::Paths::under(home.path());
     let http: std::sync::Arc<dyn viy_http::HttpClient> =
         std::sync::Arc::new(viy_http::ReqwestHttp::new().unwrap());
     let runtime = tokio::runtime::Builder::new_current_thread()

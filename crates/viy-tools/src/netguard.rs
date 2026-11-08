@@ -80,7 +80,11 @@ pub fn check_host(host: &str) -> Result<String, Refused> {
     let Some(encoded) = idna_encode(host) else {
         return Err(Refused("the host name is not a valid domain name".into()));
     };
+    // IDNA maps a trailing 。 ． ｡ to "." after the caller stripped the
+    // ASCII ones: strip again, or `localhost。` passes as `localhost.`
+    // (flags F54, fixed in rpctl 728277d).
     let ascii = encoded.to_ascii_lowercase();
+    let ascii = ascii.trim_end_matches('.');
     if ascii.is_empty()
         || !ascii
             .chars()
@@ -95,7 +99,7 @@ pub fn check_host(host: &str) -> Result<String, Refused> {
             "{ascii} is a local name, not an internet host"
         )));
     }
-    Ok(ascii)
+    Ok(ascii.to_string())
 }
 
 /// A name as an ASCII domain, or `None`. ASCII is kept as Python's `idna`

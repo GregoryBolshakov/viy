@@ -246,3 +246,83 @@ fn host_rules_match_rpctl() {
         assert_eq!(theirs, mine, "check_host {at}");
     }
 }
+
+// rpctl's ParseTests.test_a_trailing_unicode_full_stop_is_refused_before_any_lookup
+// (flags F54, fixed in rpctl 728277d), on check_host: netguard.parse comes
+// with WP 5.1.
+#[test]
+fn a_trailing_unicode_full_stop_is_refused_before_any_lookup() {
+    for host in [
+        "localhost\u{3002}",
+        "db.internal\u{ff0e}",
+        "nas.local\u{ff61}",
+    ] {
+        assert!(check_host(host).is_err(), "{host}");
+    }
+    assert_eq!(check_host("example.com\u{3002}").unwrap(), "example.com");
+}
+
+/// ASCII names with full-width and ideographic full stops, inside or at
+/// the end, against rpctl's `check_host` and the proxy's `canonical_host`:
+/// UTS 46 and rpctl's IDNA 2003 map these stops alike, so the answers are
+/// equal (flags F54).
+#[cfg(feature = "oracle")]
+#[test]
+fn full_stops_match_rpctl() {
+    use serde_json::json;
+    use viy_testkit::fuzz::Gen;
+    use viy_testkit::fuzz::cases;
+    use viy_testkit::fuzz::seed;
+    use viy_testkit::oracle::Oracle;
+    use viy_testkit::oracle::Outcome;
+
+    const PIECES: &[&str] = &[
+        "a",
+        "example",
+        "com",
+        "localhost",
+        "local",
+        "internal",
+        "lan",
+        "corp",
+        "127",
+        "0",
+        "1",
+        ".",
+        "\u{3002}",
+        "\u{ff0e}",
+        "\u{ff61}",
+        "-",
+        "x",
+    ];
+    let mut oracle = Oracle::spawn().unwrap();
+    let mut g = Gen::from_env();
+    for case in 0..cases(5000) {
+        let host = g.string(PIECES, 6);
+        let at = format!("case {case}, seed {:#x}: {host:?}", seed());
+        let mine = match check_host(&host) {
+            Ok(h) => Outcome::Returned(json!(h)),
+            Err(Refused(m)) => Outcome::Raised {
+                kind: "Refused".into(),
+                message: m,
+            },
+        };
+        let theirs = oracle
+            .call("netguard.check_host", json!([host]), json!({}))
+            .unwrap()
+            .outcome;
+        assert_eq!(theirs, mine, "check_host {at}");
+        let mine = match crate::egress::canonical_host(&host) {
+            Ok(h) => Outcome::Returned(json!(h)),
+            Err(e) => Outcome::Raised {
+                kind: "Blocked".into(),
+                message: e.0,
+            },
+        };
+        let theirs = oracle
+            .call("egress.canonical_host", json!([host]), json!({}))
+            .unwrap()
+            .outcome;
+        assert_eq!(theirs, mine, "canonical_host {at}");
+    }
+}

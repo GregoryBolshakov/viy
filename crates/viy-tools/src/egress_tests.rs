@@ -434,3 +434,26 @@ fn decode64(s: &str) -> Vec<u8> {
     }
     out
 }
+
+// rpctl's ConnectTests.test_a_trailing_unicode_full_stop_is_still_a_local_name
+// (flags F54, fixed in rpctl 728277d).
+#[test]
+fn a_trailing_unicode_full_stop_is_still_a_local_name() {
+    for raw in [
+        "localhost\u{3002}",
+        "db.internal\u{3002}",
+        "nas.local\u{ff0e}",
+        "a.lan\u{ff61}",
+        "localhost.\u{3002}",
+    ] {
+        assert!(canonical_host(raw).is_err(), "{raw}");
+    }
+    assert_eq!(
+        canonical_host("example.com\u{3002}").unwrap(),
+        "example.com"
+    );
+    assert_eq!(
+        hosts("curl http://localhost\u{3002}/ https://db.internal\u{3002}/x"),
+        want(&[])
+    );
+}

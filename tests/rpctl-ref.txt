@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: e3866148306a766df3f541e4788926102e1ff3b4
+commit: 728277d2e48ee4910d5f75768ad6e92e52cdf5bb
 branch: leak-protection
-pinned: 2026-07-22
-subject: Bind nested protected files only when they exist; a dangling autorun link counts as new once its target appears
+pinned: 2026-07-25
+subject: Refuse a local name that ends in a full-width full stop

@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "e3866148306a766df3f541e4788926102e1ff3b4",
+ "rpctl_commit": "728277d2e48ee4910d5f75768ad6e92e52cdf5bb",
  "generator": "tools/fixtures.py pod/failover",
  "about": "rpctl's pod creation with region failover (pod._create_pod on volume 'prim' with the user's answers, the default without a terminal), regions.retire_replaced, regions.expire, regions.cmd_backup, regions.rank and regions.is_capacity_error, config keys over DEFAULTS and FO_CONFIG, against a scripted RunPod (`world`, see tools/fixtures.py) played through a transport adapter at a fixed clock (FO_NOW). `sent` are the requests made (a pod's body cut to name, dataCenterIds, networkVolumeId and allowedCudaVersions), `replies` what each got (hang: a Ctrl-C arrived while it was in flight), `presses` the request counts at each Ctrl-C, `asked` the questions with their defaults, `said` the notices with their colour ($HOME for the home directory), then the outcome and the state files after",
  "cases": [

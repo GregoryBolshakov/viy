@@ -15,7 +15,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.97.1"
 # Published to crates.io from the public copy (target/publish/viy), where
@@ -25,16 +25,16 @@ repository = "https://github.com/GregoryBolshakov/viy"
 
 [workspace.dependencies]
 # Internal
-viy-agent = { path = "crates/viy-agent", version = "0.1.0" }
-viy-config = { path = "crates/viy-config", version = "0.1.0" }
-viy-exec = { path = "crates/viy-exec", version = "0.1.0" }
-viy-http = { path = "crates/viy-http", version = "0.1.0" }
-viy-pod = { path = "crates/viy-pod", version = "0.1.0" }
-viy-protocol = { path = "crates/viy-protocol", version = "0.1.0" }
-viy-term = { path = "crates/viy-term", version = "0.1.0" }
-viy-testkit = { path = "crates/viy-testkit", version = "0.1.0" }
-viy-time = { path = "crates/viy-time", version = "0.1.0" }
-viy-tools = { path = "crates/viy-tools", version = "0.1.0" }
+viy-agent = { path = "crates/viy-agent", version = "0.2.0" }
+viy-config = { path = "crates/viy-config", version = "0.2.0" }
+viy-exec = { path = "crates/viy-exec", version = "0.2.0" }
+viy-http = { path = "crates/viy-http", version = "0.2.0" }
+viy-pod = { path = "crates/viy-pod", version = "0.2.0" }
+viy-protocol = { path = "crates/viy-protocol", version = "0.2.0" }
+viy-term = { path = "crates/viy-term", version = "0.2.0" }
+viy-testkit = { path = "crates/viy-testkit", version = "0.2.0" }
+viy-time = { path = "crates/viy-time", version = "0.2.0" }
+viy-tools = { path = "crates/viy-tools", version = "0.2.0" }
 
 # External crates are added when a work package first needs one, each version
 # recorded as a fact (ROADMAP phase 0).

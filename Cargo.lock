@@ -2543,7 +2543,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "viy"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2566,7 +2566,7 @@ dependencies = [
 
 [[package]]
 name = "viy-agent"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "chrono",
@@ -2591,7 +2591,7 @@ dependencies = [
 
 [[package]]
 name = "viy-config"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "indexmap",
@@ -2604,7 +2604,7 @@ dependencies = [
 
 [[package]]
 name = "viy-exec"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "pretty_assertions",
@@ -2613,7 +2613,7 @@ dependencies = [
 
 [[package]]
 name = "viy-http"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "pretty_assertions",
  "reqwest",
@@ -2623,7 +2623,7 @@ dependencies = [
 
 [[package]]
 name = "viy-pod"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "indexmap",
@@ -2643,7 +2643,7 @@ dependencies = [
 
 [[package]]
 name = "viy-protocol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "pretty_assertions",
  "serde",
@@ -2652,7 +2652,7 @@ dependencies = [
 
 [[package]]
 name = "viy-term"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "crossterm",
  "futures-core",
@@ -2673,7 +2673,7 @@ dependencies = [
 
 [[package]]
 name = "viy-testkit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "libc",
@@ -2689,14 +2689,14 @@ dependencies = [
 
 [[package]]
 name = "viy-time"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
 ]
 
 [[package]]
 name = "viy-tools"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "idna",
  "indexmap",

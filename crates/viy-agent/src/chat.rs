@@ -23,8 +23,11 @@
 //! Not yet: the tool loop and its cap (WP 4.10; web search and fetch, whose
 //! schemas a chat already offers, phase 5), so the model's tool calls are
 //! dropped as on rp's last round, and the build tools' parts of the system
-//! prompt with them (phase 4); elision and compaction (phase 6); tracing
-//! (phase 7).
+//! prompt with them (phase 4); elision and compaction (phase 6).
+//!
+//! Each turn is watched by a [`TurnMonitor`] ([`crate::trace`]): its
+//! notes go into the tool results the model reads, its alarms are said as
+//! notices, and its row is written however the turn ends.
 
 use crate::filehistory::FileHistory;
 use crate::files::FileTools;
@@ -87,6 +90,9 @@ use crate::stream::Endpoint;
 use crate::stream::Round;
 use crate::stream::Sink;
 use crate::stream::stream_once;
+use crate::trace::Severity;
+use crate::trace::Tracer;
+use crate::trace::TurnMonitor;
 
 /// Keeps the pod alive while a reply streams: `viy_pod::idle::touch`.
 pub type Touch = Arc<dyn Fn() + Send + Sync>;
@@ -109,6 +115,9 @@ pub struct Places {
     pub quarantine_dir: PathBuf,
     /// Where each chat's sandbox /tmp is made (`<state>/sandbox-tmp`).
     pub sandbox_tmp_dir: PathBuf,
+    /// viy's own state folder: the chats' traces, turns and alarms
+    /// ([`crate::trace`]).
+    pub state_dir: PathBuf,
     /// Besides the workspace and project, what a mount must neither hold nor
     /// sit inside: the clients' code, both tools' config, state and data.
     pub guarded: Vec<PathBuf>,
@@ -208,6 +217,12 @@ pub struct Chat {
     pub(crate) web_taint: Option<String>,
     /// Whether the log had been written when its session last ended.
     closed_saved: bool,
+    /// The chat's trace and alarms (TRACE_ENABLED), following its session.
+    tracer: Tracer,
+    /// The turn in progress' monitor, until its row is written.
+    monitor: Option<TurnMonitor>,
+    /// Turns this chat has run, for the trace.
+    turn_n: u64,
     /// The name last sent as [`EventMsg::TitleChanged`]; empty at first,
     /// as the frontend starts with no name. Shared with the background
     /// title request, which sends the title it gets.
@@ -247,6 +262,15 @@ impl Chat {
             .and_then(|n| n.trim().parse().ok())
             .unwrap_or(20000);
         files.clients = viy_tools::guard::client_paths();
+        let session: Arc<Mutex<Option<SessionLog>>> = Arc::default();
+        let tracer = {
+            let session = Arc::clone(&session);
+            Tracer::new(
+                places.state_dir.clone(),
+                on("TRACE_ENABLED", "1"),
+                Arc::new(move || lock(&session).as_ref().map(|log| log.id().to_string())),
+            )
+        };
         Ok(Self {
             cfg: cfg.clone(),
             places,
@@ -266,7 +290,7 @@ impl Chat {
             auto_title: on("CHAT_AUTO_TITLE", "1"),
             sessions: None,
             project: None,
-            session: Arc::default(),
+            session,
             redactor: (cfg.get("CHAT_REDACT") == Some("1")).then(|| Redactor::from_config(cfg)),
             autosave_failed: false,
             earlier: Vec::new(),
@@ -312,6 +336,9 @@ impl Chat {
             mount_note: None,
             web_taint: None,
             closed_saved: false,
+            tracer,
+            monitor: None,
+            turn_n: 0,
             label_sent: Arc::default(),
         })
     }
@@ -625,6 +652,13 @@ impl Chat {
         stamp: &str,
     ) -> Outcome {
         let mut outcome = self.files.write_file(args, ctx, stamp).await;
+        if let Some(c) = outcome.conflict.take() {
+            let [path, reason, error] = *c;
+            self.tracer.event(
+                "write_refused",
+                json!({"path": path, "reason": reason, "error": error}),
+            );
+        }
         if let Some(wrote) = outcome.wrote.take() {
             let kept = self.with_file_history(|history| {
                 history.record(call_id, &wrote.path, wrote.before.as_deref(), &wrote.after)
@@ -689,8 +723,59 @@ impl Chat {
     /// Marks the chat as holding outside text, if it does not already.
     pub(crate) fn taint(&mut self, why: String) {
         if self.web_taint.is_none() {
+            self.tracer.event("web_taint", json!({"why": why}));
             self.web_taint = Some(why);
         }
+    }
+
+    /// The chat's trace.
+    pub fn tracer(&self) -> &Tracer {
+        &self.tracer
+    }
+
+    /// An alarm the turn decided (rp's `mon.mark`).
+    fn mark(&mut self, code: &str, msg: &str) {
+        if let Some(m) = self.monitor.as_mut() {
+            m.mark(code, msg);
+        }
+    }
+
+    /// Writes the turn's metrics row and points at the trace if it
+    /// alarmed (rp's `_finish_monitor`).
+    fn finish_monitor(&mut self, ctx: &TurnContext, extra: Value) {
+        let Some(m) = self.monitor.take() else {
+            return;
+        };
+        let row = m.finish(match extra {
+            Value::Object(e) => e,
+            _ => serde_json::Map::new(),
+        });
+        let codes: Vec<&str> = row["alarms"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        if codes.is_empty() {
+            return;
+        }
+        let mut seen: Vec<&str> = Vec::new();
+        for c in &codes {
+            if !seen.contains(c) {
+                seen.push(c);
+            }
+        }
+        notice(
+            ctx,
+            NoticeLevel::Info,
+            "finish_monitor",
+            format!(
+                "  [trace: {} alarm(s) this turn: {} -- viy trace {}]",
+                codes.len(),
+                seen.join(", "),
+                self.tracer.sid()
+            ),
+        );
     }
 
     /// Why network commands need the user's yes, if they do.
@@ -821,6 +906,10 @@ impl Chat {
                     twin.id()
                 );
                 self.install(twin);
+                self.tracer.event(
+                    "fork",
+                    json!({"parent": old_id, "messages": self.messages.len()}),
+                );
                 notice(ctx, NoticeLevel::Info, "forked", line);
             }
         }
@@ -1058,6 +1147,8 @@ impl Chat {
         self.maybe_start_title(ctx);
         self.inflight = None;
         self.checkpoint(ctx);
+        // A turn cut short (a failed request) still gets its row.
+        self.finish_monitor(ctx, json!({"interrupted": true}));
         outcome
     }
 
@@ -1070,9 +1161,34 @@ impl Chat {
         }
         msgs.extend(self.messages.iter().cloned());
         msgs.push(user.clone());
+        let user_chars = content.as_str().map_or_else(
+            || content.to_string().chars().count(),
+            |t| t.chars().count(),
+        );
         self.turn_user = Some(content);
         self.denials = 0;
         self.abort_turn = None;
+        self.turn_n += 1;
+        let echo_ctx = ctx.clone();
+        let echo: crate::trace::Echo = Arc::new(move |sev, line| {
+            let level = if sev == Severity::Error {
+                NoticeLevel::Error
+            } else {
+                NoticeLevel::Warn
+            };
+            notice(&echo_ctx, level, "alarm", line);
+        });
+        self.monitor = Some(TurnMonitor::new(
+            self.tracer.clone(),
+            "main",
+            Some(self.turn_n),
+            echo,
+        ));
+        self.tracer.event(
+            "turn_start",
+            json!({"turn": self.turn_n, "history_msgs": self.messages.len(),
+                   "user_chars": user_chars}),
+        );
         self.inflight = Some(vec![user]);
         // The user's message is on disk before the reply.
         self.checkpoint(ctx);
@@ -1103,7 +1219,14 @@ impl Chat {
             let last_round = round_i == max_rounds;
             let round_no = u32::try_from(round_i + 1).unwrap_or(u32::MAX);
             requests = round_no;
+            let round_started = tokio::time::Instant::now();
             let got = if last_round {
+                self.mark(
+                    "tool_cap",
+                    &format!(
+                        "the turn used all {max_rounds} tool rounds; the model was told to answer"
+                    ),
+                );
                 // Out of tool rounds: said, and tools forbidden, or the model
                 // asks for another and the turn ends without an answer. The
                 // tools stay in the prompt so the prefix cache still hits.
@@ -1132,12 +1255,22 @@ impl Chat {
             };
             let Some(mut r) = got else {
                 // A request that failed before anything happened is dropped;
-                // once tools have run, that work is kept.
+                // once tools have run, that work is kept. The turn's row is
+                // written as an interrupted one, after the checkpoint.
+                self.mark(
+                    "request_failed",
+                    &format!("model request failed in round {round_i}"),
+                );
                 self.close_inflight("interrupted: the request failed", false);
                 return TurnOutcome::Failed {
                     message: "the request failed".into(),
                 };
             };
+            let secs = round_started.elapsed().as_secs_f64();
+            let mode = if last_round { "final" } else { "auto" };
+            if let Some(m) = self.monitor.as_mut() {
+                m.on_round(round_i, &r, secs, mode);
+            }
             // Now part of `r`, not a fragment.
             self.partial.clear();
             first_token = first_token.or(r.first_token);
@@ -1229,6 +1362,7 @@ impl Chat {
                     "turn_stopped",
                     format!("  [turn stopped: {why}]"),
                 );
+                self.mark("circuit_breaker", &format!("turn stopped: {why}"));
                 stopped_full = true;
                 out = r;
                 break;
@@ -1248,6 +1382,15 @@ impl Chat {
                 NoticeLevel::Warn,
                 "no_answer_retry",
                 "[the reply had no answer; asking for it once more]",
+            );
+            let tried = if dropped_call {
+                "; the last round still asked for a tool"
+            } else {
+                ""
+            };
+            self.mark(
+                "no_answer_retry",
+                &format!("the reply had no answer{tried}; asked once more without tools"),
             );
             sent = with_notice(&msgs, NO_ANSWER_NOTICE);
             // The prompt carried no tool schemas.
@@ -1300,6 +1443,10 @@ impl Chat {
             text = "[stopped: the tool results filled the context window before I reached an \
                     answer. Ask again -- the history will be compacted first.]"
                 .into();
+            self.mark(
+                "context_full",
+                "tool results filled the context window before an answer",
+            );
             notice(ctx, NoticeLevel::Info, "context_full", text.clone());
         } else if text.trim().is_empty() {
             // Never commit a silent, empty answer: the reasoning behind it
@@ -1311,6 +1458,7 @@ impl Chat {
                  results are kept in the history.]"
                     .into()
             };
+            self.mark("no_answer", "the turn ended without an answer");
             notice(ctx, NoticeLevel::Info, "no_answer", text.clone());
         }
 
@@ -1349,6 +1497,9 @@ impl Chat {
             chars_per_token: round_to(self.estimator.chars_per_token, 2),
         });
         ctx.emit(EventMsg::TokenCount(self.token_count(context_tokens)));
+        let extra = json!({"answer_chars": text.chars().count(), "finish": out.finish,
+                           "context_pct": round_to(fraction * 100.0, 1)});
+        self.finish_monitor(ctx, extra);
         TurnOutcome::Answered
     }
 
@@ -1598,11 +1749,14 @@ pub struct ChatTurns {
     /// Where turns go and who runs the pod commands; without one, the
     /// chat's own address, always taken to answer.
     server: Option<Arc<dyn Server>>,
+    /// The chat's trace, for the engine's mode switches.
+    tracer: Tracer,
 }
 
 impl ChatTurns {
     pub fn new(chat: Chat) -> Self {
         Self {
+            tracer: chat.tracer.clone(),
             slot: Arc::new(Mutex::new(Some(chat))),
             closing: Arc::default(),
             server: None,
@@ -1656,6 +1810,8 @@ impl Drop for Lease {
                 chat.close_inflight(reason, true);
                 chat.checkpoint(&self.ctx);
             }
+            // A turn interrupted still gets its row.
+            chat.finish_monitor(&self.ctx, json!({"interrupted": true}));
             *lock(&self.slot) = Some(chat);
         }
     }
@@ -1739,6 +1895,10 @@ impl Turns for ChatTurns {
 
     fn closing(&self) {
         self.closing.store(true, Ordering::SeqCst);
+    }
+
+    fn tracer(&self) -> Option<Tracer> {
+        Some(self.tracer.clone())
     }
 
     /// Stops the pod commands, saves the chat and releases its session log.

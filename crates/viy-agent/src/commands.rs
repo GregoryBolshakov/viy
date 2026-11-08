@@ -595,10 +595,16 @@ impl Chat {
             );
         };
         let (mode, secrets) = (m.mode(), m.secrets.len());
+        let scan_s = (m.scan.as_secs_f64() * 100.0).round() / 100.0;
         self.files.mounts.retain(|x| x.path != path);
         self.files.mounts.push(m);
         self.mount_note = Some(mounts::note(&self.files.mounts, &[]));
         self.taint(format!("files from the mounted {}", path.display()));
+        self.tracer.event(
+            "mount",
+            json!({"path": path.display().to_string(), "rw": rw, "secrets": secrets,
+                   "scan_s": scan_s}),
+        );
         say(
             NoticeLevel::Info,
             format!(
@@ -752,6 +758,7 @@ impl Chat {
         let paths: Vec<PathBuf> = gone.iter().map(|m| m.path.clone()).collect();
         self.mount_note = Some(mounts::note(&self.files.mounts, &paths));
         let listed: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+        self.tracer.event("unmount", json!({"paths": listed}));
         say(
             NoticeLevel::Info,
             format!(
@@ -1197,6 +1204,15 @@ impl Chat {
                 .collect()
         };
         let (restored, deleted) = (shown(&Action::Restore), shown(&Action::Delete));
+        let failed = applied
+            .iter()
+            .filter(|a| matches!(a, Action::Failed(_)))
+            .count();
+        self.tracer.event(
+            "rewind",
+            json!({"to_message": k, "dropped": dropped.len(),
+                   "files_restored": restored.len() + deleted.len(), "files_failed": failed}),
+        );
         if !restored.is_empty() {
             info(format!("restored {}", restored.join(", ")));
         }

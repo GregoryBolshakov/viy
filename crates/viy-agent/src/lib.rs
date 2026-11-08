@@ -22,6 +22,7 @@ pub mod prompt;
 pub mod server;
 pub mod sessions;
 pub mod stream;
+pub mod trace;
 
 pub use engine::BoxFuture;
 pub use engine::Engine;

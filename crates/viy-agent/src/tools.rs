@@ -269,23 +269,38 @@ impl Chat {
         }
     }
 
-    /// The results of one round's calls, in order (rp's `_run_tool_calls`).
-    /// rpctl runs a batch that only reads (`_parallel_ok`) side by side,
-    /// for slow fetches; the calls viy runs before phase 5 are local reads,
-    /// so every batch runs in order until fetch_url comes.
+    /// The results of one round's calls, in order (rp's `_run_tool_calls`):
+    /// a batch that only reads (`_parallel_ok`) side by side, the rest one
+    /// by one. Each result is shown to the turn monitor, which may add a
+    /// note when the model repeats itself.
     pub(crate) async fn run_tool_calls(
         &mut self,
         ctx: &TurnContext,
         calls: &[ToolCall],
     ) -> Vec<String> {
-        if self.abort_turn.is_none() && self.parallel_ok(calls) {
-            return self.run_parallel(ctx, calls).await;
-        }
-        let mut out = Vec::with_capacity(calls.len());
-        for c in calls {
-            out.push(self.call_one(ctx, c).await);
-        }
-        out
+        let results = if self.abort_turn.is_none() && self.parallel_ok(calls) {
+            self.run_parallel(ctx, calls).await
+        } else {
+            let mut out = Vec::with_capacity(calls.len());
+            for c in calls {
+                out.push(self.call_one(ctx, c).await);
+            }
+            out
+        };
+        calls
+            .iter()
+            .zip(results)
+            .map(|(c, (payload, secs))| {
+                match self
+                    .monitor
+                    .as_mut()
+                    .and_then(|m| m.on_tool(&c.name, &c.arguments, &payload, secs))
+                {
+                    Some(note) => crate::trace::with_note(&payload, &note),
+                    None => payload,
+                }
+            })
+            .collect()
     }
 
     /// Whether a batch runs side by side (rp's `_parallel_ok`): every call
@@ -334,7 +349,8 @@ impl Chat {
         &mut self,
         ctx: &TurnContext,
         calls: &[ToolCall],
-    ) -> Vec<String> {
+    ) -> Vec<(String, f64)> {
+        let batch = Instant::now();
         for c in calls {
             begin_call(ctx, c);
         }
@@ -361,22 +377,37 @@ impl Chat {
                 }
                 None => self.dispatch(ctx, c).await,
             };
-            out.push(self.end_call(ctx, c, &result, card, started));
+            let secs = started.elapsed().as_secs_f64();
+            out.push((self.end_call(ctx, c, &result, card, started), secs));
         }
+        let round2 = |x: f64| (x * 100.0).round() / 100.0;
+        self.tracer.event(
+            "parallel_batch",
+            json!({
+                "turn": self.turn_n,
+                "calls": calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+                "secs": round2(batch.elapsed().as_secs_f64()),
+                "sum_secs": round2(out.iter().map(|(_, s)| s).sum::<f64>()),
+            }),
+        );
         out
     }
 
-    /// One call's result (rp's `_call_one`): not run once the turn is
-    /// stopped, else run and defused.
-    async fn call_one(&mut self, ctx: &TurnContext, c: &ToolCall) -> String {
+    /// One call's result and its seconds (rp's `_call_one`): not run once
+    /// the turn is stopped, else run and defused.
+    async fn call_one(&mut self, ctx: &TurnContext, c: &ToolCall) -> (String, f64) {
         if self.abort_turn.is_some() {
             // Every call still needs a result or the history is malformed.
-            return json!({"error": "not run: the turn was stopped"}).to_string();
+            return (
+                json!({"error": "not run: the turn was stopped"}).to_string(),
+                0.0,
+            );
         }
         let started = Instant::now();
         begin_call(ctx, c);
         let (result, card) = self.dispatch(ctx, c).await;
-        self.end_call(ctx, c, &result, card, started)
+        let secs = started.elapsed().as_secs_f64();
+        (self.end_call(ctx, c, &result, card, started), secs)
     }
 
     /// Shows a call's end and gives its result, defused.
@@ -408,6 +439,8 @@ impl Chat {
         if n == 0 {
             return payload;
         }
+        self.tracer
+            .event("tokens_defused", json!({"tool": name, "n": n}));
         notice(
             ctx,
             NoticeLevel::Info,
@@ -702,6 +735,8 @@ impl Chat {
                 "run_shell",
                 format!("  [network unavailable] {why}"),
             );
+            self.tracer
+                .event("egress_setup_failed", json!({"reason": why}));
             card.detail = Some("network unavailable".into());
             return (
                 json!({"command": cmd, "exit_code": null, "timed_out": false, "error": why,
@@ -717,7 +752,7 @@ impl Chat {
         let mut result = json!({"command": cmd, "exit_code": ran.exit_code,
                                 "timed_out": ran.timed_out, "stdout": out, "stderr": err});
         if let Some(proxy) = &proxy {
-            result["network"] = report_egress(ctx, proxy, &ran).into();
+            result["network"] = report_egress(ctx, &self.tracer, proxy, &ran).into();
         }
         if !moved.is_empty() {
             self.report_quarantine(ctx, &moved);
@@ -878,11 +913,11 @@ async fn run_unsandboxed(
     })
 }
 
-/// Shows the proxy's `[net]` lines and gives the result's `network` entry
-/// with its hints (rp's `_report_egress`). The tracer's egress events come
-/// with WP 4.11.
+/// Shows the proxy's `[net]` lines, traces its events and gives the
+/// result's `network` entry with its hints (rp's `_report_egress`).
 pub(crate) fn report_egress(
     ctx: &TurnContext,
+    tracer: &crate::trace::Tracer,
     proxy: &Proxy,
     ran: &sandbox::Ran,
 ) -> Map<String, Value> {
@@ -894,6 +929,9 @@ pub(crate) fn report_egress(
         };
         let shown = untrusted::terminal_safe(&line, Some(600));
         notice(ctx, level, "run_shell", format!("  {shown}"));
+    }
+    for e in proxy.events() {
+        tracer.event(e.kind, e.fields);
     }
     let mut rep = proxy.report();
     let blocked_host = rep

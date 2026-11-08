@@ -444,6 +444,7 @@ pub(crate) fn chat(
         locks_dir: paths.pod_state_dir().join("locks"),
         quarantine_dir: paths.state_dir().join("quarantine"),
         sandbox_tmp_dir: paths.state_dir().join("sandbox-tmp"),
+        state_dir: paths.state_dir(),
         guarded: vec![
             paths.config_dir(),
             paths.state_dir(),

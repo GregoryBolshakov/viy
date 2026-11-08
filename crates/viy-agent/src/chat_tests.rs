@@ -28,6 +28,7 @@ fn nowhere() -> Places {
         locks_dir: std::path::PathBuf::from("/nonexistent/locks"),
         quarantine_dir: std::path::PathBuf::from("/nonexistent/quarantine"),
         sandbox_tmp_dir: std::path::PathBuf::from("/nonexistent/sandbox-tmp"),
+        state_dir: std::path::PathBuf::from("/nonexistent/viy-state"),
         guarded: Vec::new(),
     }
 }
@@ -239,7 +240,10 @@ async fn an_empty_reply_is_asked_again_without_tools() {
         ["auto", "omit"]
     );
     assert!(last_content(&sent[1]).ends_with(&format!("\n\n{NO_ANSWER_NOTICE}")));
-    assert_eq!(codes(&events), ["no_answer_retry"]);
+    assert_eq!(
+        codes(&events),
+        ["no_answer_retry", "alarm", "finish_monitor"]
+    );
     assert_eq!(
         rig.messages().last(),
         Some(&json!({"role": "assistant", "content": "here it is", "thought": true}))
@@ -260,7 +264,16 @@ async fn no_turn_is_committed_with_an_empty_answer() {
     let events = rig.send("look around").await;
     let text = rig.messages()[1]["content"].as_str().unwrap().to_string();
     assert!(text.starts_with("[no answer: the model stopped"), "{text}");
-    assert_eq!(codes(&events), ["no_answer_retry", "no_answer"]);
+    assert_eq!(
+        codes(&events),
+        [
+            "no_answer_retry",
+            "alarm",
+            "alarm",
+            "no_answer",
+            "finish_monitor"
+        ]
+    );
 }
 
 #[tokio::test]
@@ -1160,7 +1173,35 @@ fn shell_chat(responses: Value, over: &[(&str, &str)]) -> (Direct, ScratchDir) {
     d.chat.files.locks_dir = scratch.path().join("locks");
     d.chat.places.quarantine_dir = scratch.path().join("quarantine");
     d.chat.sandbox_tmp = viy_tools::sandbox::ChatTmp::new(scratch.path().join("sandbox-tmp"));
+    trace_into(&mut d.chat, &scratch.path().join("state"));
     (d, scratch)
+}
+
+/// The chat's trace and alarms written under `dir`.
+fn trace_into(chat: &mut Chat, dir: &std::path::Path) {
+    let session = Arc::clone(&chat.session);
+    chat.tracer = crate::trace::Tracer::new(
+        dir.to_path_buf(),
+        true,
+        Arc::new(move || lock(&session).as_ref().map(|log| log.id().to_string())),
+    );
+}
+
+/// The rows of a JSONL file; none if it is missing.
+fn rows(path: &std::path::Path) -> Vec<Value> {
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
+}
+
+/// The kinds of the events in the chat's trace, in order.
+fn traced(chat: &Chat) -> Vec<String> {
+    rows(&chat.tracer().trace_path())
+        .iter()
+        .map(|r| r["kind"].as_str().unwrap().to_string())
+        .collect()
 }
 
 fn call_ev(id: &str, name: &str, args: &str) -> Value {
@@ -1589,9 +1630,9 @@ async fn taint_still_asks_and_names_the_hosts() {
     );
 }
 
-// rpctl's ChatEgressTests.test_network_report_lines_hints_and_events,
-// without the tracer's events (WP 4.11): the report as the proxy counted
-// it, the lines shown and the hint.
+// rpctl's ChatEgressTests.test_network_report_lines_hints_and_events: the
+// report as the proxy counted it, the lines shown, the hint and the
+// trace's events.
 #[tokio::test]
 async fn network_report_lines_and_hints() {
     let (mut d, _s) = shell_chat(json!([]), &[]);
@@ -1607,7 +1648,12 @@ async fn network_report_lines_and_hints() {
         stderr: String::new(),
         net_error: None,
     };
-    let rep = Value::Object(super::tools::report_egress(&d.ctx, &proxy, &ran));
+    let rep = Value::Object(super::tools::report_egress(
+        &d.ctx,
+        d.chat.tracer(),
+        &proxy,
+        &ran,
+    ));
     assert_eq!(
         rep["reached"],
         json!([{"host": "pypi.org", "connections": 3},
@@ -1626,6 +1672,25 @@ async fn network_report_lines_and_hints() {
     let said = d.said();
     assert!(said.contains(&"  [net] pypi.org (3), files.pythonhosted.org (12, 41 MB)".into()));
     assert!(said.contains(&format!("  [net blocked] collect.evil.test:443 - {not}")));
+    let events = rows(&d.chat.tracer().trace_path());
+    let of = |kind: &str| -> Vec<Value> {
+        events
+            .iter()
+            .filter(|e| e["kind"] == kind)
+            .map(|e| {
+                let mut e = e.clone();
+                let m = e.as_object_mut().unwrap();
+                m.remove("ts");
+                m.remove("kind");
+                e
+            })
+            .collect()
+    };
+    assert_eq!(of("egress_allowed").len(), 2);
+    assert_eq!(
+        of("egress_blocked"),
+        [json!({"host": "collect.evil.test", "port": 443, "reason": not, "count": 1})]
+    );
 }
 
 // rpctl's ChatEgressTests.test_tool_that_ignored_the_proxy_gets_a_hint.
@@ -1640,7 +1705,7 @@ async fn a_tool_that_ignored_the_proxy_gets_a_hint() {
         stderr: "fatal: unable to access: Could not resolve host: x.test".into(),
         net_error: None,
     };
-    let rep = super::tools::report_egress(&d.ctx, &proxy, &ran);
+    let rep = super::tools::report_egress(&d.ctx, d.chat.tracer(), &proxy, &ran);
     assert!(
         rep["hint"]
             .as_str()
@@ -1674,6 +1739,7 @@ async fn a_handover_failure_is_an_error_not_a_fallback() {
     );
     assert_eq!(result["exit_code"], Value::Null);
     assert!(d.said().iter().any(|s| s.contains("[network unavailable]")));
+    assert!(traced(&d.chat).contains(&"egress_setup_failed".to_string()));
 }
 
 // rpctl's ChatEgressTests.test_host_mode_warns_and_shares_the_network: the
@@ -1974,8 +2040,9 @@ async fn a_secret_read_in_a_batch_still_asks() {
     ];
     let out = d.chat.run_parallel(&ctx, &calls).await;
     assert_eq!(answering.await.unwrap(), "  let the model read it?");
-    assert!(out[0].contains("declined"), "{}", out[0]);
-    assert!(out[1].contains("a.txt"), "{}", out[1]);
+    assert!(out[0].0.contains("declined"), "{}", out[0].0);
+    assert!(out[1].0.contains("a.txt"), "{}", out[1].0);
+    assert_eq!(traced(&d.chat), ["parallel_batch"]);
 }
 
 // rpctl's AnswerGuaranteeTests.test_a_failing_tool_costs_one_call_not_the_turn.
@@ -2012,4 +2079,178 @@ async fn a_failing_tool_costs_one_call_not_the_turn() {
     assert!(results["c2"].contains("alpha"), "{}", results["c2"]);
     let last = d.chat.messages().last().cloned().unwrap();
     assert_eq!(last["content"], "the answer");
+}
+
+// ---------------------------------------------------------- trace and alarms
+
+// rpctl's TurnTracingTests.test_turn_row_alarm_and_note_reach_the_model.
+#[tokio::test]
+async fn the_turn_row_alarm_and_note_reach_the_model() {
+    let same = || {
+        json!({"stream": [call_ev("c1", "read_file", "{\"path\": \"x\"}"),
+                                    {"finish": "tool_calls"}]})
+    };
+    let (mut d, _s) = tooled(
+        json!([same(), same(), same(), {"stream": [{"content": "done"}]}]),
+        &[("TOOLS_MAX_ROUNDS", "6"), ("SEARCH_MAX_ROUNDS", "1")],
+    );
+    d.send("go").await;
+    assert_eq!(d.chat.messages().last().unwrap()["content"], "done");
+    let last = d.mock.chat_bodies().pop().unwrap();
+    let results: Vec<&str> = last["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["role"] == "tool")
+        .map(|m| m["content"].as_str().unwrap())
+        .collect();
+    assert!(!results[0].contains("rpctl_note"), "{}", results[0]);
+    assert!(results[1].contains("rpctl_note"), "{}", results[1]);
+    let said = d.said();
+    assert!(
+        said.iter().any(|s| s.starts_with("  [alarm: repeat_call]")),
+        "{said:?}"
+    );
+    let sid = d.chat.session_id().unwrap();
+    assert!(
+        said.iter()
+            .any(|s| s.ends_with(&format!("-- viy trace {sid}]")))
+    );
+    let turns = rows(&d.chat.tracer().turns_path());
+    let row = turns.last().unwrap();
+    assert_eq!(row["rounds"], 4);
+    assert!(
+        row["alarms"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("repeat_call"))
+    );
+    assert_eq!(row["sid"], sid.as_str());
+    let alarms = rows(&d.chat.tracer().alarms_path());
+    assert_eq!(alarms.last().unwrap()["code"], "repeat_call");
+    let kinds = traced(&d.chat);
+    assert_eq!(kinds.iter().filter(|k| *k == "round").count(), 4);
+    assert_eq!(kinds.first().map(String::as_str), Some("turn_start"));
+    assert_eq!(kinds.last().map(String::as_str), Some("turn_end"));
+}
+
+// rpctl's TurnTracingTests.test_tool_cap_and_no_answer_are_alarms.
+#[tokio::test]
+async fn the_tool_cap_and_no_answer_are_alarms() {
+    let (mut d, _s) = tooled(
+        json!([
+            {"stream": [call_ev("c1", "read_file", "{\"path\": \"a\"}"), {"finish": "tool_calls"}]},
+            {"stream": []},
+            {"stream": []},
+        ]),
+        &[("TOOLS_MAX_ROUNDS", "1"), ("SEARCH_MAX_ROUNDS", "1")],
+    );
+    d.send("go").await;
+    let text = d.chat.messages().last().unwrap()["content"].clone();
+    assert!(text.as_str().unwrap().starts_with("[no answer"), "{text}");
+    let codes: Vec<Value> = rows(&d.chat.tracer().alarms_path())
+        .iter()
+        .map(|r| r["code"].clone())
+        .collect();
+    for code in ["tool_cap", "no_answer_retry", "no_answer"] {
+        assert!(codes.contains(&json!(code)), "{code}: {codes:?}");
+    }
+}
+
+// rpctl's TurnTracingTests.test_interrupted_turn_still_gets_a_row, through
+// the engine's Ctrl-C.
+#[tokio::test]
+async fn an_interrupted_turn_still_gets_a_row() {
+    let mock = MockLlm::start(&json!({"responses": [
+        {"stream": [{"content": "half"}, {"delay": 30}]}
+    ]}))
+    .unwrap();
+    let (scratch, store) = sessions_store();
+    let mut chat = chat_at(&mock, &[], &store);
+    trace_into(&mut chat, &scratch.path().join("state"));
+    let turns_path = chat.tracer().turns_path();
+    let turns = Arc::new(ChatTurns::new(chat));
+    let mut engine = Engine::spawn(turns.clone());
+    let id = engine.submit(Op::UserTurn { text: "go".into() }).unwrap();
+    while !matches!(
+        engine.next_event().await.unwrap().msg,
+        EventMsg::AgentMessageContentDelta(_)
+    ) {}
+    engine.submit(Op::Interrupt).unwrap();
+    while !matches!(engine.next_event().await.unwrap(), Event { id: ref of, msg: EventMsg::TurnAborted(_) } if *of == id)
+    {
+    }
+    let turns_rows = rows(&turns_path);
+    assert_eq!(turns_rows.last().unwrap()["interrupted"], true);
+}
+
+// A failed request is an alarm, and its turn's row says it was cut short,
+// as rp's `finally`.
+#[tokio::test]
+async fn a_failed_request_is_an_alarm_and_an_interrupted_row() {
+    let (mut d, _s) = tooled(json!([{"status": 503, "body": "down"}]), &[]);
+    d.send("go").await;
+    let row = rows(&d.chat.tracer().turns_path()).pop().unwrap();
+    assert_eq!(row["interrupted"], true);
+    assert_eq!(row["alarms"], json!(["request_failed"]));
+    assert!(
+        d.said()
+            .iter()
+            .any(|s| s == "  [alarm: request_failed] model request failed in round 0")
+    );
+}
+
+// TRACE_ENABLED=0 writes nothing; the alarms are still said.
+#[tokio::test]
+async fn trace_off_writes_nothing_but_still_says_alarms() {
+    let (mut d, s) = tooled(json!([{"status": 503, "body": "down"}]), &[]);
+    d.chat.tracer.enabled = false;
+    d.send("go").await;
+    assert!(!s.path().join("state").exists());
+    assert!(
+        d.said()
+            .iter()
+            .any(|s| s.starts_with("  [alarm: request_failed]"))
+    );
+}
+
+// The mode's switches and yeses reach the trace (rp's `_set_mode` and
+// `_auto_yes`).
+#[tokio::test]
+async fn mode_switches_are_traced() {
+    let mock = MockLlm::start(&json!({"responses": []})).unwrap();
+    let (scratch, store) = sessions_store();
+    let mut chat = chat_at(&mock, &[], &store);
+    trace_into(&mut chat, &scratch.path().join("state"));
+    let path = chat.tracer().trace_path();
+    let turns = Arc::new(ChatTurns::new(chat));
+    let mut engine = Engine::spawn_with(turns.clone(), viy_tools::modes::DEFAULT, true);
+    engine.submit(Op::CycleMode { question: None }).unwrap();
+    while !matches!(
+        engine.next_event().await.unwrap().msg,
+        EventMsg::ModeChanged(_)
+    ) {}
+    let modes: Vec<Value> = rows(&path)
+        .iter()
+        .filter(|r| r["kind"] == "mode")
+        .map(|r| r["mode"].clone())
+        .collect();
+    assert_eq!(modes.len(), 1, "{modes:?}");
+}
+
+// write_file's refusal for a conflict is traced with its reason.
+#[tokio::test]
+async fn a_refused_write_is_traced() {
+    let (mut d, _s) = shell_chat(json!([]), &[]);
+    let ctx = d.ctx.clone();
+    let args = json!({"path": "a.txt", "content": "new"});
+    let out = d
+        .chat
+        .write_file(&ctx, "c1", args.as_object().unwrap(), "stamp")
+        .await;
+    assert!(out.result["error"].is_string(), "{}", out.result);
+    let row = rows(&d.chat.tracer().trace_path()).pop().unwrap();
+    assert_eq!(row["kind"], "write_refused");
+    assert_eq!(row["path"], "a.txt");
+    assert_eq!(row["reason"], "not read in this chat");
 }

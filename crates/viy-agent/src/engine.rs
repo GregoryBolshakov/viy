@@ -40,6 +40,7 @@ use std::sync::PoisonError;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
+use serde_json::json;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -65,6 +66,8 @@ use viy_protocol::TurnRefusedEvent;
 use viy_protocol::TurnStartedEvent;
 use viy_tools::modes;
 use viy_tools::modes::Mode;
+
+use crate::trace::Tracer;
 
 /// A boxed future, as the engine's traits return.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -113,6 +116,11 @@ pub trait Turns: Send + Sync + 'static {
     /// by that, not by Ctrl-C.
     fn closing(&self) {}
 
+    /// Where the engine traces the mode's switches and its yeses.
+    fn tracer(&self) -> Option<Tracer> {
+        None
+    }
+
     /// The last thing before [`EventMsg::ShutdownComplete`], once no turn
     /// runs: the chat saves and releases what it holds.
     fn shutdown(self: Arc<Self>, ctx: TurnContext) -> BoxFuture<'static, ()> {
@@ -154,7 +162,12 @@ impl TurnContext {
 
     /// Switches the chat mode (`/mode <name>`).
     pub fn set_mode(&self, mode: &'static Mode) {
-        self.questions.lock().mode = mode;
+        let tracer = {
+            let mut state = self.questions.lock();
+            state.mode = mode;
+            state.tracer.clone()
+        };
+        trace_mode(tracer.as_ref(), mode);
         self.emit(mode_changed(mode));
     }
 
@@ -225,6 +238,8 @@ struct QuestionsState {
     attended: bool,
     /// The kinds the mode said yes to in this turn, in order.
     auto_yessed: Vec<QuestionKind>,
+    /// The chat's trace ([`Turns::tracer`]).
+    tracer: Option<Tracer>,
 }
 
 struct Open {
@@ -239,6 +254,7 @@ struct AutoYes {
     asker: String,
     question: Question,
     mode: &'static str,
+    tracer: Option<Tracer>,
 }
 
 impl Questions {
@@ -249,6 +265,7 @@ impl Questions {
             mode,
             attended,
             auto_yessed: Vec::new(),
+            tracer: None,
         })))
     }
 
@@ -267,6 +284,7 @@ impl Questions {
             asker: asker.to_string(),
             question: question.clone(),
             mode: state.mode.name,
+            tracer: state.tracer.clone(),
         })
     }
 
@@ -275,7 +293,7 @@ impl Questions {
     /// closed with the mode's answer ([`QuestionResolvedEvent::by`]) rather
     /// than a notice that would repeat it.
     fn cycle(&self, id: Option<&str>, events: &mpsc::UnboundedSender<Event>, sub_id: &str) {
-        let (mode, answered) = {
+        let (mode, answered, tracer) = {
             let mut state = self.lock();
             state.mode = modes::after(state.mode);
             let answers = |open: &Open| state.attended && state.mode.answers(open.question.kind);
@@ -285,10 +303,12 @@ impl Questions {
             if let Some(kind) = pending.as_ref().and_then(|(_, open)| open.question.kind) {
                 state.auto_yessed.push(kind);
             }
-            (state.mode, pending)
+            (state.mode, pending, state.tracer.clone())
         };
+        trace_mode(tracer.as_ref(), mode);
         emit(events, sub_id, mode_changed(mode));
         if let Some((id, open)) = answered {
+            trace_yes(tracer.as_ref(), mode.name, &open.question);
             let _ = open.answer.send(Answer::Yes);
             emit(
                 events,
@@ -416,6 +436,7 @@ impl Questions {
 /// What rp prints for the mode's yes: the question's reasons, then the
 /// question with `y` and the mode where the user's answer would be.
 fn said_yes(events: &mpsc::UnboundedSender<Event>, yes: &AutoYes) {
+    trace_yes(yes.tracer.as_ref(), yes.mode, &yes.question);
     for reason in &yes.question.reason {
         emit(events, &yes.asker, EventMsg::Notice(reason.clone()));
     }
@@ -433,6 +454,24 @@ fn said_yes(events: &mpsc::UnboundedSender<Event>, yes: &AutoYes) {
             ),
         }),
     );
+}
+
+/// The mode's yes in the trace (rp's `_auto_yes`).
+fn trace_yes(tracer: Option<&Tracer>, mode: &str, question: &Question) {
+    if let Some(t) = tracer {
+        let shown = format!("{} {}", question.prompt, question.hint());
+        t.event(
+            "auto_yes",
+            json!({"mode": mode, "about": question.kind, "question": shown.trim()}),
+        );
+    }
+}
+
+/// A switch of mode in the trace (rp's `_set_mode`).
+fn trace_mode(tracer: Option<&Tracer>, mode: &Mode) {
+    if let Some(t) = tracer {
+        t.event("mode", json!({"mode": mode.name}));
+    }
 }
 
 fn mode_changed(mode: &Mode) -> EventMsg {
@@ -498,6 +537,7 @@ impl Engine {
         let (submissions, rx_sub) = mpsc::unbounded_channel();
         let (tx_event, events) = mpsc::unbounded_channel();
         let questions = Questions::new(mode, attended);
+        questions.lock().tracer = turns.tracer();
         tokio::spawn(submission_loop(turns, rx_sub, tx_event, questions));
         Self {
             submissions,

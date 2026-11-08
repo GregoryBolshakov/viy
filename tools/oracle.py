@@ -114,6 +114,23 @@ def egress_policy(command, user_hosts, allow, probes):
             "why_not": [p.why_not(h, port) for h, port in probes]}
 
 
+def trace_monitor(calls, rounds):
+    """A TurnMonitor with tracing off: on_round for each [reasoning, finish,
+    secs], then on_tool for each [name, args_json, payload]. Returns each
+    call's note, the alarm codes and what they said, colours stripped."""
+    from rpctl import trace
+    said = []
+    t = trace.Tracer(lambda: "s1", enabled=False, echo=said.append)
+    m = trace.TurnMonitor(t)
+    for i, (reasoning, finish, secs) in enumerate(rounds):
+        m.on_round(i, {"text": "", "reasoning": reasoning, "tool_calls": [],
+                       "usage": None, "finish": finish}, secs)
+    notes = [m.on_tool(n, a, p, 0) for n, a, p in calls]
+    plain = [s.replace(trace.YELLOW, "").replace(trace.RED, "").replace(trace.RST, "")
+             for s in said]
+    return {"notes": notes, "alarms": m.alarms, "said": plain}
+
+
 PUBLIC = "93.184.216.34"
 
 
@@ -222,6 +239,8 @@ FUNCTIONS = {
     "shutdown.fmt": ("rpctl.shutdown", "_fmt"),
     "shutdown.is_chat": shutdown_is_chat,
     "shutdown.parse_when": shutdown_parse_when,
+    "trace.monitor": trace_monitor,
+    "trace.repeated_sentence": ("rpctl.trace", "repeated_sentence"),
     "untrusted.clean": ("rpctl.untrusted", "clean"),
     "untrusted.neutralize": ("rpctl.untrusted", "neutralize"),
     "untrusted.suspicious": ("rpctl.untrusted", "suspicious"),

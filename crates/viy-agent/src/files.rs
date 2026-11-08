@@ -72,6 +72,9 @@ pub struct Outcome {
     /// For `/rewind`'s record ([`crate::filehistory`]): the file write_file
     /// wrote, unless what it held before could not be read.
     pub wrote: Option<Box<Wrote>>,
+    /// A write refused for a conflict: the path as shown, the reason and
+    /// the error, for the chat's trace (`write_refused`).
+    pub conflict: Option<Box<[String; 3]>>,
 }
 
 /// A file write_file wrote: what it held before (`None`: it did not
@@ -89,6 +92,7 @@ impl Outcome {
             result,
             refused: false,
             wrote: None,
+            conflict: None,
         }
     }
 
@@ -454,6 +458,7 @@ impl FileTools {
             }),
             refused: true,
             wrote: None,
+            conflict: None,
         })
     }
 
@@ -592,11 +597,15 @@ impl FileTools {
             Err(e) => return Outcome::error(format!("could not lock the workspace: {e}")),
         };
         if let Some((reason, error)) = self.write_conflict(&path) {
+            let shown = self.ws_rel(&path);
             ui.notice(line(
                 NoticeLevel::Warn,
-                format!("  [write refused] {}: {reason}", self.ws_rel(&path)),
+                format!("  [write refused] {shown}: {reason}"),
             ));
-            return Outcome::error(error);
+            return Outcome {
+                conflict: Some(Box::new([shown, reason, error.clone()])),
+                ..Outcome::error(error)
+            };
         }
         // What /rewind puts back; unreadable, it leaves this file alone.
         let before = match fs::metadata(&path) {

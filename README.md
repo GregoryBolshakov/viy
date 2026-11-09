@@ -3,6 +3,76 @@
 A Rust harness for abliterated models, treats them as hostile, but keeps them
 useful.
 
+<p align="center">
+  <img src="images/viy-demo.gif" alt="viy starting a RunPod pod with /up, then the model reading a project, checking package versions on PyPI and updating requirements.txt">
+</p>
+
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/GregoryBolshakov/viy/main/install.sh | sh
+```
+
+Or, if you already have Rust 1.97.1 or newer:
+
+```sh
+cargo install viy --locked
+```
+
+The script installs Rust with rustup when you have no cargo, then runs the
+same `cargo install`. viy runs on Linux. It also needs `ssh` for the tunnel,
+bubblewrap (`bwrap`) for the sandbox and a RunPod API key.
+
+<details>
+<summary>How to get a RunPod API key <sub>(click to expand)</sub></summary>
+<br>
+
+viy rents its GPU on RunPod, so it needs a key to your RunPod account.
+
+1. Sign up or log in at <https://console.runpod.io>. Add some credit under
+   Billing, since a pod is paid for from your balance by the hour.
+2. Open <https://console.runpod.io/user/settings> and find API Keys.
+3. Click Create API Key, give it a name like `viy` and full access (read
+   and write). viy creates, stops and terminates pods and network volumes,
+   and a read-only key can't do that.
+4. Copy the key right away. RunPod shows it only once.
+5. Put it in viy's config, a file that viy doesn't create for you:
+
+   ```sh
+   mkdir -p ~/.config/viy
+   nano ~/.config/viy/config      # add the line RUNPOD_API_KEY=<your key>
+   chmod 600 ~/.config/viy/config
+   ```
+
+The key can spend your RunPod balance, so keep it out of git and out of
+shared folders.
+
+For now RunPod is the only GPU provider viy can rent from. I'm working on
+support for more services like it, and for a GPU you own, so viy runs the
+model on your own card the same way. Until then, a chat can already talk to
+a vLLM you start yourself, with `BACKEND=local`.
+
+</details>
+
+To build from a clone instead, run `cargo install --path crates/viy --locked`.
+rustup picks up the Rust version pinned in `rust-toolchain.toml`.
+
+## Usage
+
+Run `viy` as you run any other agentic terminal. The interface should feel
+familiar. Everything happens inside it, with commands such as `/resume`,
+`/compact`, `/rewind` and many others. `/help` lists them all.
+
+The core difference from other CLIs is `/up` and `/down`. The GPU is yours,
+you rent it, so you start it and end it. `/up` creates or resumes the pod and
+waits for the model, `/down` terminates it. The weights stay on the volume,
+and a pod is billed by the hour until you end it.
+
+viy also works without a running pod. You can't send new prompts then, but
+you can still go through your chats and read and search your old messages.
+
+## The lore
+
 Gogol's 1835 story *Viy* describes the parts of this system really well.
 
 A young student hurts a witch, and her wealthy father, who doesn't know what
@@ -458,33 +528,6 @@ and the student must hold out until dawn.
   the approval prompt. The imps, the explore helpers.
   The owl, the egress proxy and netguard. The green handprints, taint. -->
 
-## Install
-
-```sh
-cargo install viy --locked
-viy init      # marks the current folder as a project
-```
-
-It needs Rust 1.97.1 or newer. You also need a RunPod API key in viy's
-config, and `ssh` for the tunnel.
-
-To build from a clone instead, run `cargo install --path crates/viy --locked`.
-rustup picks up the Rust version pinned in `rust-toolchain.toml`.
-
-## Usage
-
-Run `viy` as you run any other agentic terminal. The interface should feel
-familiar. Everything happens inside it, with commands such as `/resume`,
-`/compact`, `/rewind` and many others. `/help` lists them all.
-
-The core difference from other CLIs is `/up` and `/down`. The GPU is yours,
-you rent it, so you start it and end it. `/up` creates or resumes the pod and
-waits for the model, `/down` terminates it. The weights stay on the volume,
-and a pod is billed by the hour until you end it.
-
-viy also works without a running pod. You can't send new prompts then, but
-you can still go through your chats and read and search your old messages.
-
 ## Why
 
 Abliterated models have their refusals removed, and they can do real harm.
@@ -500,22 +543,15 @@ abliterated models is more capable than the last, and soon one may be able to
 escape a sandbox on its own and do damage nobody can predict. viy is built
 with that in mind.
 
-## License
-
-viy is source-available under the viy License, see `LICENSE`. In short:
-
-- You can use viy for free, change it and share your changes, also in your
-  paid work as a developer.
-- You cannot sell it, host it as a service, bundle it into a paid product,
-  take money from providers for its defaults, or use its code to build a
-  competing tool.
-- A copy with more than 50 users must keep the viy name and look.
-
-For anything else, such as a commercial license, write to me. One file
-derived from Ratatui keeps its MIT license, see `THIRD_PARTY_NOTICES`.
-
 ## Contributing
 
-Issues and pull requests are welcome. By sending a contribution you agree to
-section 6 of the license: I may use it in viy under any terms, and everyone
-else gets it under the viy License.
+Let's make viy better! Issues and pull requests are welcome, small ones too.
+Some things that you could try to improve:
+
+- Security. If you find a way past the sandbox, the egress proxy or the
+  fences around web text, tell me.
+- Bugs. Anything that crashes, hangs or works differently from what this
+  page says.
+- Boot speed, the time from `/up` until you can send a prompt.
+- The reviewer that rates the model's network commands. It should ask less
+  about safe commands and miss fewer bad ones.

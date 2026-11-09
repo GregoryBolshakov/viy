@@ -17,6 +17,11 @@ pub fn is_py_space(c: char) -> bool {
     c.is_whitespace() || ('\x1c'..='\x1f').contains(&c)
 }
 
+/// `str.strip()`.
+pub(crate) fn py_strip(s: &str) -> &str {
+    s.trim_matches(is_py_space)
+}
+
 /// A word character for boundary tests. ASCII only, so every character
 /// Python's `\w` rejects is a boundary here too, and so are a few it
 /// accepts (`\bgit` matches after `é`, where rpctl's does not).

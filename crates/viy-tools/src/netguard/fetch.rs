@@ -32,7 +32,7 @@ use super::parse;
 use super::url;
 use super::vet;
 use crate::approve::Pending;
-use crate::approve::chars::is_py_space;
+use crate::approve::chars::py_strip;
 
 /// Redirects followed before giving up.
 pub const MAX_REDIRECTS: usize = 5;
@@ -68,12 +68,17 @@ pub enum FetchError {
     Refused(String),
     /// The URL was allowed but reading it failed (rp's `FetchError`).
     Failed(String),
+    /// Where rpctl's reader raises an exception of another kind, which
+    /// ends the tool call (rpctl's `fetch_url failed: <type>: <message>`)
+    /// and is not retried: the type, then the message.
+    Raised(&'static str, String),
 }
 
 impl std::fmt::Display for FetchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Refused(m) | Self::Failed(m) => f.write_str(m),
+            Self::Raised(kind, m) => write!(f, "{kind}: {m}"),
         }
     }
 }
@@ -423,11 +428,6 @@ fn joined(headers: &hyper::HeaderMap, name: &str) -> Option<String> {
         .map(|v| latin1(v.as_bytes()))
         .collect();
     (!values.is_empty()).then(|| values.join(", "))
-}
-
-/// Python's `str.strip()`.
-fn py_strip(s: &str) -> &str {
-    s.trim_matches(is_py_space)
 }
 
 /// The body's Content-Encoding.

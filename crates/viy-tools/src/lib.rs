@@ -12,8 +12,9 @@
 //! resolution the guards share ([`resolve`]), the egress proxy of network
 //! commands ([`egress`]) with the host rules of netguard it uses
 //! ([`netguard`]), the schemas of the internet tools ([`web`]), which
-//! the chat offers from phase 3 on, and the user's doctrines for the
-//! network reviewer ([`doctrines`]), new in viy.
+//! the chat offers from phase 3 on, fetch_url's pages read as text
+//! ([`webfetch`]), and the user's doctrines for the network reviewer
+//! ([`doctrines`]), new in viy.
 
 pub mod approve;
 pub mod build;
@@ -29,3 +30,4 @@ pub mod sandbox;
 pub mod secrets;
 pub mod untrusted;
 pub mod web;
+pub mod webfetch;

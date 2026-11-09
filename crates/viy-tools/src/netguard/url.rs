@@ -322,6 +322,18 @@ pub fn join(base: &str, url: &str) -> Result<String, String> {
     Ok(unparse6(u, &params))
 }
 
+/// `urldefrag(url)`'s URL: a URL with a `#` goes through `urlparse` and
+/// `urlunparse` without its fragment (so `http://a/b?#f` loses its `?`
+/// too), one without is kept as it is.
+pub fn defrag(url: &str) -> Result<String, String> {
+    if !url.contains('#') {
+        return Ok(url.into());
+    }
+    let (mut parts, params) = parse6(url, "")?;
+    parts.fragment.clear();
+    Ok(unparse6(parts, &params))
+}
+
 /// `str.lower()`.
 fn py_lower(s: &str) -> String {
     s.chars().flat_map(char::to_lowercase).collect()

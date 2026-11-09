@@ -22,6 +22,7 @@ oracle = ["viy-testkit/oracle"]
 test-support = []
 
 [dependencies]
+encoding_rs = { workspace = true }
 flate2 = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true }
@@ -34,6 +35,7 @@ rand = { workspace = true }
 regex = { workspace = true }
 rustls = { workspace = true }
 rustls-native-certs = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 shlex = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "sync", "time"] }
@@ -44,6 +46,12 @@ viy-http = { workspace = true }
 viy-protocol = { workspace = true }
 
 [dev-dependencies]
+base64 = { workspace = true }
 pretty_assertions = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
 viy-testkit = { workspace = true }
+
+# Calls rpctl through the oracle.
+[[example]]
+name = "webfetch_corpus"
+required-features = ["oracle"]

@@ -52,6 +52,9 @@ futures-core = { version = "0.3.34", default-features = false }
 # join_all for a parallel batch of read-only tool calls, as Codex joins
 # its own; already in the tree through reqwest.
 futures-util = { version = "0.3.34", default-features = false, features = ["alloc"] }
+# fetch_url's page text in the charset the page declares, decoded as
+# browsers decode it (WHATWG labels); Codex's version (codex-rs/Cargo.toml).
+encoding_rs = "0.8.35"
 # fetch_url's gzip and deflate bodies, decoded here under a size cap
 # (rpctl netguard.py); Codex has flate2 1.1 (codex-rs/Cargo.toml).
 flate2 = "1.1.9"

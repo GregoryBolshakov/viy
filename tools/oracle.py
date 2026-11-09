@@ -68,6 +68,38 @@ def netguard_redirect(base, location):
     return urljoin(base, location.strip())
 
 
+def webfetch_link(base, href):
+    """The URL _Extractor._link keeps for href on a page at base, or None."""
+    from rpctl import webfetch
+    p = webfetch._Extractor(base)
+    n = p._link(href)
+    return p.links[n - 1] if n else None
+
+
+def webfetch_text(body, headers, url):
+    """direct()'s text for a response already read from url (its body and
+    lower-case headers): the charset, then HTML, JSON or plain text by
+    type, as (kind, title, text, links)."""
+    from unittest import mock
+    from rpctl import netguard, webfetch
+    resp = netguard.Response(200, headers, body, url, [], False)
+    with mock.patch.object(webfetch.netguard, "get", return_value=resp):
+        d = webfetch.direct(url)
+    return (d.kind, d.title, d.text, d.links)
+
+
+def webfetch_eval_pages():
+    """The injection eval's pages (rpctl netaccess/evals/injection_eval.py),
+    each its ARTICLE around one injection, by name, with the page's URL."""
+    import importlib.util
+    path = ROOT / snapshot()[0] / "netaccess" / "evals" / "injection_eval.py"
+    spec = importlib.util.spec_from_file_location("injection_eval", path)
+    ev = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ev)
+    return {"url": ev.URL,
+            "pages": {name: ev.ARTICLE.format(inject=html) for name, html in ev.PAGES.items()}}
+
+
 def shutdown_parse_when(text, now):
     """shutdown.parse_when(text, now) with `now` as an ISO local time."""
     from datetime import datetime
@@ -263,6 +295,15 @@ FUNCTIONS = {
     "untrusted.suspicious": ("rpctl.untrusted", "suspicious"),
     "untrusted.terminal_safe": ("rpctl.untrusted", "terminal_safe"),
     "untrusted.wrap": ("rpctl.untrusted", "wrap"),
+    # Reads the snapshot's eval script for its synthetic pages; no network.
+    "webfetch.eval_pages": webfetch_eval_pages,
+    "webfetch.extract_html": ("rpctl.webfetch", "extract_html"),
+    "webfetch.link": webfetch_link,
+    "webfetch.links_in": ("rpctl.webfetch", "links_in"),
+    "webfetch.passages": ("rpctl.webfetch", "passages"),
+    "webfetch.text": webfetch_text,
+    "webfetch.tidy": ("rpctl.webfetch", "_tidy"),
+    "webfetch.window": ("rpctl.webfetch", "window"),
 }
 
 

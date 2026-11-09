@@ -198,3 +198,91 @@ fn init_does_not_write_through_a_gitignore_symlink() {
     assert!(project.dir().is_dir());
     assert!(!elsewhere.exists());
 }
+
+/// A chat in a folder nobody marked marks it as `viy init` does, the
+/// `.gitignore` included, and the root stays the folder (kb d118).
+#[test]
+fn a_chat_marks_a_folder_nobody_marked() {
+    let scratch = ScratchDir::new("auto").unwrap();
+    let root = std::fs::canonicalize(scratch.path()).unwrap();
+    let home = root.join("home");
+    let folder = root.join("work/app");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::create_dir_all(&home).unwrap();
+    assert_eq!(Project::find(&folder).unwrap().saved_history(), None);
+
+    let project = Project::find_or_init(&folder, &home).unwrap();
+    assert_eq!(project.root(), folder);
+    assert_eq!(
+        std::fs::read_to_string(project.dir().join(".gitignore")).unwrap(),
+        "history\n"
+    );
+    assert_eq!(project.saved_history(), Some(project.history_file()));
+    assert!(!root.join("work").join(MARKER).exists());
+}
+
+/// Inside a project, a subfolder gets no marker of its own.
+#[test]
+fn a_chat_in_a_marked_project_marks_nothing_new() {
+    let scratch = ScratchDir::new("auto").unwrap();
+    let root = std::fs::canonicalize(scratch.path()).unwrap();
+    std::fs::create_dir_all(root.join("app").join(MARKER)).unwrap();
+    std::fs::create_dir_all(root.join("app/src")).unwrap();
+    let project = Project::find_or_init(&root.join("app/src"), &root.join("home")).unwrap();
+    assert_eq!(project.root(), root.join("app"));
+    assert!(!root.join("app/src").join(MARKER).exists());
+    // An existing marker is not rewritten: no `.gitignore` appears in it.
+    assert!(!project.dir().join(".gitignore").exists());
+}
+
+/// In rp's project the chat adds viy's marker with its `.gitignore` at
+/// the root, before any history is written there, and leaves `.rpctl/`
+/// alone.
+#[test]
+fn a_chat_in_an_rp_project_adds_viys_marker_beside_it() {
+    let scratch = ScratchDir::new("auto").unwrap();
+    let root = std::fs::canonicalize(scratch.path()).unwrap();
+    std::fs::create_dir_all(root.join("app").join(RPCTL_MARKER)).unwrap();
+    std::fs::create_dir_all(root.join("app/src")).unwrap();
+    let project = Project::find_or_init(&root.join("app/src"), &root.join("home")).unwrap();
+    assert_eq!(project.root(), root.join("app"));
+    assert!(project.dir().join(".gitignore").is_file());
+    assert_eq!(std::fs::read_dir(project.rpctl_dir()).unwrap().count(), 0);
+}
+
+/// Home and the folders above it are never marked, and a chat there keeps
+/// its input history in memory only.
+#[test]
+fn a_chat_never_marks_home_or_above() {
+    let scratch = ScratchDir::new("auto").unwrap();
+    let root = std::fs::canonicalize(scratch.path()).unwrap();
+    let home = root.join("home/me");
+    std::fs::create_dir_all(&home).unwrap();
+    for start in [home.clone(), root.join("home"), root.clone()] {
+        let project = Project::find_or_init(&start, &home).unwrap();
+        assert_eq!(project.root(), start);
+        assert!(!project.dir().exists(), "{}", start.display());
+        assert_eq!(project.saved_history(), None);
+    }
+    // Home named through a symlink is still home.
+    let link = root.join("home-link");
+    std::os::unix::fs::symlink(&home, &link).unwrap();
+    assert!(!Project::find_or_init(&home, &link).unwrap().dir().exists());
+}
+
+/// A folder the chat cannot write to opens unmarked.
+#[test]
+fn a_read_only_folder_opens_unmarked() {
+    use std::os::unix::fs::PermissionsExt;
+    let scratch = ScratchDir::new("auto").unwrap();
+    let root = std::fs::canonicalize(scratch.path()).unwrap();
+    let folder = root.join("ro");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let project = Project::find_or_init(&folder, &root.join("home"));
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let project = project.unwrap();
+    assert_eq!(project.root(), folder);
+    assert!(!project.dir().exists());
+    assert_eq!(project.saved_history(), None);
+}

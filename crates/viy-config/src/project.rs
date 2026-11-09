@@ -32,6 +32,27 @@ impl Project {
         Ok(Self { root })
     }
 
+    /// The project a chat opened in `start` works in: [`Project::find`]'s
+    /// root, given a `.viy/` as [`Project::init`] makes it when it has
+    /// none, so nobody has to run `viy init` first (kb d118). With no
+    /// marker from `start` up, that is `start` itself; in an rp project,
+    /// its root, `.rpctl/` left alone (kb d039). The root is `find`'s
+    /// either way, so the agent's tools reach no further. `home` and the
+    /// folders above it are never marked: a marker there would make every
+    /// unmarked folder below part of one project. A folder that cannot be
+    /// marked (read-only, say) stays as it is and the chat still opens.
+    pub fn find_or_init(start: &Path, home: &Path) -> io::Result<Self> {
+        let project = Self::find(start)?;
+        let home = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+        if project.dir().is_dir() || home.starts_with(project.root()) {
+            return Ok(project);
+        }
+        Ok(match Self::init(project.root()) {
+            Ok((marked, _)) => marked,
+            Err(_) => project,
+        })
+    }
+
     /// Marks `dir` as a project (`viy init`, rpctl's `init_project`):
     /// creates `.viy/` and, when there is none, a `.gitignore` that keeps
     /// the input history out of version control. viy keeps no transcripts
@@ -95,6 +116,12 @@ impl Project {
     /// The input history.
     pub fn history_file(&self) -> PathBuf {
         self.dir().join("history")
+    }
+
+    /// Where the chat keeps the input history: none without a `.viy/`, so
+    /// sending a message never creates one (kb d118).
+    pub fn saved_history(&self) -> Option<PathBuf> {
+        self.dir().is_dir().then(|| self.history_file())
     }
 
     /// The project's config files in layering order: rp's, then viy's on

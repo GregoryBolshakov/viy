@@ -290,6 +290,11 @@ fn the_history_outlives_the_chat() {
     let child = open_chat(&pty, &mock, dir.path());
     send_and_answer(&pty, &mock, b"remember this");
     close(&pty, child);
+    // The chat marked the folder as `viy init` does (kb d118).
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join(".viy").join(".gitignore")).unwrap(),
+        "history\n"
+    );
 
     let mock = one_turn("unused");
     let pty = Pty::open(ROWS, COLS).unwrap();

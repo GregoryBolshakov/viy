@@ -248,9 +248,12 @@ fn chat_ui(
         if plain {
             plain_chat(&mut engine, Vec::new(), stdin_lines(), &mut *out).await?;
         } else {
-            let project = Project::find(&start).map_err(|e| Failure::from(e.to_string()))?;
+            let project = Project::find_or_init(&start, &paths.home)
+                .map_err(|e| Failure::from(e.to_string()))?;
             let tab = tab_title(&cfg);
-            let history = History::load(project.history_file());
+            let history = project
+                .saved_history()
+                .map_or_else(History::default, History::load);
             tui_chat(engine, history, tab, chat_header(&cfg)).await?;
         }
         Ok::<_, Failure>(turns.with_chat(|c| c.session_id()).flatten())

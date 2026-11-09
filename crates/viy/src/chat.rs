@@ -87,6 +87,10 @@ pub fn cmd_chat(
     // A chat named that is not there is said first, as Codex looks the
     // session up before anything else.
     require_key(backend, &cfg, paths)?;
+    // Where rp's chat makes its `.rpctl/`, after the key; with the
+    // `.gitignore` `viy init` writes (kb d118).
+    let project = Project::find_or_init(start, &paths.home)
+        .map_err(|e| format!("{}: {e}", start.display()))?;
     let url = opening.url.clone().or_else(|| {
         std::env::var("VLLM_BASE_URL")
             .ok()
@@ -140,7 +144,9 @@ pub fn cmd_chat(
             for op in first {
                 let _ = engine.submit(op);
             }
-            let history = History::load(project.history_file());
+            let history = project
+                .saved_history()
+                .map_or_else(History::default, History::load);
             dev::tui_chat(
                 engine,
                 history,

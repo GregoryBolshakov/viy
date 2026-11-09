@@ -135,6 +135,8 @@ struct Summary {
     ready: bool,
     /// A layer of the image failed and restarted.
     retried: bool,
+    /// The newest line summarised so far.
+    newest: Option<DateTime<Utc>>,
     failure: Option<String>,
 }
 
@@ -210,7 +212,21 @@ impl Summary {
     }
 
     fn summarise(&mut self, entries: &[LogEntry], require_ssh: bool) {
+        // Each fetch holds the last 30 lines of each source, so it brings
+        // back lines an earlier one summarised; once the container runs, the
+        // system log ends with the image pull. Only lines from the newest
+        // time seen on count: otherwise that pull wins whenever no container
+        // line in the window matches (sshd's "connect_to ... port 8000:
+        // failed" every second while vLLM loads), and the progress goes back
+        // to "pulling".
+        let since = self.newest;
         for entry in entries {
+            if let Some(at) = entry.time() {
+                if since.is_some_and(|since| at < since) {
+                    continue;
+                }
+                self.newest = self.newest.max(Some(at));
+            }
             let line = entry.line.as_str();
             let lower = line.to_lowercase();
             let source = entry.source.as_deref();

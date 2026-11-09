@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "728277d2e48ee4910d5f75768ad6e92e52cdf5bb",
+ "rpctl_commit": "8cd1845219ed58ea49bd2bd16c39ea5650ee6bfc",
  "generator": "tools/fixtures.py chat/modes",
  "about": "rpctl's modes.py: KINDS, MODES (auto_yes in KINDS order), DEFAULT, get() on some names, after() of each mode",
  "cases": [

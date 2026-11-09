@@ -89,6 +89,27 @@ pub struct LogEntry {
     pub line: String,
 }
 
+impl LogEntry {
+    /// When the line was written. System lines carry whole seconds
+    /// ("...:52Z"), container lines nanoseconds ("...:52.771976788Z"):
+    /// compared as text, "52Z" would come after "52.7Z".
+    pub fn time(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        let ts = self.ts.as_deref()?;
+        chrono::DateTime::parse_from_rfc3339(ts)
+            .ok()
+            .map(|t| t.to_utc())
+    }
+
+    /// The order rpctl sorts by (`api.log_time(entry) or entry["ts"]`): the
+    /// time to the nanosecond as text, else the timestamp as written.
+    fn sort_key(&self) -> String {
+        match self.time() {
+            Some(time) => time.format("%Y-%m-%dT%H:%M:%S%.9f").to_string(),
+            None => self.ts.clone().unwrap_or_default(),
+        }
+    }
+}
+
 /// The stock RunPod reports for one GPU in one data center: on a host whose
 /// driver supports at least the minimum CUDA (`fit`), and on one whose
 /// driver is exactly one of the older versions asked about (`old`). `None`
@@ -425,11 +446,7 @@ impl RunPod {
             }
             pending.drain(..line_start);
         }
-        entries.sort_by(|a, b| {
-            a.ts.as_deref()
-                .unwrap_or("")
-                .cmp(b.ts.as_deref().unwrap_or(""))
-        });
+        entries.sort_by_cached_key(LogEntry::sort_key);
         Ok(entries)
     }
 }

@@ -1227,6 +1227,69 @@ async fn image_pull_is_reported_not_hidden_behind_sshd() {
     );
 }
 
+/// Boot 20260727T023034Z: every fetch holds the system log's last 30
+/// lines, the end of the image pull, and while vLLM loads the container's
+/// last 30 are sshd refusing the tunnel's health checks.
+#[tokio::test]
+async fn old_pull_lines_do_not_take_the_progress_back() {
+    let mut pull = vec![json!({"ts": "2026-07-27T02:24:02Z", "source": "system",
+        "line": "0f06d63f7039 Retrying in 5 seconds"})];
+    pull.extend((10..39).map(|s| {
+        json!({"ts": format!("2026-07-27T02:27:{s}Z"), "source": "system",
+            "line": "0f06d63f7039 Pull complete"})
+    }));
+    let loading = json!({"ts": "2026-07-27T02:28:58.123456789Z", "source": "container",
+        "line": "Loading safetensors checkpoint shards:   0% Completed"});
+    let refused = (0..30).map(|s| {
+        json!({"ts": format!("2026-07-27T02:29:{s:02}.131158618Z"), "source": "container",
+            "line": "connect_to 127.0.0.1 port 8000: failed."})
+    });
+    let body = |entries: Vec<Value>| -> Reply {
+        Reply::answer(
+            200,
+            entries
+                .iter()
+                .map(|e| format!("data: {e}\n"))
+                .collect::<String>(),
+        )
+    };
+    let http = Arc::new(FakeHttp::new([
+        body(pull.clone()),
+        body(pull.iter().cloned().chain([loading]).collect()),
+        body(pull.iter().cloned().chain(refused).collect()),
+    ]));
+    let rp = RunPod::new(API_KEY, http);
+    let progress = Progress::new(&rp, "pod111", true);
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        progress.refresh().await;
+        seen.push(progress.summary().result().unwrap());
+    }
+    assert_eq!(
+        seen,
+        [
+            "pulling container image (a layer failed and restarted)",
+            "loading model weights",
+            "loading model weights",
+        ]
+    );
+}
+
+#[test]
+fn log_times_order_as_times() {
+    let entry = |ts: Option<&str>| LogEntry {
+        ts: ts.map(str::to_string),
+        source: None,
+        line: String::new(),
+    };
+    let whole = entry(Some("2026-07-27T02:27:52Z"));
+    let later = entry(Some("2026-07-27T02:27:52.771976788Z"));
+    assert!(whole.time() < later.time());
+    assert!(whole.ts > later.ts, "as text, the other way round");
+    assert_eq!(entry(None).time(), None);
+    assert_eq!(entry(Some("yesterday")).time(), None);
+}
+
 #[tokio::test(start_paused = true)]
 async fn unauthorized_is_not_ready() {
     let health = RouteHttp::new(|_| Reply::answer(401, ""));

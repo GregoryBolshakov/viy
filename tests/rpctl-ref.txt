@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: 728277d2e48ee4910d5f75768ad6e92e52cdf5bb
+commit: 8cd1845219ed58ea49bd2bd16c39ea5650ee6bfc
 branch: leak-protection
-pinned: 2026-07-25
-subject: Refuse a local name that ends in a full-width full stop
+pinned: 2026-07-26
+subject: Keep the boot progress from going back to the image pull

@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "728277d2e48ee4910d5f75768ad6e92e52cdf5bb",
+ "rpctl_commit": "8cd1845219ed58ea49bd2bd16c39ea5650ee6bfc",
  "generator": "tools/fixtures.py prompt/system",
  "about": "rpctl chat's system prompt (Chat._effective_system), its workspace, the instruction files loaded ([path, chars, truncated]) and what /instructions prints, for synthetic trees: $T is the case's root, HOME $T/home, XDG_CONFIG_HOME $T/config, the project $T/project (with a .rpctl/ marker unless marker is false); {GLOBAL} in a file name is the client's config dir; DEFAULTS plus VLLM_API_KEY k, TRACE_ENABLED 0, CONSULT_ENABLED 0, then the case's config; raw_files are byte strings with \\xNN escapes; the date is {TODAY}",
  "cases": [

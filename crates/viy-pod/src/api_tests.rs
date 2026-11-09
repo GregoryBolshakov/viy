@@ -401,3 +401,22 @@ async fn bodiless_calls_other_than_get_declare_a_zero_length() {
         .collect();
     assert_eq!(lengths, [Some("0"), Some("0"), None]);
 }
+
+/// The same text rpctl's `api.log_time` sorts by.
+#[test]
+fn log_entries_sort_by_rpctls_key() {
+    let entry = |ts: &str| LogEntry {
+        ts: Some(ts.to_string()),
+        source: None,
+        line: String::new(),
+    };
+    assert_eq!(
+        entry("2026-07-27T02:27:52Z").sort_key(),
+        "2026-07-27T02:27:52.000000000"
+    );
+    assert_eq!(
+        entry("2026-07-27T02:27:52.771976788Z").sort_key(),
+        "2026-07-27T02:27:52.771976788"
+    );
+    assert_eq!(entry("1").sort_key(), "1");
+}

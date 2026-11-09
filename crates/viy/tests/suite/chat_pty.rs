@@ -46,7 +46,9 @@ fn the_chat_opens_without_a_pod_keeps_the_draft_and_notices_one_brought_up() {
                 .env("VLLM_API_KEY", "fake-key")
                 .env("TUNNEL", "1")
                 .env("TUNNEL_LOCAL_PORT", &port)
-                .env("CHAT_AUTO_TITLE", "0"),
+                .env("CHAT_AUTO_TITLE", "0")
+                // One scripted answer, no tool-support check before it.
+                .env("TOOLS_ENABLED", "0"),
         )
         .unwrap();
     pty.wait_for("the input box and no pod", |s| {
@@ -160,7 +162,9 @@ fn sigterm_saves_and_closes_the_chat() {
                 .env("VLLM_API_KEY", "fake-key")
                 .env("TUNNEL", "1")
                 .env("TUNNEL_LOCAL_PORT", &port)
-                .env("CHAT_AUTO_TITLE", "0"),
+                .env("CHAT_AUTO_TITLE", "0")
+                // One scripted answer, no tool-support check before it.
+                .env("TOOLS_ENABLED", "0"),
         )
         .unwrap();
     pty.wait_for("the input box", |s| {

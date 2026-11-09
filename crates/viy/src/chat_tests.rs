@@ -147,3 +147,24 @@ fn require_key_per_backend() {
     cfg.set("VLLM_API_KEY", "k");
     assert!(require_key(Backend::Runpod, &cfg, &paths).is_ok());
 }
+
+/// The chat runs with the build tools on and search off, and `/up` from it
+/// boots the pod `viy up` boots: with only search on in the config, the
+/// chat's gated copy would leave out the tool-call parser, and a pod
+/// without it answers every tool request with HTTP 400.
+#[test]
+fn the_chat_turns_search_off_but_its_pod_boots_with_the_tool_call_parser() {
+    let gated = phase_gated(&Config::defaults());
+    assert_eq!(gated.get("TOOLS_ENABLED"), Some("1"));
+    assert_eq!(gated.get("SEARCH_ENABLED"), Some("0"));
+    let parser = |cfg: &Config| {
+        viy_pod::boot::build_vllm_args(cfg, "k", None)
+            .iter()
+            .any(|a| a == "--tool-call-parser")
+    };
+    let mut cfg = Config::defaults();
+    cfg.set("TOOLS_ENABLED", "0");
+    cfg.set("SEARCH_ENABLED", "1");
+    assert!(!parser(&phase_gated(&cfg)));
+    assert!(parser(&cfg));
+}

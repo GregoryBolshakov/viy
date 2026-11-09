@@ -65,17 +65,12 @@ pub struct Wanted {
 pub fn cmd_chat(
     opening: &Opening,
     paths: &Paths,
-    mut cfg: Config,
+    pod_cfg: Config,
     start: &Path,
     out: &mut (dyn Write + Send),
     terminal: Terminal,
 ) -> Result<(), Failure> {
-    // The build tools come with phase 4.
-    cfg.set("TOOLS_ENABLED", "0");
-    // web_search and fetch_url come with phase 5; offered before then,
-    // every call would answer "the tool is off". This is rp's chat with
-    // SEARCH_ENABLED=0.
-    cfg.set("SEARCH_ENABLED", "0");
+    let cfg = phase_gated(&pod_cfg);
     let backend = Backend::resolve(&cfg)?;
     let project = Project::find(start).map_err(|e| format!("{}: {e}", start.display()))?;
     let store = Sessions::new(paths.sessions_dir(), Arc::new(SystemTimeProvider));
@@ -117,7 +112,7 @@ pub fn cmd_chat(
             chat.set_system(Some(system.clone()));
         }
         let server = PodServer::new(Parts {
-            cfg: cfg.clone(),
+            cfg: pod_cfg,
             paths: paths.clone(),
             http,
             exec: Arc::new(SystemExec),
@@ -182,6 +177,17 @@ pub fn cmd_chat(
         say(out, hint);
     }
     Ok(())
+}
+
+/// The chat's config: web_search and fetch_url turned off until phase 5
+/// ports them; offered before then, every call would answer "the tool is
+/// off" (rp's chat with SEARCH_ENABLED=0). The chat's pod commands (`/up`)
+/// get the config as it was, so they boot the pod `viy up` boots: the
+/// tool-call parser is on whenever TOOLS_ENABLED or SEARCH_ENABLED is.
+fn phase_gated(cfg: &Config) -> Config {
+    let mut cfg = cfg.clone();
+    cfg.set("SEARCH_ENABLED", "0");
+    cfg
 }
 
 /// rpctl's `_require_key`: the chat does not open without the key its

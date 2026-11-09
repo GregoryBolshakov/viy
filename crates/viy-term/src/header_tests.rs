@@ -16,6 +16,7 @@ fn header(colors: Colors) -> Header {
         directory: "~/Documents/Projects/viy".into(),
         ghost: false,
         art: true,
+        dissolve: 0,
     }
 }
 
@@ -354,4 +355,130 @@ fn the_ghost_sits_under_the_title_and_directory() {
     assert_eq!(lines.len(), 3 + 11);
     assert_eq!(&lines[3..], h.art(140).as_slice());
     assert_eq!(h.lines(MIN_WIDTH - 1).len(), 2);
+}
+
+/// Braille dots in `lines`.
+fn dots(lines: &[Line<'_>]) -> u32 {
+    lines
+        .iter()
+        .flat_map(|l| l.spans.iter().flat_map(|s| s.content.chars()))
+        .filter_map(|c| u32::from(c).checked_sub(0x2800).filter(|&d| d <= 0xff))
+        .map(u32::count_ones)
+        .sum()
+}
+
+/// Dissolving, the ghost's dots drop out a few at a time, each gone for
+/// good once it has, until none is left; the rows stay, and a cell with
+/// no dot left is a space.
+#[test]
+fn the_ghost_dissolves_dot_by_dot() {
+    let at = |dissolve| Header {
+        ghost: true,
+        dissolve,
+        ..header(Colors::True)
+    };
+    let whole = dots(&at(0).art(140));
+    let mut last = whole;
+    for step in (100..=1000).step_by(100) {
+        let art = at(step).art(140);
+        assert_eq!(art.len(), 11);
+        let now = dots(&art);
+        assert!(now <= last, "{step}: {now} after {last}");
+        last = now;
+        for line in &art {
+            for span in &line.spans {
+                assert!(!span.content.contains('\u{2800}'), "{step}");
+            }
+        }
+    }
+    let half = dots(&at(500).art(140));
+    assert!(
+        half > whole / 3 && half < whole * 2 / 3,
+        "{half} of {whole}"
+    );
+    assert_eq!(last, 0);
+}
+
+/// The coloured art's cells fade into the terminal's background, each at
+/// its own moment: halfway, some are gone and some still in their own
+/// colours; at the end every one is the background.
+#[test]
+fn the_coloured_art_fades_cell_by_cell() {
+    let at = |dissolve| Header {
+        dissolve,
+        ..header(Colors::True)
+    };
+    let bg = crate::palette::default_colors().unwrap_or(FALLBACK).bg;
+    let background = Color::Rgb(bg.0, bg.1, bg.2);
+    let colours = |dissolve| -> Vec<Option<Color>> {
+        at(dissolve)
+            .art(140)
+            .iter()
+            .flat_map(|l| {
+                l.spans
+                    .iter()
+                    .flat_map(|s| s.content.chars().map(|_| s.style.bg))
+            })
+            .collect()
+    };
+    let whole = colours(0);
+    let half = colours(500);
+    let end = colours(1000);
+    assert_eq!(whole.len(), end.len());
+    let lit = whole.iter().filter(|c| c.is_some()).count();
+    let faded = half.iter().filter(|&&c| c == Some(background)).count();
+    let kept = whole
+        .iter()
+        .zip(&half)
+        .filter(|(a, b)| a.is_some() && a == b)
+        .count();
+    assert!(faded > 0 && kept > 0, "{faded} faded, {kept} kept of {lit}");
+    assert!(end.iter().all(|c| c.is_none() || *c == Some(background)));
+}
+
+/// Dissolving only takes a colour toward the terminal's background, in
+/// every channel, frame after frame: no pixel ever turns darker or lighter
+/// than the line from its colour to the background, at any width, ghost
+/// or coloured.
+#[test]
+fn the_dissolve_only_moves_colours_toward_the_background() {
+    let bg = FALLBACK.bg;
+    let between = |now: u8, was: u8, b: u8| now >= was.min(b) && now <= was.max(b);
+    for ghost in [true, false] {
+        for &(w, _) in ARTS {
+            let mut last: std::collections::HashMap<(usize, usize, bool), Rgb> =
+                std::collections::HashMap::new();
+            for dissolve in (0..=1000).step_by(10) {
+                let h = Header {
+                    ghost,
+                    dissolve,
+                    ..header(Colors::True)
+                };
+                for (y, line) in h.art(w).iter().enumerate() {
+                    let cells = line
+                        .spans
+                        .iter()
+                        .flat_map(|s| s.content.chars().map(move |_| s.style));
+                    for (x, style) in cells.enumerate() {
+                        for (is_bg, colour) in [(false, style.fg), (true, style.bg)] {
+                            let Some(Color::Rgb(r, g, b)) = colour else {
+                                continue;
+                            };
+                            if let Some(&(pr, pg, pb)) = last.get(&(y, x, is_bg)) {
+                                assert!(
+                                    between(r, pr, bg.0)
+                                        && between(g, pg, bg.1)
+                                        && between(b, pb, bg.2),
+                                    "ghost {ghost}, w{w}, {dissolve}: ({y}, {x}) went from {:?} to {:?}",
+                                    (pr, pg, pb),
+                                    (r, g, b)
+                                );
+                            }
+                            last.insert((y, x, is_bg), (r, g, b));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

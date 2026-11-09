@@ -68,7 +68,7 @@ fn a_finished_card_is_one_row_with_its_result_on_the_right() {
     let rows = Cell::Tool(card).rows(60, false);
     assert_eq!(
         texts(&rows),
-        ["▸ run_shell  rg -n tunnel_guard       exit 0  sandbox  0.3 s"]
+        ["▸ run_shell  rg -n tunnel_guard      exit 0  sandbox  300 ms"]
     );
     assert_eq!(rows[0].line.spans[0].style.fg, Some(Color::Green));
 }
@@ -88,7 +88,7 @@ fn a_long_summary_wraps_and_the_result_follows_it() {
             "▸ run_shell  pytest -q",
             "    tests/test_idle.py",
             "    tests/test_pod.py  sandbox",
-            "    failed  0.3 s",
+            "    failed  300 ms",
         ]
     );
     assert_eq!(rows[0].line.spans[0].style.fg, Some(Color::Red));
@@ -188,4 +188,14 @@ fn keys_grow_down_every_cell() {
             assert!(pair[0].key < pair[1].key, "{pair:?}");
         }
     }
+}
+
+#[test]
+fn durations_under_a_second_are_milliseconds() {
+    let ms = Duration::from_millis;
+    assert_eq!(seconds(ms(0)), "0 ms");
+    assert_eq!(seconds(ms(4)), "4 ms");
+    assert_eq!(seconds(Duration::from_micros(999_900)), "999 ms");
+    assert_eq!(seconds(ms(1000)), "1.0 s");
+    assert_eq!(seconds(ms(3520)), "3.5 s");
 }

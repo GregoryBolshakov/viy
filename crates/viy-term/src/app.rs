@@ -79,6 +79,9 @@ use crate::tui::Tui;
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 /// One spinner frame; while a turn runs, a frame is drawn this often.
 const SPINNER_FRAME: Duration = Duration::from_millis(80);
+/// How long the header's art takes to dissolve once typing starts, and
+/// to come back, the dissolve played in reverse, once the box is cleared.
+const ART_DISSOLVE: Duration = Duration::from_millis(250);
 /// Rows one wheel notch scrolls.
 const WHEEL_ROWS: usize = 3;
 
@@ -146,6 +149,11 @@ pub struct App {
     /// A message or command went to the engine since the transcript was
     /// last rewritten: the header's art stays hidden until it shows again.
     sent: bool,
+    /// How far the header's art has dissolved, 0 (whole) to 1 (gone),
+    /// in time rather than eased.
+    art_gone: f32,
+    /// While the art dissolves or comes back: when it last moved.
+    art_moved: Option<Instant>,
     /// Esc was pressed at an empty, idle prompt: a second opens the pick.
     esc_primed: bool,
     /// The engine's statuses, for the footer and the tab title.
@@ -196,6 +204,8 @@ impl App {
             questions: Questions::default(),
             points: Vec::new(),
             sent: false,
+            art_gone: 0.0,
+            art_moved: None,
             picking: None,
             esc_primed: false,
             status: Status::default(),
@@ -284,7 +294,7 @@ impl App {
             return None;
         }
         let now = Instant::now();
-        if self.dirty {
+        if self.dirty || self.art_moved.is_some() {
             return Some(self.limiter.deadline(now));
         }
         let animating = self.turn.is_some() || self.closing;
@@ -867,19 +877,39 @@ impl App {
     }
 
     /// The header's art shows only while nothing has been sent in this
-    /// chat and the input box is empty: typing hides it, clearing the box
-    /// brings it back, the first message sent (or a resumed chat's) ends
-    /// it, as Codex's welcome logo. The title and directory stay.
-    fn header_art(&mut self) {
+    /// chat and the input box is empty: typing dissolves it over
+    /// [`ART_DISSOLVE`], clearing the box brings it back the same way in
+    /// reverse (from wherever the dissolve had got to), the first message
+    /// sent (or a resumed chat's) ends it straight away, as Codex's
+    /// welcome logo. The title and directory stay.
+    fn header_art(&mut self, now: Instant) {
         // Shown only on an empty chat: nothing typed in the input box,
         // nothing sent, and nothing in the transcript but the header (no
         // message, command output or notice).
-        let show =
-            self.cells.len() == 1 && !self.sent && self.turn.is_none() && self.composer.is_empty();
-        if let Some(Cell::Header(header)) = self.cells.first_mut()
-            && header.art != show
-        {
-            header.art = show;
+        let empty = self.cells.len() == 1 && !self.sent && self.turn.is_none();
+        let Some(Cell::Header(header)) = self.cells.first_mut() else {
+            self.art_moved = None;
+            return;
+        };
+        if empty {
+            let target = if self.composer.is_empty() { 0.0 } else { 1.0 };
+            let step = self.art_moved.map_or(0.0, |at| {
+                now.saturating_duration_since(at).as_secs_f32() / ART_DISSOLVE.as_secs_f32()
+            });
+            self.art_gone = if target > self.art_gone {
+                (self.art_gone + step).min(target)
+            } else {
+                (self.art_gone - step).max(target)
+            };
+            self.art_moved = (self.art_gone != target).then_some(now);
+        } else {
+            self.art_gone = 1.0;
+            self.art_moved = None;
+        }
+        let art = self.art_gone < 1.0;
+        let dissolve = (crate::header::smoothstep(self.art_gone) * 1000.0).round() as u16;
+        if (header.art, header.dissolve) != (art, dissolve) {
+            (header.art, header.dissolve) = (art, dissolve);
             self.view.changed(0);
         }
     }
@@ -938,7 +968,7 @@ impl App {
         let top_height = size.height - bottom_height;
         self.view
             .set_live(self.tail_lines(usize::from(size.width.max(1))));
-        self.header_art();
+        self.header_art(now);
         self.view.prepare(&self.cells, size.width, top_height);
         bottom.push(self.footer(usize::from(size.width)));
         let bottom: Vec<Line<'static>> = bottom.into_iter().map(clean_row).collect();

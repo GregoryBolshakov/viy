@@ -16,7 +16,9 @@
 //! the top and, under them, the art's ghost: the same centipede in
 //! Braille dots, foreground only, faint over the terminal's own colours
 //! (kb d110). The art shows only on a chat nothing has been sent in,
-//! while the input box is empty.
+//! while the input box is empty; typing dissolves it (`dissolve`): the
+//! ghost's dots drop out one by one, the coloured art's cells fade into
+//! the background, each at its own moment.
 //!
 //! Regenerate after changing the art: `python3 tools/header_art.py`, and
 //! for the ghost `python3 tools/header_ghost.py`.
@@ -127,6 +129,8 @@ pub struct Header {
     /// while the input box is empty, as Codex's welcome logo
     /// (`empty_state_animation.rs`); the title and directory stay.
     pub art: bool,
+    /// How far the art has dissolved, in thousandths: 0 whole, 1000 gone.
+    pub dissolve: u16,
 }
 
 impl Header {
@@ -188,15 +192,29 @@ impl Header {
         let Some((_, art)) = pick(width) else {
             return Vec::new();
         };
+        let gone = self.gone();
+        let term = (gone > 0.0).then(|| crate::palette::default_colors().unwrap_or(FALLBACK));
         art.iter()
-            .map(|row| {
+            .enumerate()
+            .map(|(y, row)| {
                 let mut spans: Vec<Span<'static>> = Vec::new();
                 if !row.is_empty() {
                     spans.push(Span::raw(" ".repeat(INDENT)));
                 }
                 let mut text = String::new();
                 let mut style = Style::new();
-                for &(ch, fg, bg) in row {
+                for (x, &(ch, fg, bg)) in row.iter().enumerate() {
+                    // Each cell fades over a stretch of the dissolve that
+                    // starts at a moment of its own.
+                    let (fg, bg) = match term {
+                        Some(term) => {
+                            let start = noise(y, x, 0) * (1.0 - CELL_FADE);
+                            let left = 1.0 - smoothstep((gone - start) / CELL_FADE);
+                            let fade = |rgb: Rgb| blend(term.bg, rgb, left);
+                            (fg.map(fade), bg.map(fade))
+                        }
+                        None => (fg, bg),
+                    };
                     let mut next = Style::new();
                     if let Some(rgb) = fg.filter(|_| ch != ' ') {
                         next = next.fg(self.color(rgb));
@@ -225,16 +243,26 @@ impl Header {
             return Vec::new();
         };
         let term = crate::palette::default_colors().unwrap_or(FALLBACK);
+        let gone = self.gone();
         art.iter()
-            .map(|row| {
+            .enumerate()
+            .map(|(y, row)| {
                 let mut spans: Vec<Span<'static>> = Vec::new();
                 if !row.is_empty() {
                     spans.push(Span::raw(" ".repeat(INDENT)));
                 }
                 let mut text = String::new();
                 let mut style = Style::new();
-                for &(ch, tone, opacity) in row {
-                    let opacity = opacity.map_or(1.0, |(a, _, _)| f32::from(a) / 255.0);
+                for (x, &(ch, tone, opacity)) in row.iter().enumerate() {
+                    // Dissolving, each dot drops out at a moment of its
+                    // own, and what is left grows fainter.
+                    let ch = if gone > 0.0 {
+                        dissolve_dots(ch, y, x, gone)
+                    } else {
+                        ch
+                    };
+                    let opacity = opacity.map_or(1.0, |(a, _, _)| f32::from(a) / 255.0)
+                        * (1.0 - DOT_FADE * gone);
                     let next = match tone.filter(|_| ch != ' ') {
                         Some(tone) => Style::new().fg(self.color(ghost_ink(tone, term, opacity))),
                         None => Style::new(),
@@ -253,12 +281,61 @@ impl Header {
             .collect()
     }
 
+    /// [`Header::dissolve`] as a fraction.
+    fn gone(&self) -> f32 {
+        f32::from(self.dissolve.min(1000)) / 1000.0
+    }
+
     fn color(&self, (r, g, b): Rgb) -> Color {
         match self.colors {
             Colors::True => Color::Rgb(r, g, b),
             Colors::Indexed => Color::Indexed(xterm256(r, g, b)),
         }
     }
+}
+
+/// How much of the dissolve each coloured cell takes to fade.
+const CELL_FADE: f32 = 0.4;
+
+/// How much fainter the ghost's last dots are than its first.
+const DOT_FADE: f32 = 0.5;
+
+/// A Braille cell with the dots gone that drop out before `gone` (0-1),
+/// a space once none is left.
+fn dissolve_dots(ch: char, y: usize, x: usize, gone: f32) -> char {
+    let Some(dots) = u32::from(ch).checked_sub(0x2800).filter(|&d| d <= 0xff) else {
+        return ch;
+    };
+    let left = (0..8)
+        .filter(|&bit| dots & (1 << bit) != 0 && noise(y, x, bit + 1) >= gone)
+        .fold(0, |acc, bit| acc | (1 << bit));
+    match left {
+        0 => ' ',
+        _ => char::from_u32(0x2800 + left).unwrap_or(' '),
+    }
+}
+
+/// A fixed number in [0, 1) for each cell (`y`, `x`) and dot `k` of it:
+/// when it dissolves, the same in every frame (splitmix64).
+fn noise(y: usize, x: usize, k: u32) -> f32 {
+    let mut z =
+        ((y as u64) << 40 ^ (x as u64) << 8 ^ u64::from(k)).wrapping_add(0x9e37_79b9_7f4a_7c15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    z ^= z >> 31;
+    (z >> 40) as f32 / (1u64 << 24) as f32
+}
+
+/// 0 to 1, easing in and out, for `t` in 0-1 (clamped).
+pub(crate) fn smoothstep(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// `t` of the way from `a` to `b`.
+fn blend(a: Rgb, b: Rgb, t: f32) -> Rgb {
+    let m = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round() as u8;
+    (m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
 }
 
 /// `path` in at most `max` columns: whole if it fits; else its first
@@ -320,10 +397,7 @@ fn pick_ghost(width: usize) -> Option<&'static [Vec<ArtCell>]> {
 /// `Lighting::terminal`; then [`GHOST_OPACITY`] of it, times the cell's
 /// own `opacity` (0-1), over the background.
 fn ghost_ink(tone: Rgb, term: crate::palette::DefaultColors, opacity: f32) -> Rgb {
-    let mix = |a: Rgb, b: Rgb, t: f32| {
-        let m = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round() as u8;
-        (m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
-    };
+    let mix = blend;
     let luma = |(r, g, b): Rgb| 0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b);
     let tone_light =
         0.2126 * f32::from(tone.0) + 0.7152 * f32::from(tone.1) + 0.0722 * f32::from(tone.2);

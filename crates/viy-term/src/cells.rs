@@ -273,7 +273,6 @@ impl Reasoning {
     }
 }
 
-/// `4.2 s`.
 /// A notice's colour, by its level.
 pub fn notice_style(level: NoticeLevel) -> Style {
     match level {
@@ -283,8 +282,15 @@ pub fn notice_style(level: NoticeLevel) -> Style {
     }
 }
 
+/// `4 ms` under a second, else `4.2 s`. Codex's `format_duration` also
+/// switches to milliseconds below a second: a local tool takes a few, and
+/// tenths of a second showed every one as `0.0 s`.
 pub fn seconds(t: Duration) -> String {
-    format!("{:.1} s", t.as_secs_f64())
+    if t < Duration::from_secs(1) {
+        format!("{} ms", t.as_millis())
+    } else {
+        format!("{:.1} s", t.as_secs_f64())
+    }
 }
 
 impl ToolCard {

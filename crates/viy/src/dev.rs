@@ -294,6 +294,7 @@ pub(crate) fn chat_header(cfg: &Config) -> Option<Header> {
         directory: home_relative(&directory, home.as_deref()),
         ghost: value == "1",
         art: true,
+        dissolve: 0,
     })
 }
 

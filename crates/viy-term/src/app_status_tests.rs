@@ -330,6 +330,7 @@ fn the_header_tops_the_transcript_and_survives_a_repaint() {
         directory: "~/project".into(),
         ghost: false,
         art: true,
+        dissolve: 0,
     };
     f.app.header(header.clone());
     let screen = f.screen();
@@ -353,9 +354,11 @@ fn the_header_tops_the_transcript_and_survives_a_repaint() {
 }
 
 /// The header's art, as Codex's welcome logo: shown on a chat nothing has
-/// been sent in while the input box is empty, gone as soon as anything is
-/// typed and back when the box is cleared, gone for good once a message
-/// is sent. The title and directory stay at the top throughout.
+/// been sent in while the input box is empty, dissolved within 0.25 s of
+/// anything being typed and back the same way in reverse when the box is
+/// cleared, even halfway through, gone for good
+/// once a message is sent. The title and directory stay at the top
+/// throughout.
 #[test]
 fn typing_hides_the_headers_art_and_a_message_ends_it() {
     let mut f = fixture(160, 40);
@@ -365,18 +368,67 @@ fn typing_hides_the_headers_art_and_a_message_ends_it() {
         directory: "~/project".into(),
         ghost: true,
         art: true,
+        dissolve: 0,
     };
     f.app.header(header);
     let drawn = |screen: &[String]| screen[3..14].iter().any(|row| !row.trim().is_empty());
     let screen = f.screen();
     assert_eq!(screen[0], "  >_ viy (v0.1.0)");
     assert!(drawn(&screen), "{screen:#?}");
+    // Braille dots on screen in the art's rows.
+    let dots = |screen: &[String]| -> u32 {
+        screen[3..14]
+            .iter()
+            .flat_map(|row| row.chars())
+            .filter_map(|c| u32::from(c).checked_sub(0x2800).filter(|&d| d <= 0xff))
+            .map(u32::count_ones)
+            .sum()
+    };
+    let whole = dots(&screen);
     f.type_text("h");
     let screen = f.screen();
     assert_eq!(screen[0], "  >_ viy (v0.1.0)");
+    assert_eq!(dots(&screen), whole, "{screen:#?}");
+    // Halfway through, some of the dots are gone, not all.
+    f.clock += Duration::from_millis(125);
+    let half = dots(&f.screen());
+    assert!(
+        half > whole / 4 && half < whole * 3 / 4,
+        "{half} of {whole}"
+    );
+    assert!(f.app.next_frame().is_some());
+    f.clock += Duration::from_millis(125);
+    let screen = f.screen();
+    assert_eq!(screen[0], "  >_ viy (v0.1.0)");
     assert!(!drawn(&screen), "{screen:#?}");
+    assert!(f.app.art_moved.is_none());
+    // Cleared, it comes back: halfway, then whole.
     f.key(KeyCode::Backspace);
-    assert!(drawn(&f.screen()));
+    assert!(!drawn(&f.screen()));
+    f.clock += Duration::from_millis(125);
+    let back = dots(&f.screen());
+    assert!(
+        back > whole / 4 && back < whole * 3 / 4,
+        "{back} of {whole}"
+    );
+    f.clock += Duration::from_millis(125);
+    assert_eq!(dots(&f.screen()), whole);
+    assert!(f.app.art_moved.is_none());
+    // Typed and cleared halfway, it turns back from where it was.
+    f.type_text("h");
+    f.screen();
+    f.clock += Duration::from_millis(125);
+    let turned = dots(&f.screen());
+    f.key(KeyCode::Backspace);
+    let screen = f.screen();
+    let more = dots(&screen);
+    assert!(
+        more >= turned && more < whole,
+        "{turned}, then {more} of {whole}"
+    );
+    f.clock += Duration::from_millis(100);
+    f.screen();
+    assert_eq!(dots(&f.screen()), whole);
     f.app.event(started("hello"));
     let screen = f.screen();
     assert_eq!(screen[0], "  >_ viy (v0.1.0)");
@@ -394,6 +446,7 @@ fn a_command_or_a_notice_ends_the_headers_art_too() {
         directory: "~/project".into(),
         ghost: true,
         art: true,
+        dissolve: 0,
     };
     let drawn = |screen: &[String]| screen[3..14].iter().any(|row| !row.trim().is_empty());
     // A command sent hides the art before its answer comes.

@@ -16,7 +16,7 @@ Prices
 ╞══════╪══════╡
 │ A100 │ 1.79 │
 └──────┴──────┘
-▸ run_shell  seq 6        exit 0  sandbox  0.0 s
+▸ run_shell  seq 6        exit 0  sandbox  40 ms
   └ 1
     2
     3

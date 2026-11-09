@@ -385,3 +385,39 @@ fn typing_hides_the_headers_art_and_a_message_ends_it() {
         "{screen:#?}"
     );
 }
+
+#[test]
+fn a_command_or_a_notice_ends_the_headers_art_too() {
+    let ghost = || crate::header::Header {
+        colors: crate::header::Colors::True,
+        version: "0.1.0".into(),
+        directory: "~/project".into(),
+        ghost: true,
+        art: true,
+    };
+    let drawn = |screen: &[String]| screen[3..14].iter().any(|row| !row.trim().is_empty());
+    // A command sent hides the art before its answer comes.
+    let mut f = fixture(160, 40);
+    f.app.header(ghost());
+    assert!(drawn(&f.screen()));
+    f.type_text("/status");
+    f.key(KeyCode::Enter);
+    let screen = f.screen();
+    assert!(
+        !screen.iter().any(|row| row.contains('\u{28ff}')),
+        "{screen:#?}"
+    );
+    // A notice in the transcript hides it as well.
+    let mut f = fixture(160, 40);
+    f.app.header(ghost());
+    f.app.event(notice("no pod is running"));
+    let screen = f.screen();
+    assert!(
+        screen.iter().any(|row| row.contains("no pod is running")),
+        "{screen:#?}"
+    );
+    assert!(
+        !screen.iter().any(|row| row.contains('\u{28ff}')),
+        "{screen:#?}"
+    );
+}

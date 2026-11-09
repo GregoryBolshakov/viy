@@ -143,6 +143,9 @@ pub struct App {
     points: Vec<(usize, String)>,
     /// The rewind pick: which of `points` is chosen.
     picking: Option<usize>,
+    /// A message or command went to the engine since the transcript was
+    /// last rewritten: the header's art stays hidden until it shows again.
+    sent: bool,
     /// Esc was pressed at an empty, idle prompt: a second opens the pick.
     esc_primed: bool,
     /// The engine's statuses, for the footer and the tab title.
@@ -192,6 +195,7 @@ impl App {
             given_back: String::new(),
             questions: Questions::default(),
             points: Vec::new(),
+            sent: false,
             picking: None,
             esc_primed: false,
             status: Status::default(),
@@ -427,6 +431,7 @@ impl App {
             }
             EventMsg::HistoryRewritten(e) => {
                 self.picking = None;
+                self.sent = false;
                 self.cells.clear();
                 self.points.clear();
                 if let Some(header) = &self.header {
@@ -594,6 +599,7 @@ impl App {
             Op::UserTurn { text }
         };
         let _ = self.ops.send(op);
+        self.sent = true;
         self.view.end();
     }
 
@@ -865,7 +871,11 @@ impl App {
     /// brings it back, the first message sent (or a resumed chat's) ends
     /// it, as Codex's welcome logo. The title and directory stay.
     fn header_art(&mut self) {
-        let show = self.points.is_empty() && self.turn.is_none() && self.composer.is_empty();
+        // Shown only on an empty chat: nothing typed in the input box,
+        // nothing sent, and nothing in the transcript but the header (no
+        // message, command output or notice).
+        let show =
+            self.cells.len() == 1 && !self.sent && self.turn.is_none() && self.composer.is_empty();
         if let Some(Cell::Header(header)) = self.cells.first_mut()
             && header.art != show
         {

@@ -1,11 +1,14 @@
-//! The host rules every connection to the internet goes through (rpctl
-//! netguard.py): which names and addresses are refused, and the one lookup
-//! whose every address must be public.
+//! The rules every connection viy or the sandbox makes to the internet goes
+//! through (rpctl netguard.py): the URL rules of fetch_url ([`parse`]),
+//! which names and addresses are refused, the one lookup whose every
+//! address must be public ([`vet`]), the reader that connects to a checked
+//! address ([`get`]), and the exfiltration check for what the model sends
+//! out ([`outbound_secret`]). The egress proxy shares the host rules.
 //!
-//! So far the part the egress proxy shares (`check_host`,
-//! `address_problem`, `resolve`, `vet`); `fetch_url`'s URL rules and
-//! reader come with phase 5 (WP 5.1).
-//!
+//! - http and https only; no user:password@; no control characters,
+//!   spaces or backslashes; at most [`MAX_URL`] characters; ports 80, 443,
+//!   8080, 8443. The URL is split as rpctl's Python splits it
+//!   ([`url`]), so the host checked is the host rpctl would check.
 //! - A name is IDNA-encoded and lower-cased; local names (`localhost`,
 //!   `*.local`, `*.internal`, ...) are refused before any lookup.
 //!   An ASCII name is taken as rpctl's codec takes it (every label 1-63
@@ -25,6 +28,26 @@ use std::net::Ipv6Addr;
 use std::time::Duration;
 
 use crate::approve::Pending;
+use crate::approve::chars::is_py_space;
+
+mod fetch;
+pub mod url;
+
+pub use fetch::Connect;
+pub use fetch::ConnectError;
+pub use fetch::Direct;
+pub use fetch::FetchError;
+pub use fetch::Io;
+pub use fetch::MAX_REDIRECTS;
+pub use fetch::Options;
+pub use fetch::Response;
+pub use fetch::get;
+
+/// The ports a URL may name.
+pub const ALLOWED_PORTS: [u16; 4] = [80, 443, 8080, 8443];
+
+/// The longest URL taken, in characters.
+pub const MAX_URL: usize = 2048;
 
 /// Names that only ever mean this machine or the local network.
 const LOCAL_SUFFIXES: [&str; 8] = [
@@ -58,6 +81,164 @@ pub enum VetError {
     Refused(String),
     /// The lookup failed (rp's `FetchError`).
     Failed(String),
+}
+
+/// A URL that passed [`parse`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Target {
+    pub scheme: String,
+    /// IDNA-encoded and lower-case, without brackets.
+    pub host: String,
+    pub port: u16,
+    /// With the query, never empty.
+    pub path: String,
+    /// The URL normalised, without its fragment.
+    pub url: String,
+    /// The host, bracketed when an IPv6 address, with the port when not
+    /// the scheme's: the Host header.
+    pub netloc: String,
+}
+
+fn default_port(scheme: &str) -> Option<u16> {
+    match scheme {
+        "http" => Some(80),
+        "https" => Some(443),
+        _ => None,
+    }
+}
+
+/// Checks the URL's shape and normalises it (rpctl's `parse`).
+pub fn parse(url: &str) -> Result<Target, Refused> {
+    let url = url.trim_matches(is_py_space);
+    if url.is_empty() {
+        return Err(Refused("no URL given".into()));
+    }
+    if url.chars().count() > MAX_URL {
+        return Err(Refused(format!(
+            "the URL is longer than {MAX_URL} characters"
+        )));
+    }
+    if url
+        .chars()
+        .any(|c| c == ' ' || c == '\\' || c < ' ' || c == '\x7f')
+    {
+        return Err(Refused(
+            "the URL contains spaces, backslashes or control characters".into(),
+        ));
+    }
+    let does_not_parse = |e: String| Refused(format!("the URL does not parse ({e})"));
+    let parts = url::split(url, "").map_err(does_not_parse)?;
+    let port = parts.port().map_err(does_not_parse)?;
+    let scheme = parts.scheme.to_lowercase();
+    let Some(default) = default_port(&scheme) else {
+        let named = if scheme.is_empty() {
+            "a bare path"
+        } else {
+            &scheme
+        };
+        return Err(Refused(format!(
+            "only http and https URLs can be fetched, not {named}"
+        )));
+    };
+    if parts.netloc.contains('@') {
+        return Err(Refused(
+            "URLs with a user name or password are refused".into(),
+        ));
+    }
+    let host = parts.hostname().unwrap_or_default();
+    let host = host.trim_end_matches('.');
+    if host.is_empty() {
+        return Err(Refused("the URL has no host".into()));
+    }
+    let ascii_host = check_host(host)?;
+    // Port 0 is no port, as rpctl's `port or default`.
+    let port = port.filter(|&p| p != 0).unwrap_or(default);
+    if !ALLOWED_PORTS.contains(&port) {
+        return Err(Refused(format!(
+            "port {port} is not allowed (only [80, 443, 8080, 8443])"
+        )));
+    }
+    let path_only = if parts.path.is_empty() {
+        "/"
+    } else {
+        parts.path.as_str()
+    };
+    let mut path = path_only.to_string();
+    if !parts.query.is_empty() {
+        path = format!("{path}?{}", parts.query);
+    }
+    let mut netloc = if ascii_host.contains(':') {
+        format!("[{ascii_host}]")
+    } else {
+        ascii_host.clone()
+    };
+    if port != default {
+        netloc = format!("{netloc}:{port}");
+    }
+    let norm = url::unsplit(&url::Parts {
+        scheme: scheme.clone(),
+        netloc: netloc.clone(),
+        path: path_only.to_string(),
+        query: parts.query.clone(),
+        fragment: String::new(),
+    });
+    Ok(Target {
+        scheme,
+        host: ascii_host,
+        port,
+        path,
+        url: norm,
+        netloc,
+    })
+}
+
+/// Why `text` (a URL or a search query about to leave this machine) is
+/// refused because it carries a secret, or `None` (rpctl's
+/// `outbound_secret`): a value of one of the user's secret settings, or
+/// a token-shaped string, as written or percent-decoded once or twice.
+pub fn outbound_secret(text: &str, literals: &[String]) -> Option<&'static str> {
+    if text.is_empty() {
+        return None;
+    }
+    let once = unquote(text);
+    let twice = unquote(&once);
+    for v in [text, once.as_str(), twice.as_str()] {
+        if literals
+            .iter()
+            .any(|l| !l.is_empty() && v.contains(l.as_str()))
+        {
+            return Some("it contains the value of one of viy's secret settings");
+        }
+        if viy_config::redact::PATTERNS.iter().any(|p| p.is_match(v)) {
+            return Some("it contains something shaped like an API token or private key");
+        }
+    }
+    None
+}
+
+/// `urllib.parse.unquote`: `%XX` runs decoded as UTF-8, bad bytes as
+/// U+FFFD.
+pub fn unquote(text: &str) -> String {
+    if !text.contains('%') {
+        return text.to_string();
+    }
+    let mut bytes = Vec::with_capacity(text.len());
+    let raw = text.as_bytes();
+    let mut i = 0;
+    while i < raw.len() {
+        let hex = |b: u8| (b as char).to_digit(16);
+        if raw[i] == b'%'
+            && i + 2 < raw.len()
+            && let (Some(h), Some(l)) = (hex(raw[i + 1]), hex(raw[i + 2]))
+        {
+            bytes.push((h * 16 + l) as u8);
+            i += 3;
+            continue;
+        }
+        bytes.push(raw[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 /// An IP literal as Python's `ipaddress.ip_address` reads one, without a

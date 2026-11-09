@@ -55,6 +55,19 @@ def redact_any_pattern(text):
     return any(p.search(text) for p in redact._PATTERNS)
 
 
+def netguard_parse(url):
+    """netguard.parse(url) as (scheme, host, port, path, url)."""
+    from rpctl import netguard
+    t = netguard.parse(url)
+    return (t.scheme, t.host, t.port, t.path, t.url)
+
+
+def netguard_redirect(base, location):
+    """The next URL netguard.get follows: urljoin(target.url, loc.strip())."""
+    from urllib.parse import urljoin
+    return urljoin(base, location.strip())
+
+
 def shutdown_parse_when(text, now):
     """shutdown.parse_when(text, now) with `now` as an ISO local time."""
     from datetime import datetime
@@ -226,6 +239,10 @@ FUNCTIONS = {
     "idle.decide": ("rpctl.idle", "decide"),
     "netguard.address_problem": ("rpctl.netguard", "address_problem"),
     "netguard.check_host": ("rpctl.netguard", "check_host"),
+    "netguard.outbound_secret": ("rpctl.netguard", "outbound_secret"),
+    "netguard.parse": netguard_parse,
+    # get()'s redirect step, the standard library's urljoin as rpctl calls it.
+    "netguard.redirect": netguard_redirect,
     "idle.limits": ("rpctl.idle", "limits"),
     "mounts.note": mounts_note,
     "mounts.parse_arg": mounts_parse_arg,

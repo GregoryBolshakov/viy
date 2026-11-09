@@ -21,7 +21,7 @@
 //! more.
 
 mod argv;
-mod chars;
+pub(crate) mod chars;
 mod decide;
 mod literal;
 mod pipe;

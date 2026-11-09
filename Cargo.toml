@@ -52,6 +52,18 @@ futures-core = { version = "0.3.34", default-features = false }
 # join_all for a parallel batch of read-only tool calls, as Codex joins
 # its own; already in the tree through reqwest.
 futures-util = { version = "0.3.34", default-features = false, features = ["alloc"] }
+# fetch_url's gzip and deflate bodies, decoded here under a size cap
+# (rpctl netguard.py); Codex has flate2 1.1 (codex-rs/Cargo.toml).
+flate2 = "1.1.9"
+# fetch_url's reader (rpctl netguard.py, WP 5.1): the HTTP/1 client and TLS
+# stack reqwest already brings, used directly so the connection goes to the
+# address netguard checked, as Codex's TargetCheckedStreamConnector
+# (network-proxy/src/connect_policy.rs) connects to the address it checked.
+http-body-util = "0.1.4"
+hyper = { version = "1.11.0", default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"] }
+# NFKC for urlsplit's netloc check (netguard::url); in the tree through idna.
+icu_normalizer = "2.2.0"
 # Non-ASCII host names, UTS 46 (flags F53); already in the tree through url.
 idna = "1.1.0"
 indexmap = "2.14.0"
@@ -76,6 +88,8 @@ regex = "1.13.1"
 reqwest = { version = "0.12.28", default-features = false, features = [
     "rustls-tls-native-roots",
 ] }
+rustls = { version = "0.23.43", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["float_roundtrip", "preserve_order"] }
 # The write guard's content hashes and the workspace lock's name, as rp's
@@ -87,6 +101,7 @@ shlex = "1.3.0"
 signal-hook = { version = "0.3.18", default-features = false }
 thiserror = "2.0.21"
 tokio = "1.53.1"
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring", "tls12"] }
 # Graphemes, measured as ratatui measures them (Codex has it too).
 unicode-segmentation = "1.12.0"
 unicode-width = "0.2"

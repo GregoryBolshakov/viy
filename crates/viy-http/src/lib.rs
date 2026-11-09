@@ -32,6 +32,11 @@ pub mod user_agent {
     /// rp's `requests` 2.34.2 (its pipx venv): RunPod's REST, GraphQL and
     /// log APIs. Checked against the pod/api fixture.
     pub const RP_REQUESTS: &str = "python-requests/2.34.2";
+
+    /// fetch_url's pages: rp's Firefox 130 without its trailing
+    /// `rpctl-fetch` (kb d021, f018).
+    pub const FETCH: &str =
+        "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0";
 }
 
 /// `requests`' timeout when rp gives one number: 60 s to connect and 60 s

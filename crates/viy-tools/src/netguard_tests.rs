@@ -1,6 +1,7 @@
-//! rpctl's AddressTests (test_netaccess.py) and netguard's host rules
-//! fuzzed against rpctl's over every special-purpose range of Python
-//! 3.10.12's tables (kb d018).
+//! rpctl's ParseTests, AddressTests and OutboundSecretTests
+//! (test_netaccess.py), netguard's host rules fuzzed against rpctl's over
+//! every special-purpose range of Python 3.10.12's tables (kb d018), and
+//! its URL rules, redirect joins and secret check against rpctl's.
 
 use std::net::IpAddr;
 
@@ -247,19 +248,123 @@ fn host_rules_match_rpctl() {
     }
 }
 
-// rpctl's ParseTests.test_a_trailing_unicode_full_stop_is_refused_before_any_lookup
-// (flags F54, fixed in rpctl 728277d), on check_host: netguard.parse comes
-// with WP 5.1.
+#[test]
+fn shapes_that_are_refused() {
+    let long = format!("http://{}.com/", "a".repeat(3000));
+    for url in [
+        "file:///etc/passwd",
+        "gopher://x/",
+        "ftp://x/",
+        "javascript:alert(1)",
+        "http://user:pw@example.com/",
+        "http://@example.com/",
+        "http://example.com:22/",
+        "http://example.com:6379/",
+        "http://exa mple.com/",
+        "http://example.com/\r\nX: y",
+        "http://example.com\\@evil.com/",
+        &long,
+        "",
+        "/relative",
+        "http:///nohost",
+    ] {
+        assert!(parse(url).is_err(), "{url}");
+    }
+}
+
+#[test]
+fn normalises() {
+    let t = parse("HTTPS://Docs.Python.org/3/library/ssl.html?x=1#frag").unwrap();
+    assert_eq!(
+        (t.scheme.as_str(), t.host.as_str(), t.port),
+        ("https", "docs.python.org", 443)
+    );
+    assert_eq!(t.url, "https://docs.python.org/3/library/ssl.html?x=1");
+    assert_eq!(t.path, "/3/library/ssl.html?x=1");
+    assert_eq!(parse("http://bücher.de/").unwrap().host, "xn--bcher-kva.de");
+    assert_eq!(
+        parse("http://example.com:8080").unwrap().url,
+        "http://example.com:8080/"
+    );
+    assert_eq!(
+        parse("http://[2606:4700::1]:8443/x").unwrap().url,
+        "http://[2606:4700::1]:8443/x"
+    );
+    assert_eq!(parse("http://example.com:0/").unwrap().port, 80);
+}
+
+// rpctl's test_a_trailing_unicode_full_stop_is_refused_before_any_lookup
+// (flags F54, fixed in rpctl 728277d).
 #[test]
 fn a_trailing_unicode_full_stop_is_refused_before_any_lookup() {
-    for host in [
-        "localhost\u{3002}",
-        "db.internal\u{ff0e}",
-        "nas.local\u{ff61}",
+    for url in [
+        "http://localhost\u{3002}/",
+        "http://db.internal\u{ff0e}/",
+        "http://nas.local\u{ff61}:8080/",
     ] {
-        assert!(check_host(host).is_err(), "{host}");
+        assert!(parse(url).is_err(), "{url}");
     }
-    assert_eq!(check_host("example.com\u{3002}").unwrap(), "example.com");
+    assert_eq!(
+        parse("http://example.com\u{3002}/").unwrap().host,
+        "example.com"
+    );
+}
+
+#[test]
+fn messages_are_rpctls() {
+    let refused = |url: &str| parse(url).unwrap_err().0;
+    assert_eq!(refused("  "), "no URL given");
+    assert_eq!(
+        refused("ftp://x/"),
+        "only http and https URLs can be fetched, not ftp"
+    );
+    assert_eq!(
+        refused("example.com/x"),
+        "only http and https URLs can be fetched, not a bare path"
+    );
+    assert_eq!(
+        refused("http://example.com:22/"),
+        "port 22 is not allowed (only [80, 443, 8080, 8443])"
+    );
+    assert_eq!(
+        refused("http://example.com:x/"),
+        "the URL does not parse (Port could not be cast to integer value as 'x')"
+    );
+    assert_eq!(
+        refused("http://[::1/"),
+        "the URL does not parse (Invalid IPv6 URL)"
+    );
+    assert_eq!(refused("http:///x"), "the URL has no host");
+}
+
+#[test]
+fn literal_and_shaped_secrets() {
+    let lit = vec!["s3cret-value-123456".to_string()];
+    assert!(outbound_secret("https://x.test/?k=s3cret-value-123456", &lit).is_some());
+    assert!(outbound_secret("https://x.test/?k=s3cret%2Dvalue%2D123456", &lit).is_some());
+    assert!(outbound_secret(&format!("q hf_{}", "a".repeat(34)), &[]).is_some());
+    assert!(outbound_secret(&format!("https://x.test/tvly-{}", "A1b2".repeat(6)), &[]).is_some());
+    assert_eq!(outbound_secret("https://docs.python.org/3/", &lit), None);
+}
+
+#[test]
+fn redirects_join_as_rpctl() {
+    let base = "http://pub.test/a/b/c?q=1";
+    for (loc, want) in [
+        ("/loop", "http://pub.test/loop"),
+        ("d", "http://pub.test/a/b/d"),
+        ("../d", "http://pub.test/a/d"),
+        ("../../../../d", "http://pub.test/d"),
+        ("?x", "http://pub.test/a/b/c?x"),
+        ("", "http://pub.test/a/b/c?q=1"),
+        ("//other.test/p", "http://other.test/p"),
+        ("https://x.test", "https://x.test"),
+        ("file:///etc/passwd", "file:///etc/passwd"),
+        (".", "http://pub.test/a/b/"),
+        ("#f", "http://pub.test/a/b/c?q=1#f"),
+    ] {
+        assert_eq!(url::join(base, loc).unwrap(), want, "{loc}");
+    }
 }
 
 /// ASCII names with full-width and ideographic full stops, inside or at
@@ -324,5 +429,347 @@ fn full_stops_match_rpctl() {
             .unwrap()
             .outcome;
         assert_eq!(theirs, mine, "canonical_host {at}");
+    }
+}
+
+/// rpctl's answer, or the refusal it raised.
+#[cfg(feature = "oracle")]
+fn as_outcome(
+    r: Result<impl Into<serde_json::Value>, String>,
+    kind: &str,
+) -> viy_testkit::oracle::Outcome {
+    use viy_testkit::oracle::Outcome;
+    match r {
+        Ok(v) => Outcome::Returned(v.into()),
+        Err(message) => Outcome::Raised {
+            kind: kind.into(),
+            message,
+        },
+    }
+}
+
+/// URL pieces for the parse and redirect fuzz: schemes, hosts of every
+/// kind, ports in and out of range, userinfo, brackets, paths, the
+/// characters rpctl refuses, and NFKC and full-stop spellings. Host
+/// names are ASCII, as UTS 46 and rpctl's IDNA 2003 differ on others
+/// (flags F53).
+#[cfg(feature = "oracle")]
+const URL_PIECES: &[&str] = &[
+    "http",
+    "https",
+    "HTTP",
+    "ftp",
+    "file",
+    "javascript",
+    "h1+x",
+    "://",
+    "://",
+    "//",
+    ":",
+    ":",
+    "/",
+    "/",
+    "?",
+    "#",
+    "@",
+    "user",
+    "pw",
+    "example.com",
+    "Example.COM",
+    "a.b",
+    "localhost",
+    "x.local",
+    "x.corp",
+    "127.0.0.1",
+    "8.8.8.8",
+    "0x7f.1",
+    "2130706433",
+    "[::1]",
+    "[2606:4700::1]",
+    "[::ffff:8.8.8.8]",
+    "[1.2.3.4]",
+    "[v1.x]",
+    "[",
+    "]",
+    "80",
+    "443",
+    "8080",
+    "8443",
+    "22",
+    "0",
+    "00080",
+    "65536",
+    "99999999",
+    "x",
+    "-1",
+    "%",
+    "%2e",
+    "%41",
+    ".",
+    "..",
+    ";p",
+    "a",
+    "q=1",
+    " ",
+    "\t",
+    "\\",
+    "\x7f",
+    "\u{3002}",
+    "\u{2100}",
+    "\u{ff0e}",
+    "é",
+];
+
+/// `parse` against rpctl's over generated URLs.
+#[cfg(feature = "oracle")]
+#[test]
+fn parse_matches_rpctl() {
+    use serde_json::json;
+    use viy_testkit::fuzz::Gen;
+    use viy_testkit::fuzz::cases;
+    use viy_testkit::fuzz::seed;
+    use viy_testkit::oracle::Oracle;
+    use viy_testkit::oracle::tuple;
+
+    let mut oracle = Oracle::spawn().unwrap();
+    let mut g = Gen::from_env();
+    const SCHEMES: &[&str] = &["http", "https", "HTTPS", "ftp", "", " http", "h1+x"];
+    const SEPS: &[&str] = &["://", "://", "://", ":/", ":", "//", ":\\\\"];
+    const HOSTS: &[&str] = &[
+        "example.com",
+        "Example.COM",
+        "a.b",
+        "pub.test",
+        "x.local",
+        "localhost",
+        "127.0.0.1",
+        "8.8.8.8",
+        "0x7f.1",
+        "[::1]",
+        "[2606:4700::1]",
+        "[1.2.3.4]",
+        "[v1.x]",
+        "user@",
+        "user:pw@",
+        "@",
+        "[",
+        "]",
+        "",
+        "é",
+        "\u{3002}",
+        "\u{2100}",
+        "%41",
+        ".",
+        "-",
+    ];
+    const PORTS: &[&str] = &[
+        "", "", ":80", ":443", ":8080", ":8443", ":22", ":0", ":00080", ":65536", ":x", ":", ":-1",
+        ":\u{663}",
+    ];
+    const PATHS: &[&str] = &[
+        "", "/", "/a", "/a/../b", "?q=1", "#f", ";p", "%2e", " ", "\t", "/\x7f", "\\", "/é",
+    ];
+    let mut ok = 0;
+    for case in 0..cases(20000) {
+        let url = if case % 4 == 3 {
+            g.string(URL_PIECES, 10)
+        } else if case % 4 == 0 {
+            // Mostly accepted: the rules' edges inside a well-formed URL.
+            format!(
+                "{}://{}{}{}",
+                g.pick(&["http", "https", "HTTP"]),
+                g.pick(&[
+                    "example.com",
+                    "Example.COM",
+                    "a.b",
+                    "pub.test",
+                    "8.8.8.8",
+                    "[2606:4700::1]",
+                    "[::ffff:8.8.8.8]",
+                    "x.local",
+                    "a.b.\u{3002}",
+                    "a.b.",
+                    "é.com"
+                ]),
+                g.pick(&["", ":80", ":443", ":8080", ":8443", ":0", ":00443", ":22"]),
+                g.string(
+                    &[
+                        "/", "a", "..", ".", "?", "q=1", "#", "f", ";p", "%2e", "&", "=", "é"
+                    ],
+                    5
+                )
+            )
+        } else {
+            format!(
+                "{}{}{}{}{}",
+                g.pick(SCHEMES),
+                g.pick(SEPS),
+                if g.below(3) == 0 {
+                    g.string(HOSTS, 3)
+                } else {
+                    g.pick(HOSTS).to_string()
+                },
+                g.pick(PORTS),
+                g.string(PATHS, 3)
+            )
+        };
+        let at = format!("case {case}, seed {:#x}: {url:?}", seed());
+        let mine = parse(&url).map_err(|r| r.0).map(|t| {
+            tuple(vec![
+                json!(t.scheme),
+                json!(t.host),
+                json!(t.port),
+                json!(t.path),
+                json!(t.url),
+            ])
+        });
+        let mine = as_outcome(mine, "Refused");
+        let theirs = oracle
+            .call("netguard.parse", json!([url]), json!({}))
+            .unwrap()
+            .outcome;
+        // A scope id: rpctl reads an address, viy a name it refuses.
+        if url.contains('%') && url.contains('[') && theirs != mine {
+            assert!(
+                matches!(mine, viy_testkit::oracle::Outcome::Raised { .. }),
+                "parse {at}: {mine:?}"
+            );
+            continue;
+        }
+        assert_eq!(theirs, mine, "parse {at}");
+        if matches!(mine, viy_testkit::oracle::Outcome::Returned(_)) {
+            ok += 1;
+        }
+    }
+    eprintln!("parse_matches_rpctl: {ok} accepted");
+    assert!(ok * 20 > cases(20000), "too few URLs accepted: {ok}");
+}
+
+/// The next URL of a redirect against rpctl's, from parsed URLs and
+/// Location values.
+#[cfg(feature = "oracle")]
+#[test]
+fn redirects_match_rpctl() {
+    use serde_json::json;
+    use viy_testkit::fuzz::Gen;
+    use viy_testkit::fuzz::cases;
+    use viy_testkit::fuzz::seed;
+    use viy_testkit::oracle::Oracle;
+
+    const BASES: &[&str] = &[
+        "http://pub.test/",
+        "http://pub.test/a/b/c?q=1",
+        "https://pub.test:8443/a/;p/b;x?y",
+        "http://[2606:4700::1]/a/",
+        "http://pub.test/a/b/",
+    ];
+    const LOCATION: &[&str] = &[
+        "/",
+        "/",
+        "a",
+        "b",
+        "..",
+        ".",
+        "//",
+        "?",
+        "#",
+        ";",
+        "x=1",
+        "http:",
+        "https:",
+        "ftp:",
+        "//other.test",
+        "pub.test",
+        ":8080",
+        " ",
+        "\t",
+        "[",
+        "]",
+        "::1",
+        "%2f",
+        "\\",
+        "@",
+    ];
+    let mut oracle = Oracle::spawn().unwrap();
+    let mut g = Gen::from_env();
+    for case in 0..cases(20000) {
+        let base = *g.pick(BASES);
+        let loc = g.string(LOCATION, 7);
+        let at = format!("case {case}, seed {:#x}: {base:?} + {loc:?}", seed());
+        let stripped = loc.trim_matches(crate::approve::chars::is_py_space);
+        let mine = as_outcome(url::join(base, stripped), "ValueError");
+        let theirs = oracle
+            .call("netguard.redirect", json!([base, loc]), json!({}))
+            .unwrap()
+            .outcome;
+        assert_eq!(theirs, mine, "redirect {at}");
+    }
+}
+
+/// `outbound_secret` against rpctl's: the same answer, or viy refusing
+/// where an ASCII word boundary meets a non-ASCII character (kb d042).
+#[cfg(feature = "oracle")]
+#[test]
+fn outbound_secret_matches_rpctl() {
+    use serde_json::json;
+    use viy_testkit::fuzz::Gen;
+    use viy_testkit::fuzz::cases;
+    use viy_testkit::fuzz::seed;
+    use viy_testkit::oracle::Oracle;
+    use viy_testkit::oracle::Outcome;
+
+    const PIECES: &[&str] = &[
+        "https://x.test/?k=",
+        "q ",
+        " ",
+        "/",
+        "=",
+        "%",
+        "%2D",
+        "%252D",
+        "%25",
+        "%2",
+        "%zz",
+        "%C3",
+        "%A9",
+        "é",
+        "hf_",
+        "sk-",
+        "tvly-",
+        "ghp_",
+        "AKIA",
+        "aaaaaaaaaa",
+        "A1b2A1b2A1",
+        "0123456789",
+        "-",
+        "_",
+        "s3cret",
+        "value",
+        "123456",
+        "s3cret-value-123456",
+    ];
+    let literals = vec!["s3cret-value-123456".to_string()];
+    let mut oracle = Oracle::spawn().unwrap();
+    let mut g = Gen::from_env();
+    for case in 0..cases(20000) {
+        let text = g.string(PIECES, 9);
+        let at = format!("case {case}, seed {:#x}: {text:?}", seed());
+        let mine = outbound_secret(&text, &literals).map(|m| m.replace("viy's", "rp's"));
+        let theirs = oracle
+            .call(
+                "netguard.outbound_secret",
+                json!([text, literals]),
+                json!({}),
+            )
+            .unwrap()
+            .outcome;
+        if theirs == Outcome::Returned(json!(null)) && mine.is_some() && !text.is_ascii() {
+            continue;
+        }
+        assert_eq!(
+            theirs,
+            Outcome::Returned(json!(mine)),
+            "outbound_secret {at}"
+        );
     }
 }

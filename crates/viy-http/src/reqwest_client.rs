@@ -10,6 +10,14 @@ use crate::HttpError;
 use crate::Request;
 use crate::Response;
 
+/// How long an idle connection is kept for reuse. vLLM closes one idle for
+/// 5 s (uvicorn's keep-alive); a request sent on it just before that,
+/// through the SSH tunnel's round trip, fails with "connection closed
+/// before message completed" (measured 2026-07-26: every request after
+/// 4.9-5.0 s idle failed, none after 2 s). rp opens a connection per
+/// request, so it never meets this.
+pub(crate) const POOL_IDLE: std::time::Duration = std::time::Duration::from_secs(2);
+
 #[derive(Clone, Debug)]
 pub struct ReqwestHttp {
     client: reqwest::Client,
@@ -20,6 +28,7 @@ impl ReqwestHttp {
     pub fn new() -> Result<Self, HttpError> {
         reqwest::Client::builder()
             .http1_title_case_headers()
+            .pool_idle_timeout(POOL_IDLE)
             .build()
             .map(|client| Self { client })
             .map_err(from_reqwest)

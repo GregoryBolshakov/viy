@@ -12,6 +12,7 @@ use std::time::Instant;
 use pretty_assertions::assert_eq;
 
 use super::*;
+use crate::reqwest_client::POOL_IDLE;
 
 /// A one-connection HTTP/1.1 server on 127.0.0.1: reads the request, hands
 /// its head and body to the test, then lets `answer` write to the socket.
@@ -240,4 +241,41 @@ async fn hyper_sends_no_length_for_an_empty_post() {
         .unwrap();
     let (head, _) = server.seen.recv().unwrap();
     assert!(!head.contains("Content-Length"), "{head}");
+}
+
+// vLLM closes a connection idle for 5 s, and one taken from the pool just
+// before that dies in flight: "connection closed before message
+// completed". A connection idle past POOL_IDLE is not reused, so this
+// server, which reads nothing more on a connection and closes it a little
+// after POOL_IDLE, answers the second request on a fresh one.
+#[tokio::test]
+async fn a_connection_idle_past_pool_idle_is_not_reused() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let closes_after = POOL_IDLE + Duration::from_millis(600);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            thread::spawn(move || {
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
+                        break;
+                    }
+                }
+                stream
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                    .unwrap();
+                thread::sleep(closes_after);
+            });
+        }
+    });
+    let http = client();
+    send(&http, Request::new(Method::GET, url.clone()))
+        .await
+        .unwrap();
+    tokio::time::sleep(POOL_IDLE + Duration::from_millis(300)).await;
+    let second = send(&http, Request::new(Method::GET, url)).await;
+    assert!(second.is_ok(), "{second:?}");
 }

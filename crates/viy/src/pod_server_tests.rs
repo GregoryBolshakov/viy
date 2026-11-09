@@ -263,6 +263,66 @@ async fn a_chat_without_a_pod_gives_the_line_back_and_keeps_nothing() {
     assert_eq!(rig.sent(), Vec::<String>::new());
 }
 
+/// The POSTs to the model so far.
+fn completions(rig: &Rig) -> usize {
+    rig.sent()
+        .iter()
+        .filter(|s| *s == &format!("POST {PROXY}/v1/chat/completions"))
+        .count()
+}
+
+// `/tools on` before the first line asks the pod that is up whether it
+// takes tool calls; it once went to the chat's empty address and said
+// "couldn't verify tool support: ... relative URL without a base".
+#[tokio::test(start_paused = true)]
+async fn tools_on_before_the_first_line_asks_the_pod_that_is_up() {
+    let mut rig = rig(Some(tracked()), |r| vllm(r).unwrap_or_else(|| no_runpod(r)));
+    rig.pod_state(PodState::Ready).await;
+    let events = rig.command("/tools on").await;
+    let said = notices(&events);
+    assert!(
+        said.iter().any(|n| n.starts_with("build tools on: ")),
+        "{said:?}"
+    );
+    assert!(
+        !said.iter().any(|n| n.contains("couldn't verify")),
+        "{said:?}"
+    );
+    assert_eq!(completions(&rig), 1);
+    let probe: Value =
+        serde_json::from_slice(rig.api.sent().last().unwrap().body.as_deref().unwrap()).unwrap();
+    assert_eq!(probe["messages"][0]["content"], "ping");
+    // Asked once: the turn does not ask again.
+    rig.line("what is 2+2").await;
+    assert_eq!(completions(&rig), 2);
+}
+
+// Without a pod there is nobody to ask: nothing is sent and nothing is
+// said, and the first turn on a pod asks instead.
+#[tokio::test(start_paused = true)]
+async fn tools_on_without_a_pod_leaves_the_check_to_the_first_turn() {
+    let mut rig = rig(None, |r| vllm(r).unwrap_or_else(|| no_runpod(r)));
+    rig.pod_state(PodState::Absent).await;
+    let events = rig.command("/tools on").await;
+    let said = notices(&events);
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].starts_with("build tools on: "), "{said:?}");
+    assert_eq!(rig.sent(), Vec::<String>::new());
+    // A pod brought up elsewhere: the first turn asks, then is sent.
+    write_state(&rig.paths, &tracked());
+    rig.pod_state(PodState::Ready).await;
+    rig.line("what is 2+2").await;
+    assert_eq!(completions(&rig), 2);
+    let first = rig
+        .api
+        .sent()
+        .into_iter()
+        .find(|r| r.url.ends_with("/v1/chat/completions"))
+        .unwrap();
+    let probe: Value = serde_json::from_slice(first.body.as_deref().unwrap()).unwrap();
+    assert_eq!(probe["messages"][0]["content"], "ping");
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_pod_brought_up_elsewhere_is_noticed_and_the_turn_goes_to_it() {
     let healthy = Arc::new(AtomicUsize::new(0));

@@ -1891,6 +1891,18 @@ impl Turns for ChatTurns {
             {
                 return;
             }
+            // `/tools on` asks the model whether it takes tool calls: ask
+            // the server a turn would go to now, as `admit` connects a turn.
+            if name == "tools"
+                && args
+                    .split_whitespace()
+                    .next()
+                    .is_some_and(|a| a.eq_ignore_ascii_case("on"))
+                && let Some(server) = self.server.clone()
+                && let Ok(ready) = server.ready().await
+            {
+                self.with_chat(|chat| chat.connect(ready));
+            }
             if let Some(mut lease) = Lease::take(&self, &ctx)
                 && let Some(chat) = lease.chat.as_mut()
             {

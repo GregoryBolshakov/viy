@@ -849,12 +849,17 @@ impl Chat {
             }
             "on" => {
                 self.tools_on = true;
-                self.probed = true;
                 let _ = std::fs::create_dir_all(&self.places.workspace);
                 info(format!(
                     "build tools on: write_file, read_file, list_dir, run_shell. workspace: {}; mode {mode}",
                     self.ws_rel_root()
                 ));
+                // No server to ask yet (a chat opened without a pod, kb
+                // d041): the first turn asks, as when /tools on never ran.
+                if self.endpoint.base.is_empty() {
+                    return;
+                }
+                self.probed = true;
                 match self.tools_supported().await {
                     (Some(false), note) => notice(
                         ctx,

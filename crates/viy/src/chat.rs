@@ -72,6 +72,10 @@ pub fn cmd_chat(
 ) -> Result<(), Failure> {
     // The build tools come with phase 4.
     cfg.set("TOOLS_ENABLED", "0");
+    // web_search and fetch_url come with phase 5; offered before then,
+    // every call would answer "the tool is off". This is rp's chat with
+    // SEARCH_ENABLED=0.
+    cfg.set("SEARCH_ENABLED", "0");
     let backend = Backend::resolve(&cfg)?;
     let project = Project::find(start).map_err(|e| format!("{}: {e}", start.display()))?;
     let store = Sessions::new(paths.sessions_dir(), Arc::new(SystemTimeProvider));

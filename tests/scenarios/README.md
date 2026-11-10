@@ -36,6 +36,7 @@ scenario with build tools off. Keep stream text ASCII: fakellm's
   "about": "what it covers",
   "config": {"TOOLS_ENABLED": "0"},
   "workspace": {"notes.txt": "file contents"},
+  "toolbox": {"csv-profile": {"TOOL.md": "---\nname: csv-profile\n...", "csv-profile": "#!/bin/sh\n..."}},
   "max_model_len": 65536,
   "model": "qwen3.8-abliterated",
   "steps": [{"user": "a user turn"}, {"command": "/maxtok 2048"}],
@@ -50,6 +51,9 @@ scenario with build tools off. Keep stream text ASCII: fakellm's
   to `fake-key`. Set what would otherwise depend on the machine, such as
   `CONSULT_ENABLED` (a `claude` on PATH adds a tool).
 - `workspace`: files created in the empty workspace before the chat starts.
+- `toolbox` (optional): tools put in the global toolbox of both clients
+  (`<data>/rpctl/toolbox` and `<data>/viy/toolbox`), each a folder of
+  files; the file named as the tool is made executable.
 - `steps`: in order; a `user` line goes through a turn, a `command` through
   the slash-command handler. Before the first step the driver does what
   `rp chat` does at startup: GET /v1/models and, with build tools on, the

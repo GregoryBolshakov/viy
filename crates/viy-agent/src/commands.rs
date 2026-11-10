@@ -6,6 +6,7 @@
 //! `/exit`, `/think`, `/md` and `/redraw` belong to the screen, which
 //! handles them itself; one that reaches the chat is told so.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -123,7 +124,6 @@ const HELP: &str = "  /help              show this
 fn later(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
         "ssh" | "unssh" | "git" => "phase 4",
-        "toolbox" => "phase 7",
         _ => return None,
     })
 }
@@ -344,6 +344,78 @@ pub(crate) fn expand_home(text: &str, home: &Path) -> PathBuf {
 }
 
 impl Chat {
+    /// `/toolbox`: the tools, one tool, a search, a check, or on/off (rp's
+    /// `_cmd_toolbox`).
+    fn toolbox_command(&mut self, ctx: &TurnContext, arg: &str) {
+        use crate::toolbox;
+        let say = |lines: Vec<toolbox::Line>| {
+            for l in lines {
+                notice(ctx, l.level, "toolbox", l.text);
+            }
+        };
+        let (word, rest) = arg.split_once(' ').unwrap_or((arg, ""));
+        let rest = rest.trim();
+        let dirs = self.places.toolbox.clone();
+        match word {
+            "on" | "off" => {
+                self.toolbox_on = word == "on";
+                self.snapshot_toolbox();
+                notice(
+                    ctx,
+                    NoticeLevel::Info,
+                    "toolbox",
+                    format!(
+                        "toolbox {word} (the system prompt changes, so the next message \
+                         re-reads the whole history)"
+                    ),
+                );
+            }
+            "show" if !rest.is_empty() => say(toolbox::cmd_show(&dirs, rest).0),
+            "find" if !rest.is_empty() => say(toolbox::cmd_find(&dirs, rest)),
+            "check" => say(toolbox::cmd_check(&dirs).0),
+            "" | "list" => {
+                say(toolbox::cmd_list(&dirs));
+                if self.toolbox_on {
+                    let shown: BTreeSet<&str> =
+                        self.toolbox_snap.iter().map(|t| t.name.as_str()).collect();
+                    let live = dirs.scan();
+                    let new: BTreeSet<&str> = live
+                        .iter()
+                        .map(|t| t.name.as_str())
+                        .filter(|n| !shown.contains(n))
+                        .collect();
+                    if !new.is_empty() {
+                        let names: Vec<&str> = new.into_iter().collect();
+                        notice(
+                            ctx,
+                            NoticeLevel::Info,
+                            "toolbox",
+                            format!(
+                                "not in this chat's index yet (find_tool and run_shell see \
+                                 them; the index updates at /new, /resume or a summary): {}",
+                                names.join(", ")
+                            ),
+                        );
+                    }
+                } else {
+                    notice(
+                        ctx,
+                        NoticeLevel::Info,
+                        "toolbox",
+                        "toolbox off for this chat (/toolbox on)".to_string(),
+                    );
+                }
+            }
+            _ => notice(
+                ctx,
+                NoticeLevel::Warn,
+                "toolbox",
+                "usage: /toolbox [list | show <name> | find <words> | check | on | off]"
+                    .to_string(),
+            ),
+        }
+    }
+
     /// Runs the slash command `line` (`/` included).
     pub async fn command(&mut self, ctx: &TurnContext, line: &str) {
         let rest = line.strip_prefix('/').unwrap_or(line);
@@ -356,6 +428,7 @@ impl Chat {
             "search" => self.search_command(ctx, arg).await,
             "compact" => self.compact_command(ctx, arg).await,
             "consult" => self.consult_command(ctx, arg),
+            "toolbox" => self.toolbox_command(ctx, arg),
             "autocompact" => self.autocompact_command(ctx, arg),
             "sources" => self.sources_command(ctx),
             "new" | "reset" => {

@@ -518,6 +518,7 @@ pub(crate) fn chat(
             paths.pod_state_dir(),
             paths.rpctl_data_dir(),
         ],
+        toolbox: viy_agent::toolbox::Dirs::new(paths, &project),
     };
     let sessions = Sessions::new(paths.sessions_dir(), Arc::new(SystemTimeProvider));
     let paths = paths.clone();

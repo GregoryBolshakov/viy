@@ -177,6 +177,14 @@ def run(scenario_path, out, viy=None):
                 raise SystemExit(f"workspace file outside the workspace: {rel}")
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(text, encoding="utf-8")
+        for tool, files in (scenario.get("toolbox") or {}).items():
+            for client in ("rpctl", "viy"):
+                d = base / "data" / client / "toolbox" / tool
+                d.mkdir(parents=True, mode=0o700)
+                for rel, text in files.items():
+                    (d / rel).write_text(text, encoding="utf-8")
+                    if rel == tool:
+                        (d / rel).chmod(0o755)
 
         server = subprocess.Popen(
             [sys.executable, "-I", str(ROOT / "tools" / "fakellm.py"), str(scenario_path),

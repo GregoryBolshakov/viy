@@ -1,0 +1,98 @@
+{
+ "name": "toolbox-find-and-run",
+ "about": "Build tools on with two tools in the global toolbox: the system prompt carries the toolbox guide line and the frozen index (one tool untested), find_tool is offered. The model looks two jobs up in one parallel batch (one fits, one fits no tool), then runs the tool it found by name through run_shell in the sandbox, and answers.",
+ "config": {
+  "TOOLS_ENABLED": "1",
+  "EXPLORE_ENABLED": "0",
+  "SEARCH_ENABLED": "0",
+  "CONSULT_ENABLED": "0",
+  "CHAT_AUTO_TITLE": "0"
+ },
+ "max_model_len": 65536,
+ "workspace": {
+  "data.csv": "name,age\nann,31\nbob,42\n"
+ },
+ "toolbox": {
+  "csv-profile": {
+   "TOOL.md": "---\nname: csv-profile\nsummary: Column names and row count of a CSV file\nuse_when: you get a new CSV file\nusage: csv-profile FILE\nexamples:\n  - csv-profile data.csv\ntags: [csv, stats]\nauthor: qwen\nstatus: tested\ncreated: 2026-07-08\n---\n\nPrints the header line and the number of data rows.\n",
+   "csv-profile": "#!/bin/sh\necho \"columns: $(head -n 1 \"$1\")\"\necho \"rows: $(($(wc -l < \"$1\") - 1))\"\n"
+  },
+  "html-text": {
+   "TOOL.md": "---\nname: html-text\nsummary: Turn an HTML page into plain text\nuse_when: you saved a web page\nusage: html-text PAGE\ntags: [html, text]\nauthor: claude\nstatus: untested\ncreated: 2026-06-18\n---\n",
+   "html-text": "#!/bin/sh\ncat \"$1\"\n"
+  }
+ },
+ "steps": [
+  {
+   "user": "What columns and how many rows does data.csv have? Use a kept tool if there is one."
+  }
+ ],
+ "approvals": [],
+ "responses": [
+  {
+   "expect": {
+    "stream": false,
+    "tools": "auto"
+   },
+   "message": ""
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "c_find",
+      "name": "find_tool",
+      "arguments": "{\"query\": \"profile the columns of a csv file\"}"
+     }
+    },
+    {
+     "tool_call": {
+      "id": "c_none",
+      "name": "find_tool",
+      "arguments": "{\"query\": \"zebra stripes\"}",
+      "index": 1
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "c_run",
+      "name": "run_shell",
+      "arguments": "{\"command\": \"csv-profile data.csv\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "stream": [
+    {
+     "content": "data.csv has the columns name and age, and 2 rows."
+    }
+   ]
+  }
+ ]
+}

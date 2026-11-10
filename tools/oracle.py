@@ -206,6 +206,50 @@ def egress_policy(command, user_hosts, allow, probes):
             "why_not": [p.why_not(h, port) for h, port in probes]}
 
 
+def _toolbox_tools(manifests):
+    """Tools from [[name, scope, TOOL.md text], ...] as toolbox.load reads
+    them, without a filesystem: each at /tb/<scope>/<name>, problems not
+    checked (a manifest that does not parse raises)."""
+    from rpctl import toolbox
+    out = []
+    for name, scope, text in manifests:
+        meta, body = toolbox.parse_manifest(text)
+        out.append(toolbox.Tool(name, scope, pathlib.Path("/tb") / scope / name, meta, body))
+    return out
+
+
+def toolbox_index(manifests, limit):
+    """toolbox.render_index over the tools, in the order given."""
+    from rpctl import toolbox
+    return toolbox.render_index(_toolbox_tools(manifests), limit)
+
+
+def toolbox_search(manifests, query, limit):
+    """toolbox.search as [[score, name], ...]."""
+    from rpctl import toolbox
+    return [[s, t.name] for s, t in toolbox.search(query, _toolbox_tools(manifests), limit)]
+
+
+def toolbox_describe(manifests, full):
+    """toolbox.describe of each tool."""
+    from rpctl import toolbox
+    return [toolbox.describe(t, full) for t in _toolbox_tools(manifests)]
+
+
+def toolbox_used_in(names, cmd):
+    """The names toolbox.used_in finds in cmd among tools with these names."""
+    from rpctl import toolbox
+    tools = [toolbox.Tool(n, "global", pathlib.Path("/tb") / n, {}, "") for n in names]
+    return [t.name for t in toolbox.used_in(cmd, tools)]
+
+
+def toolbox_suggest(name, names):
+    """toolbox.suggest among tools with these names."""
+    from rpctl import toolbox
+    tools = [toolbox.Tool(n, "global", pathlib.Path("/tb") / n, {}, "") for n in names]
+    return toolbox.suggest(name, tools)
+
+
 def trace_monitor(calls, rounds):
     """A TurnMonitor with tracing off: on_round for each [reasoning, finish,
     secs], then on_tool for each [name, args_json, payload]. Returns each
@@ -343,6 +387,12 @@ FUNCTIONS = {
     "shutdown.parse_when": shutdown_parse_when,
     "trace.monitor": trace_monitor,
     "trace.repeated_sentence": ("rpctl.trace", "repeated_sentence"),
+    "toolbox.describe": toolbox_describe,
+    "toolbox.index": toolbox_index,
+    "toolbox.parse_manifest": ("rpctl.toolbox", "parse_manifest"),
+    "toolbox.search": toolbox_search,
+    "toolbox.suggest": toolbox_suggest,
+    "toolbox.used_in": toolbox_used_in,
     "untrusted.clean": ("rpctl.untrusted", "clean"),
     "untrusted.neutralize": ("rpctl.untrusted", "neutralize"),
     "untrusted.suspicious": ("rpctl.untrusted", "suspicious"),

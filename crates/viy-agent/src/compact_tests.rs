@@ -50,6 +50,7 @@ fn chat_in(dir: &Path, over: &Value) -> Chat {
         state_dir: nowhere.join("state"),
         doctrine_sources: Vec::new(),
         guarded: Vec::new(),
+        toolbox: crate::toolbox::Dirs::default(),
     };
     let endpoint = Endpoint {
         base: "http://127.0.0.1:9".into(),

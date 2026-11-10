@@ -38,6 +38,10 @@ fn nowhere() -> Places {
         state_dir: std::path::PathBuf::from("/nonexistent/viy-state"),
         doctrine_sources: Vec::new(),
         guarded: Vec::new(),
+        toolbox: crate::toolbox::Dirs {
+            global: std::path::PathBuf::from("/nonexistent/viy-data/toolbox"),
+            project: std::path::PathBuf::from("/nonexistent/viy-workspace/.viy/toolbox"),
+        },
     }
 }
 

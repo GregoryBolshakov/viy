@@ -23,6 +23,7 @@ pub mod prompt;
 pub mod server;
 pub mod sessions;
 pub mod stream;
+pub mod toolbox;
 pub mod trace;
 
 pub use engine::BoxFuture;

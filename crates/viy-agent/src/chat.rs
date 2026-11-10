@@ -122,6 +122,8 @@ pub struct Places {
     /// Besides the workspace and project, what a mount must neither hold nor
     /// sit inside: the clients' code, both tools' config, state and data.
     pub guarded: Vec<PathBuf>,
+    /// The global and project toolbox folders ([`crate::toolbox`]).
+    pub toolbox: crate::toolbox::Dirs,
 }
 
 /// One conversation with the model.
@@ -243,6 +245,17 @@ pub struct Chat {
     monitor: Option<TurnMonitor>,
     /// Turns this chat has run, for the trace.
     turn_n: u64,
+    /// TOOLBOX_ENABLED (`/toolbox on|off`).
+    toolbox_on: bool,
+    /// The toolbox as this chat's system prompt shows it (rp's
+    /// `_toolbox_snap`), frozen until the next fresh, resumed or compacted
+    /// history: the system prompt heads every request, and a tool kept
+    /// mid-chat would otherwise re-prefill the whole history (134 s at
+    /// 234k tokens, rpctl kb f047). find_tool and run_shell read the live
+    /// toolbox.
+    toolbox_snap: Vec<crate::toolbox::Tool>,
+    /// TOOLBOX_INDEX_MAX: the index's lines.
+    toolbox_index_max: usize,
     /// The name last sent as [`EventMsg::TitleChanged`]; empty at first,
     /// as the frontend starts with no name. Shared with the background
     /// title request, which sends the title it gets.
@@ -297,6 +310,19 @@ impl Chat {
             cfg.get("TOOL_ELIDE_KEEP_TURNS"),
         );
         let consult = consult::ConsultSettings::from_config(cfg, &places.home);
+        let toolbox_on = on("TOOLBOX_ENABLED", "1");
+        let toolbox_snap = if toolbox_on {
+            places.toolbox.scan()
+        } else {
+            Vec::new()
+        };
+        // int() of the value, a negative one showing no lines; 40 otherwise
+        let toolbox_index_max = cfg
+            .get("TOOLBOX_INDEX_MAX")
+            .and_then(|v| v.trim().parse::<i64>().ok())
+            .map_or(crate::toolbox::INDEX_MAX_DEFAULT, |n| {
+                usize::try_from(n.max(0)).unwrap_or(usize::MAX)
+            });
         Ok(Self {
             cfg: cfg.clone(),
             places,
@@ -375,6 +401,9 @@ impl Chat {
             tracer,
             monitor: None,
             turn_n: 0,
+            toolbox_on,
+            toolbox_snap,
+            toolbox_index_max,
             label_sent: Arc::default(),
         })
     }
@@ -577,6 +606,7 @@ impl Chat {
         self.messages.clear();
         self.system = system;
         self.today = crate::prompt::today();
+        self.snapshot_toolbox();
         self.earlier.clear();
         self.inflight = None;
         // Files read by the old chat are unknown to this one.
@@ -660,6 +690,7 @@ impl Chat {
         self.messages = st.messages;
         self.earlier = st.earlier;
         self.today = crate::prompt::today();
+        self.snapshot_toolbox();
         self.inflight = None;
         // Reads made by the chat left behind do not count.
         self.files.forget_reads();
@@ -1123,8 +1154,31 @@ impl Chat {
             if self.consult_available() {
                 specs.push(consult::consult_tool());
             }
+            if !self.toolbox_snap.is_empty() {
+                specs.push(crate::toolbox::find_tool());
+            }
         }
         specs
+    }
+
+    /// Freezes the toolbox for this history (rp's `_snapshot_toolbox`):
+    /// at a fresh, resumed or compacted history and at `/toolbox on|off`.
+    pub(crate) fn snapshot_toolbox(&mut self) {
+        self.toolbox_snap = if self.toolbox_on {
+            self.places.toolbox.scan()
+        } else {
+            Vec::new()
+        };
+    }
+
+    /// The live toolbox run_shell and find_tool read, so a tool kept
+    /// mid-chat is usable at once; empty while the toolbox is off.
+    pub(crate) fn live_toolbox(&self) -> Vec<crate::toolbox::Tool> {
+        if self.toolbox_on {
+            self.places.toolbox.scan()
+        } else {
+            Vec::new()
+        }
     }
 
     /// The estimated tokens of `msgs` with this request's tool schemas
@@ -1159,15 +1213,15 @@ impl Chat {
 
     fn system_prompt(&self) -> Option<String> {
         let block = instructions::render(&self.instructions());
+        let index = crate::toolbox::render_index(&self.toolbox_snap, self.toolbox_index_max);
         SystemPrompt {
             user: self.system.as_deref(),
-            // The toolbox comes with phase 7.
             tools_on: self.tools_on,
             search_on: self.search_on,
             guide_on: self.guide_on,
             explore_trust: self.explore_on && self.guide_trust_explore,
             consult: self.consult_available(),
-            toolbox_index: None,
+            toolbox_index: index.as_deref(),
             workspace: &self.places.workspace,
             today: &self.today,
             instructions: block.as_deref(),
@@ -2065,6 +2119,10 @@ fn key_then_quoted(text: &str, key: &str, then: impl Fn(&str) -> bool) -> bool {
             .is_some_and(&then)
     })
 }
+
+#[cfg(test)]
+#[path = "toolbox_chat_tests.rs"]
+mod toolbox_chat_tests;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

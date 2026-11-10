@@ -340,7 +340,7 @@ fn py_lower(s: &str) -> String {
 }
 
 /// `repr()` of a str, for error messages.
-fn py_repr(s: &str) -> String {
+pub fn py_repr(s: &str) -> String {
     let quote = if s.contains('\'') && !s.contains('"') {
         '"'
     } else {

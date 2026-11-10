@@ -1,0 +1,10 @@
+{"t": "meta", "id": "{ID}", "project": "{WORKSPACE}", "model": "qwen3.8-abliterated"}
+{"t": "msg", "message": {"role": "user", "content": "What columns and how many rows does data.csv have? Use a kept tool if there is one."}}
+{"t": "title", "text": "What columns and how many rows does data.csv have? Use a ke…", "auto": true}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "c_find", "type": "function", "function": {"name": "find_tool", "arguments": "{\"query\": \"profile the columns of a csv file\"}"}}, {"id": "c_none", "type": "function", "function": {"name": "find_tool", "arguments": "{\"query\": \"zebra stripes\"}"}}]}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c_find", "content": "{\"matches\": [{\"name\": \"csv-profile\", \"summary\": \"Column names and row count of a CSV file\", \"use_when\": \"you get a new CSV file\", \"usage\": \"csv-profile FILE\", \"examples\": [\"csv-profile data.csv\"], \"status\": \"tested\", \"author\": \"qwen\", \"scope\": \"global\"}]}"}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c_none", "content": "{\"matches\": [], \"note\": \"no tool fits 'zebra stripes'; 2 tool(s) in the toolbox\"}"}}
+{"t": "msg", "message": {"role": "assistant", "content": null, "tool_calls": [{"id": "c_run", "type": "function", "function": {"name": "run_shell", "arguments": "{\"command\": \"csv-profile data.csv\"}"}}]}}
+{"t": "msg", "message": {"role": "tool", "tool_call_id": "c_run", "content": "{\"command\": \"csv-profile data.csv\", \"exit_code\": 0, \"timed_out\": false, \"stdout\": \"columns: name,age\\nrows: 2\\n\", \"stderr\": \"\"}"}}
+{"t": "msg", "message": {"role": "assistant", "content": "data.csv has the columns name and age, and 2 rows."}}
+{"t": "end", "reason": "exit"}

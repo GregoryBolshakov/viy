@@ -178,9 +178,13 @@ fn status_of(result: &Value) -> ToolCallStatus {
 
 /// What the tool card's header shows for a call: the argument rp prints.
 fn summary(name: &str, args: &Map<String, Value>) -> String {
+    if name == "find_tool" {
+        // rp's `[find_tool]` line: the name, else the query, else "all"
+        return untrusted::terminal_safe(&crate::toolbox::find_what(args), Some(80));
+    }
     let key = match name {
         "run_shell" => "command",
-        "web_search" | "find_tool" => "query",
+        "web_search" => "query",
         "fetch_url" => "url",
         "ask_claude" => "task",
         _ => "path",
@@ -543,8 +547,14 @@ impl Chat {
             "explore" => (self.run_explore(ctx, &c.arguments).await, Card::default()),
             "ask_claude" if !self.consult_available() => off(name),
             "ask_claude" => (self.run_consult(ctx, &c.arguments).await, Card::default()),
-            // Phase 7 (the toolbox): off, as rpctl's is when not enabled.
-            "find_tool" => off(name),
+            "find_tool" if !(self.tools_on && self.toolbox_on) => off(name),
+            "find_tool" => {
+                let out = match parse_args(&c.arguments) {
+                    Ok(args) => crate::toolbox::run_find(&args, &self.live_toolbox()),
+                    Err(e) => e,
+                };
+                (out, Card::default())
+            }
             _ if build::NAMES.contains(&name) => {
                 if !self.tools_on {
                     let e = format!("the {name} tool is off; enable it with /tools on");
@@ -580,7 +590,7 @@ impl Chat {
         }
     }
 
-    /// rp's `_tool_run_shell`, without /ssh servers and the toolbox.
+    /// rp's `_tool_run_shell`, without /ssh servers.
     pub(crate) async fn run_shell(
         &mut self,
         ctx: &TurnContext,
@@ -614,6 +624,15 @@ impl Chat {
                     "  the sandbox is unavailable: {why}. Asking, and running unsandboxed if you \
                      say yes."
                 ),
+            ));
+        }
+        // The toolbox is read live, so a tool kept mid-chat runs at once.
+        let kit = self.live_toolbox();
+        for t in crate::toolbox::used_in(&cmd, &kit) {
+            // A friendly name must not hide who wrote the code behind it.
+            reason.push(say(
+                NoticeLevel::Info,
+                format!("  [toolbox] {}", crate::toolbox::label(t)),
             ));
         }
         let net = (boxed && need_net).then(|| sandbox::net_mode(&self.sandbox_net));
@@ -725,9 +744,17 @@ impl Chat {
             };
             let mounts = self.files.mounts.clone();
             let project = self.places.project_dir.clone();
+            let ro = if kit.is_empty() {
+                Vec::new()
+            } else {
+                self.places.toolbox.mount_dirs()
+            };
+            let path_extra = crate::toolbox::path_dirs(&kit);
             let jail = Jail {
                 net: net.unwrap_or(Net::Off),
                 tmp_dir: tmp.as_deref(),
+                ro_paths: &ro,
+                path_extra: &path_extra,
                 mounts: &mounts,
                 ..Jail::new(&ws, &project)
             };
@@ -768,7 +795,14 @@ impl Chat {
             }
             ran
         } else {
-            run_unsandboxed(&argv, &ws, timeout).await
+            let mut env: Vec<(OsString, OsString)> = std::env::vars_os().collect();
+            if !kit.is_empty() {
+                let base = std::env::var_os("PATH").unwrap_or_default();
+                let path = crate::toolbox::with_path(&base, &kit);
+                env.retain(|(k, _)| k != "PATH");
+                env.push(("PATH".into(), path));
+            }
+            run_unsandboxed(&argv, &ws, env, timeout).await
         };
         let ran = match ran {
             Ok(r) => r,
@@ -966,13 +1000,14 @@ impl Chat {
 async fn run_unsandboxed(
     argv: &[OsString],
     ws: &Path,
+    env: Vec<(OsString, OsString)>,
     timeout: Duration,
 ) -> std::io::Result<sandbox::Ran> {
     let running = viy_exec::sandboxed::spawn(viy_exec::sandboxed::Spec {
         program: argv[0].clone(),
         args: argv[1..].to_vec(),
         cwd: ws.to_path_buf(),
-        env: std::env::vars_os().collect(),
+        env,
         pass_fds: Vec::new(),
     })?;
     let done = running.finish(timeout, false).await;
@@ -1034,7 +1069,7 @@ pub(crate) fn report_egress(
 
 /// Tools that only read, so a batch of them can run side by side (rp's
 /// `PARALLEL_SAFE`).
-const PARALLEL_SAFE: [&str; 6] = [
+pub(crate) const PARALLEL_SAFE: [&str; 6] = [
     "read_file",
     "list_dir",
     "web_search",
@@ -1062,15 +1097,11 @@ async fn quiet_call(
     arguments: &str,
     tools_on: bool,
 ) -> Option<(Value, Card, Option<(PathBuf, String)>)> {
-    if matches!(name.as_str(), "web_search" | "fetch_url" | "explore") {
-        // They hold the chat's web state: run one by one after the batch's
-        // reads, in call order.
-        return None;
-    }
     if !build::NAMES.contains(&name.as_str()) {
-        // find_tool (phase 7), off as in dispatch.
-        let e = format!("the {name} tool is off");
-        return Some((json!({"error": e}), Card::default(), None));
+        // web_search, fetch_url and explore hold the chat's web state, and
+        // find_tool reads the chat's toolbox: run one by one after the
+        // batch's reads, in call order.
+        return None;
     }
     if !tools_on {
         let e = format!("the {name} tool is off; enable it with /tools on");

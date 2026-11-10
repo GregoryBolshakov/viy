@@ -53,6 +53,7 @@ fn chat() -> Result<Chat, String> {
         state_dir: nowhere.join("state"),
         doctrine_sources: Vec::new(),
         guarded: Vec::new(),
+        toolbox: viy_agent::toolbox::Dirs::default(),
     };
     let endpoint = Endpoint {
         base: "http://127.0.0.1:1".into(),

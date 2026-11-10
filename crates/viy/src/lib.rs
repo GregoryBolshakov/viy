@@ -16,6 +16,7 @@ pub mod pod_server;
 pub mod pods;
 pub mod sessions_cli;
 pub mod shutdown;
+pub mod toolbox_cli;
 
 use std::ffi::OsString;
 use std::io;
@@ -223,7 +224,14 @@ fn dispatch(
             let opening = chat_opening(command);
             chat::cmd_chat(&opening, &paths, cfg, &cwd()?, out, terminal)
         }
-        Command::Trace(_) | Command::Toolbox(_) => not_ported(7),
+        Command::Toolbox(args) => {
+            let asking = toolbox_cli::Asking {
+                input: &mut std::io::stdin().lock(),
+                err,
+            };
+            toolbox_cli::cmd_toolbox(args, &paths()?, &cwd()?, terminal.tty, asking, out)
+        }
+        Command::Trace(_) => not_ported(7),
     }
 }
 

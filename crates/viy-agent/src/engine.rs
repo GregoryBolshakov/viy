@@ -190,11 +190,10 @@ impl TurnContext {
     }
 }
 
-#[cfg(test)]
 impl TurnContext {
-    /// A context outside any engine, for a test that calls the chat
-    /// directly: its events come out of the receiver; its questions are
-    /// answered with [`TurnContext::answer`].
+    /// A context outside any engine, for a test or the eval hooks that call
+    /// the chat directly: its events come out of the receiver; its
+    /// questions are answered with [`TurnContext::answer`].
     pub(crate) fn detached() -> (Self, mpsc::UnboundedReceiver<Event>) {
         let (events, rx) = mpsc::unbounded_channel();
         let ctx = Self {
@@ -204,7 +203,10 @@ impl TurnContext {
         };
         (ctx, rx)
     }
+}
 
+#[cfg(test)]
+impl TurnContext {
     pub(crate) fn answer(&self, id: &str, answer: Answer) {
         self.questions.answer(id, answer);
     }

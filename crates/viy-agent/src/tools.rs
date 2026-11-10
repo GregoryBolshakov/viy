@@ -308,6 +308,11 @@ impl Chat {
         ctx: &TurnContext,
         calls: &[ToolCall],
     ) -> Vec<String> {
+        if self.search_on && calls.iter().any(|c| c.name == "fetch_url") {
+            // fetch_url's batch check reads the vault's key, as rpctl's
+            // `_parallel_ok` does through `_fetch_decision`.
+            self.web.search.load_key().await;
+        }
         let results = if self.abort_turn.is_none() && self.parallel_ok(calls) {
             self.run_parallel(ctx, calls).await
         } else {

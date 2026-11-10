@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "8cd1845219ed58ea49bd2bd16c39ea5650ee6bfc",
+ "rpctl_commit": "5533dd248775ad6d0ee03be9226038a940e480af",
  "generator": "tools/fixtures.py pod/resolve",
  "about": "rpctl pod.resolve_pod and pod.base_url: pod.json before (text or null), config keys over DEFAULTS with POD_NAME='qwen-pod', the HTTP answers the call's requests get in order; out: the requests sent, what _say printed, the pod or URL returned or RunPodError's text, status_code and transient, pod.json after (text or null), and tunnel_only and transport_label read after the call. Played through rpctl's api.RunPod with a transport adapter, run by the installed rp's interpreter in a temporary HOME; the key is 'rpa_SYNTHETICKEY0000'",
  "cases": [

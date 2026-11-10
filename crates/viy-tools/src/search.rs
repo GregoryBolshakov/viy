@@ -273,6 +273,9 @@ impl SearchClient {
                 "the query is longer than {MAX_QUERY} characters"
             )));
         }
+        // The vault's key first: a chat's first query is checked against it
+        // too (rpctl 5533dd2).
+        self.load_key().await;
         if let Some(why) = netguard::outbound_secret(&query, &self.secrets) {
             return Err(err(format!(
                 "refused: the query would leave this machine and {why}"
@@ -291,7 +294,6 @@ impl SearchClient {
             });
         }
 
-        self.load_key().await;
         let key = self.key().to_string();
         let why = if key.is_empty() {
             match &self.key_problem {

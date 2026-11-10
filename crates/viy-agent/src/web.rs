@@ -299,7 +299,9 @@ impl Chat {
         }
     }
 
-    /// What fetch_url does with `url` (rp's `_fetch_decision`).
+    /// What fetch_url does with `url` (rp's `_fetch_decision`), once
+    /// [`SearchClient::load_key`] has read the vault's key, which is among
+    /// the secrets the URL must not carry.
     pub(crate) fn fetch_decision(&mut self, url: &str) -> FetchDecision {
         let t = match netguard::parse(url) {
             Ok(t) => t,
@@ -504,6 +506,9 @@ impl Chat {
             IntArg::Missing | IntArg::Bad => 0,
         };
 
+        // The vault's key is among the secrets the URL is checked against
+        // (rpctl 5533dd2).
+        self.web.search.load_key().await;
         let decision = self.fetch_decision(&url);
         let target = match &decision {
             FetchDecision::Go(t) | FetchDecision::Ask(t, _) => Some(t.clone()),

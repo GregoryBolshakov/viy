@@ -418,6 +418,25 @@ async fn search_client_uses_it_and_guards_it() {
     assert!(c.secrets().contains(&"tvly-from-vault-01234".to_string()));
 }
 
+// rpctl 5533dd2's VaultKeyTests.test_the_first_search_and_fetch_are_checked_against_it,
+// the search half (the fetch half is in viy-agent's web_tests.rs).
+#[tokio::test]
+async fn the_first_search_is_checked_against_it() {
+    let (_dir, tok) = fake_tok();
+    let mut c = SearchClient::new(
+        &cfg(&[("TAVILY_API_KEY", ""), ("TAVILY_VAULT_TOKEN", "tavily-dev")]),
+        vec![],
+        tok,
+    );
+    // Not token-shaped: only the vault's value itself can refuse it.
+    let http = FakeHttp::new([]);
+    let e = search(&mut c, &http, "look up tvly-from-vault-01234")
+        .await
+        .unwrap_err();
+    assert!(e.0.contains("secret settings"), "{e}");
+    assert!(http.sent().is_empty());
+}
+
 #[tokio::test]
 async fn config_key_wins_and_empty_name_skips_the_vault() {
     let (_dir, tok) = fake_tok();

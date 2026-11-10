@@ -708,3 +708,58 @@ async fn a_stopped_turn_runs_no_web_call_of_a_batch() {
         assert_eq!(payload, "{\"error\":\"not run: the turn was stopped\"}");
     }
 }
+
+/// A `tok` whose open token tavily-dev holds `tvly-from-vault-01234`, as
+/// rpctl's VaultKeyTests fake one.
+fn fake_tok(dir: &std::path::Path) -> viy_config::vault::Tok {
+    use std::os::unix::fs::PermissionsExt;
+    let exe = dir.join("tok");
+    std::fs::write(
+        &exe,
+        "#!/bin/sh\ncase \"$1\" in\nlist) echo 'tavily-dev    open (no PIN to read)' ;;\n\
+         get) echo tvly-from-vault-01234 ;;\nesac\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    // A sibling test can fork while the script is open for writing: retry
+    // while exec says ETXTBSY, as viy-config's vault_tests.rs does.
+    for _ in 0..100 {
+        let run = std::process::Command::new(&exe)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .status();
+        if !run.is_err_and(|e| e.kind() == std::io::ErrorKind::ExecutableFileBusy) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let mut path = dir.as_os_str().to_owned();
+    path.push(":/usr/bin:/bin");
+    viy_config::vault::Tok::with_env([(std::ffi::OsString::from("PATH"), path)])
+}
+
+// rpctl 5533dd2's VaultKeyTests.test_the_first_search_and_fetch_are_checked_against_it,
+// the fetch half: the vault's key is read before the chat's first fetch
+// decision, so a URL carrying it is refused.
+#[tokio::test]
+async fn the_first_fetch_is_checked_against_the_vault_key() {
+    let scratch = viy_testkit::scratch::ScratchDir::new("web-tok").unwrap();
+    let mut d = offline();
+    let mut cfg = Config::defaults();
+    cfg.set("TAVILY_API_KEY", "");
+    cfg.set("TAVILY_VAULT_TOKEN", "tavily-dev");
+    d.chat.web.search = SearchClient::new(&cfg, Vec::new(), fake_tok(scratch.path()));
+    let (out, card) = d
+        .chat
+        .run_fetch(
+            &d.ctx,
+            "{\"url\": \"https://x.test/?k=tvly-from-vault-01234\"}",
+        )
+        .await;
+    let error = out["error"].as_str().unwrap();
+    assert!(
+        error.starts_with("refused: ") && error.contains("secret settings"),
+        "{error}"
+    );
+    assert_eq!(card.detail.as_deref(), Some("refused"));
+}

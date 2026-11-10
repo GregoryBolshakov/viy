@@ -2156,6 +2156,50 @@ async fn the_turn_row_alarm_and_note_reach_the_model() {
     assert_eq!(kinds.last().map(String::as_str), Some("turn_end"));
 }
 
+// rpctl's TurnTracingTests.test_rp_trace_views: `viy trace`'s four views
+// over a turn that repeated a call.
+#[tokio::test]
+async fn viy_trace_views() {
+    let same = || {
+        json!({"stream": [call_ev("c1", "read_file", "{\"path\": \"x\"}"),
+                                    {"finish": "tool_calls"}]})
+    };
+    let (mut d, _s) = tooled(
+        json!([same(), same(), same(), {"stream": [{"content": "ok"}]}]),
+        &[("TOOLS_MAX_ROUNDS", "6"), ("SEARCH_MAX_ROUNDS", "1")],
+    );
+    d.send("go").await;
+    let sid = d.chat.session_id().unwrap();
+    let state = d.chat.tracer().turns_path().parent().unwrap().to_path_buf();
+    for what in ["", "alarms", "stats", sid.as_str()] {
+        let text = crate::trace::view(&state, what, Some(30), false).join("\n");
+        let want = if what == sid {
+            "read_file"
+        } else {
+            "repeat_call"
+        };
+        assert!(text.contains(want), "{what}: {text}");
+    }
+    // and the defaults, and what a missing trace says
+    let stats = crate::trace::view(&state, "stats", None, false);
+    assert_eq!(stats[0], "last 1 turns");
+    assert_eq!(stats[1], "  rounds/turn       median 4  max 4");
+    assert_eq!(stats.last().unwrap(), &format!("  {:<20} 1", "repeat_call"));
+    let timeline = crate::trace::view(&state, &sid, None, false);
+    assert!(
+        timeline.iter().any(|l| l.contains(" end t1: 4 rounds, ")),
+        "{timeline:?}"
+    );
+    let missing = state.join("trace").join("nope.jsonl");
+    assert_eq!(
+        crate::trace::view(&state, "nope", None, false),
+        [format!(
+            "no trace for nope (looked in {})",
+            missing.display()
+        )]
+    );
+}
+
 // rpctl's TurnTracingTests.test_tool_cap_and_no_answer_are_alarms.
 #[tokio::test]
 async fn the_tool_cap_and_no_answer_are_alarms() {

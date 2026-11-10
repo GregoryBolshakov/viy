@@ -80,13 +80,6 @@ fn resume_and_fork_of_a_chat_not_there_say_so() {
     }
 }
 
-#[test]
-fn commands_still_to_come_say_so() {
-    let (code, out, err) = run_capture(&["trace"]);
-    assert_eq!((code, out.as_str()), (1, ""));
-    assert_eq!(err, "viy trace: not ported yet (ROADMAP phase 7)\n");
-}
-
 /// Only what neither schedules nor runs anything: these go to this
 /// machine's processes.
 #[test]

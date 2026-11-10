@@ -686,6 +686,265 @@ impl TurnMonitor {
     }
 }
 
+// ---- `viy trace` ------------------------------------------------------------------
+
+const RED: &str = "\x1b[31m";
+const YELLOW: &str = "\x1b[33m";
+const DIM: &str = "\x1b[2m";
+const RST: &str = "\x1b[0m";
+
+/// The JSON-object rows of a JSONL file, the last `limit` when given and
+/// not zero; none when it cannot be read.
+fn read_rows(path: &Path, limit: Option<usize>) -> Vec<Map<String, Value>> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let rows: Vec<Map<String, Value>> = text
+        .lines()
+        .filter_map(|l| match serde_json::from_str(l) {
+            Ok(Value::Object(m)) => Some(m),
+            _ => None,
+        })
+        .collect();
+    match limit {
+        Some(n) if n > 0 => rows[rows.len().saturating_sub(n)..].to_vec(),
+        _ => rows,
+    }
+}
+
+/// A row's time, local, as `%m-%d %H:%M:%S`.
+fn when(row: &Map<String, Value>) -> String {
+    let ts = row.get("ts").and_then(Value::as_f64).unwrap_or(0.0);
+    let secs = ts.floor() as i64;
+    let nanos = ((ts - ts.floor()) * 1e9) as u32;
+    chrono::DateTime::from_timestamp(secs, nanos)
+        .map(|t| {
+            t.with_timezone(&chrono::Local)
+                .format("%m-%d %H:%M:%S")
+                .to_string()
+        })
+        .unwrap_or_else(|| "??-?? ??:??:??".into())
+}
+
+/// A field as text: a string as it is, a missing or null one as `-`,
+/// anything else as JSON.
+fn field(row: &Map<String, Value>, key: &str) -> String {
+    match row.get(key) {
+        Some(Value::String(s)) => s.clone(),
+        None | Some(Value::Null) => "-".into(),
+        Some(v) => v.to_string(),
+    }
+}
+
+fn num(row: &Map<String, Value>, key: &str) -> f64 {
+    row.get(key).and_then(Value::as_f64).unwrap_or(0.0)
+}
+
+fn strings(row: &Map<String, Value>, key: &str) -> Vec<String> {
+    row.get(key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_string))
+        .collect()
+}
+
+/// What `viy trace [alarms|stats|SESSION_ID] [-n N]` prints (rp's
+/// `cmd_trace`), from the trace files under `state_dir` (viy's state
+/// folder): the recent turns, the recent alarms, totals over recent turns,
+/// or one chat's timeline. `colour`: rp's colours, for a terminal.
+pub fn view(state_dir: &Path, what: &str, n: Option<usize>, colour: bool) -> Vec<String> {
+    let paint = |c: &str, text: &str| {
+        if colour {
+            format!("{c}{text}{RST}")
+        } else {
+            text.to_string()
+        }
+    };
+    let what = what.trim();
+    let n = match n {
+        None if matches!(what, "" | "alarms" | "stats") => Some(30),
+        n => n,
+    };
+    let mut out = Vec::new();
+    match what {
+        "alarms" => {
+            let rows = read_rows(&state_dir.join("alarms.jsonl"), n);
+            if rows.is_empty() {
+                out.push("no alarms recorded".into());
+            }
+            for r in &rows {
+                let c = match r.get("severity").and_then(Value::as_str) {
+                    Some("error") => RED,
+                    Some("warn") => YELLOW,
+                    _ => DIM,
+                };
+                let sid = r.get("sid").and_then(Value::as_str).unwrap_or("?");
+                let code = format!("{:<20}", field(r, "code"));
+                let msg = r.get("msg").and_then(Value::as_str).unwrap_or_default();
+                out.push(format!("{}  {sid:<24} {} {msg}", when(r), paint(c, &code)));
+            }
+        }
+        "stats" => {
+            let rows: Vec<_> = read_rows(&state_dir.join("turns.jsonl"), n)
+                .into_iter()
+                .filter(|r| r.get("label").and_then(Value::as_str) == Some("main"))
+                .collect();
+            if rows.is_empty() {
+                out.push("no turns recorded".into());
+                return out;
+            }
+            let k = rows.len();
+            let mut rounds: Vec<f64> = rows.iter().map(|r| num(r, "rounds")).collect();
+            let mut secs: Vec<f64> = rows.iter().map(|r| num(r, "secs")).collect();
+            rounds.sort_by(f64::total_cmp);
+            secs.sort_by(f64::total_cmp);
+            let max = |v: &[f64]| v.iter().copied().fold(f64::MIN, f64::max);
+            // counts in order of first appearance, then most first (Counter.most_common)
+            let mut codes: Vec<(String, usize)> = Vec::new();
+            for c in rows.iter().flat_map(|r| strings(r, "alarms")) {
+                match codes.iter_mut().find(|(k, _)| *k == c) {
+                    Some((_, n)) => *n += 1,
+                    None => codes.push((c, 1)),
+                }
+            }
+            codes.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+            let with_alarms = rows
+                .iter()
+                .filter(|r| !strings(r, "alarms").is_empty())
+                .count();
+            let helpers: f64 = rows.iter().map(|r| num(r, "helpers")).sum();
+            let failed: f64 = rows.iter().map(|r| num(r, "helper_failures")).sum();
+            out.push(format!("last {k} turns"));
+            out.push(format!(
+                "  rounds/turn       median {}  max {}",
+                rounds[k / 2],
+                max(&rounds)
+            ));
+            out.push(format!(
+                "  secs/turn         median {:.0}  max {:.0}",
+                secs[k / 2],
+                max(&secs)
+            ));
+            out.push(format!("  turns with alarms {with_alarms}/{k}"));
+            out.push(format!("  explore helpers   {helpers} ({failed} failed)"));
+            out.extend(codes.iter().map(|(c, n)| format!("  {c:<20} {n}")));
+        }
+        "" => {
+            let rows = read_rows(&state_dir.join("turns.jsonl"), n);
+            if rows.is_empty() {
+                out.push("no turns recorded yet".into());
+                return out;
+            }
+            out.push(format!(
+                "{:<15} {:<24} {:<9} rnds calls  secs  alarms",
+                "when", "session", "who"
+            ));
+            for r in &rows {
+                let calls: f64 = r
+                    .get("tool_calls")
+                    .and_then(Value::as_object)
+                    .map_or(0.0, |m| m.values().filter_map(Value::as_f64).sum());
+                let al = strings(r, "alarms").join(",");
+                let al = if al.is_empty() {
+                    "-".to_string()
+                } else {
+                    paint(YELLOW, &al)
+                };
+                out.push(format!(
+                    "{} {:<24} {:<9} {:>4} {:>5} {:>5.0}  {al}",
+                    when(r),
+                    r.get("sid").and_then(Value::as_str).unwrap_or("?"),
+                    r.get("label").and_then(Value::as_str).unwrap_or_default(),
+                    num(r, "rounds"),
+                    calls,
+                    num(r, "secs"),
+                ));
+            }
+        }
+        session => {
+            let path = state_dir.join("trace").join(format!("{session}.jsonl"));
+            let rows = read_rows(&path, n);
+            if rows.is_empty() {
+                out.push(format!(
+                    "no trace for {session} (looked in {})",
+                    path.display()
+                ));
+                return out;
+            }
+            for r in &rows {
+                let kind = r.get("kind").and_then(Value::as_str).unwrap_or_default();
+                let lab = r.get("label").and_then(Value::as_str).unwrap_or_default();
+                let t = when(r);
+                out.push(match kind {
+                    "round" => {
+                        let calls = strings(r, "calls").join(",");
+                        format!(
+                            "{t} {lab:<9} t{} r{:<2} {:<5} {:>6.1}s {:<10} out={} calls={}",
+                            field(r, "turn"),
+                            field(r, "round"),
+                            r.get("mode").and_then(Value::as_str).unwrap_or_default(),
+                            num(r, "secs"),
+                            r.get("finish").and_then(Value::as_str).unwrap_or_default(),
+                            field(r, "completion_tokens"),
+                            if calls.is_empty() { "-" } else { &calls },
+                        )
+                    }
+                    "tool" => {
+                        let err = r.get("error").and_then(Value::as_str).unwrap_or_default();
+                        let flag = if err.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" {}", paint(RED, &format!("ERR {}", head(err, 60))))
+                        };
+                        let repeat = r.get("repeat").and_then(Value::as_f64).unwrap_or(1.0);
+                        let rep = if repeat > 1.0 {
+                            format!(" {}", paint(YELLOW, &format!("x{}", field(r, "repeat"))))
+                        } else {
+                            String::new()
+                        };
+                        let args = r.get("args").and_then(Value::as_str).unwrap_or_default();
+                        format!(
+                            "{t} {lab:<9}   {} {}{rep}{flag}",
+                            field(r, "name"),
+                            head(args, 70)
+                        )
+                    }
+                    "alarm" => format!(
+                        "{t} {lab:<9} {}",
+                        paint(
+                            YELLOW,
+                            &format!("ALARM {}: {}", field(r, "code"), field(r, "msg"))
+                        )
+                    ),
+                    "turn_end" => {
+                        let al = strings(r, "alarms").join(",");
+                        format!(
+                            "{t} {lab:<9} end t{}: {} rounds, {}s, alarms={}",
+                            field(r, "turn"),
+                            field(r, "rounds"),
+                            field(r, "secs"),
+                            if al.is_empty() { "-" } else { &al }
+                        )
+                    }
+                    _ => {
+                        let rest: Map<String, Value> = r
+                            .iter()
+                            .filter(|(k, _)| !matches!(k.as_str(), "ts" | "kind"))
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
+                        format!(
+                            "{t} {lab:<9} {kind} {}",
+                            head(&Value::Object(rest).to_string(), 120)
+                        )
+                    }
+                });
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 #[path = "trace_tests.rs"]
 mod tests;

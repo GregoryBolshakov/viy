@@ -138,12 +138,6 @@ fn dispatch(
     err: &mut (dyn Write + Send),
     terminal: Terminal,
 ) -> Result<(), Failure> {
-    let not_ported = |phase: u8| {
-        Err(Failure::from(format!(
-            "viy {}: not ported yet (ROADMAP phase {phase})",
-            command.name()
-        )))
-    };
     let paths = || Paths::from_env().map_err(|e| e.to_string());
     let cwd = || -> Result<PathBuf, String> {
         std::env::current_dir().map_err(|e| format!("the working directory: {e}"))
@@ -231,7 +225,14 @@ fn dispatch(
             };
             toolbox_cli::cmd_toolbox(args, &paths()?, &cwd()?, terminal.tty, asking, out)
         }
-        Command::Trace(_) => not_ported(7),
+        Command::Trace(args) => {
+            let lines =
+                viy_agent::trace::view(&paths()?.state_dir(), &args.what, args.n, terminal.tty);
+            for line in lines {
+                writeln!(out, "{line}").map_err(|e| Failure::from(e.to_string()))?;
+            }
+            Ok(())
+        }
     }
 }
 

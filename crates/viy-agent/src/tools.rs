@@ -526,7 +526,7 @@ impl Chat {
     }
 
     /// Routes one call to its tool (rp's `_dispatch_tool`).
-    async fn dispatch(&mut self, ctx: &TurnContext, c: &ToolCall) -> (Value, Card) {
+    pub(crate) async fn dispatch(&mut self, ctx: &TurnContext, c: &ToolCall) -> (Value, Card) {
         let off = |name: &str| {
             (
                 json!({"error": format!("the {name} tool is off")}),
@@ -541,9 +541,10 @@ impl Chat {
             "fetch_url" => self.run_fetch(ctx, &c.arguments).await,
             "explore" if !(self.tools_on && self.explore_on) => off(name),
             "explore" => (self.run_explore(ctx, &c.arguments).await, Card::default()),
-            // Phase 7 (ask_claude, the toolbox): off, as rpctl's are when
-            // not enabled.
-            "ask_claude" | "find_tool" => off(name),
+            "ask_claude" if !self.consult_available() => off(name),
+            "ask_claude" => (self.run_consult(ctx, &c.arguments).await, Card::default()),
+            // Phase 7 (the toolbox): off, as rpctl's is when not enabled.
+            "find_tool" => off(name),
             _ if build::NAMES.contains(&name) => {
                 if !self.tools_on {
                     let e = format!("the {name} tool is off; enable it with /tools on");

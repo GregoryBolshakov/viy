@@ -119,7 +119,7 @@ pub fn find_executable(path: Option<&OsStr>, name: &str) -> Option<PathBuf> {
 /// Waits for `child` and for its output, both within `timeout`; kills the
 /// child when it runs over. Output still held open after the child exits
 /// (by a process it left behind) counts against the same deadline.
-fn wait_with_timeout(mut child: Child, timeout: Duration) -> io::Result<Output> {
+pub fn wait_with_timeout(mut child: Child, timeout: Duration) -> io::Result<Output> {
     let deadline = Instant::now() + timeout;
     let timed_out = || {
         io::Error::new(

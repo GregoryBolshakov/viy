@@ -169,6 +169,8 @@ pub struct Chat {
     /// TOOL_ELIDE_THRESHOLD and TOOL_ELIDE_KEEP_TURNS ([`compact`]).
     elide_threshold: f64,
     elide_keep_turns: usize,
+    /// ask_claude's settings, which `/consult` changes per chat.
+    consult: consult::ConsultSettings,
     /// EXPLORE_ENABLED, SYSTEM_GUIDE_TRUST_EXPLORE, and explore's limits.
     explore_on: bool,
     guide_trust_explore: bool,
@@ -294,6 +296,7 @@ impl Chat {
             cfg.get("TOOL_ELIDE_THRESHOLD"),
             cfg.get("TOOL_ELIDE_KEEP_TURNS"),
         );
+        let consult = consult::ConsultSettings::from_config(cfg, &places.home);
         Ok(Self {
             cfg: cfg.clone(),
             places,
@@ -324,6 +327,7 @@ impl Chat {
             auto_compact: on("AUTO_COMPACT", "1"),
             elide_threshold: elide.0,
             elide_keep_turns: elide.1,
+            consult,
             explore_on: on("EXPLORE_ENABLED", "1"),
             guide_trust_explore: on("SYSTEM_GUIDE_TRUST_EXPLORE", "1"),
             explore: workflows::ExploreSettings::from_config(cfg),
@@ -1116,6 +1120,9 @@ impl Chat {
             if self.explore_on {
                 specs.push(viy_tools::explore::explore_tool());
             }
+            if self.consult_available() {
+                specs.push(consult::consult_tool());
+            }
         }
         specs
     }
@@ -1154,12 +1161,12 @@ impl Chat {
         let block = instructions::render(&self.instructions());
         SystemPrompt {
             user: self.system.as_deref(),
-            // Explore, ask_claude and the toolbox come with phase 7.
+            // The toolbox comes with phase 7.
             tools_on: self.tools_on,
             search_on: self.search_on,
             guide_on: self.guide_on,
             explore_trust: self.explore_on && self.guide_trust_explore,
-            consult: false,
+            consult: self.consult_available(),
             toolbox_index: None,
             workspace: &self.places.workspace,
             today: &self.today,
@@ -1994,6 +2001,8 @@ impl Turns for ChatTurns {
 mod commands;
 #[path = "compact.rs"]
 pub mod compact;
+#[path = "consult.rs"]
+pub mod consult;
 #[path = "tools.rs"]
 mod tools;
 #[path = "web.rs"]

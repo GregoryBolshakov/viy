@@ -97,6 +97,8 @@ fn chat_touching(
         ("TOOLS_ENABLED", "0"),
         ("SEARCH_ENABLED", "0"),
         ("CHAT_AUTO_TITLE", "0"),
+        // A claude on this machine's PATH would add ask_claude.
+        ("CONSULT_ENABLED", "0"),
     ]
     .iter()
     .chain(over)

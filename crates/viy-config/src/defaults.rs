@@ -288,7 +288,7 @@ pub const DEFAULTS: &[(&str, &str)] = &[
     ("CONSULT_MAX_BUDGET_USD", ""), // empty: no cap
     ("CONSULT_REPORT_CHARS", "20000"),
     ("CONSULT_KEEP_DAYS", "7"),
-    ("CONSULT_ROOT", ""), // empty: /tmp/rpctl-consult-<uid>
+    ("CONSULT_ROOT", ""), // empty: viy's own folder under /tmp (consult::default_root)
     ("CONSULT_CLAUDE_BIN", "claude"),
     // The toolbox (rpctl/toolbox.py, docs/toolbox-plan.md): command-line
     // tools kept between chats, indexed in the system prompt (frozen per

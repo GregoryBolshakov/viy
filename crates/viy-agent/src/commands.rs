@@ -123,7 +123,7 @@ const HELP: &str = "  /help              show this
 fn later(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
         "ssh" | "unssh" | "git" => "phase 4",
-        "consult" | "toolbox" => "phase 7",
+        "toolbox" => "phase 7",
         _ => return None,
     })
 }
@@ -335,7 +335,7 @@ fn encode_image(reference: &str, home: &Path) -> std::io::Result<String> {
 }
 
 /// `~` and `~/...` under `home`.
-fn expand_home(text: &str, home: &Path) -> PathBuf {
+pub(crate) fn expand_home(text: &str, home: &Path) -> PathBuf {
     match text.strip_prefix('~') {
         Some("") => home.to_path_buf(),
         Some(rest) if rest.starts_with('/') => home.join(&rest[1..]),
@@ -355,6 +355,7 @@ impl Chat {
             "help" => info("help", HELP.to_string()),
             "search" => self.search_command(ctx, arg).await,
             "compact" => self.compact_command(ctx, arg).await,
+            "consult" => self.consult_command(ctx, arg),
             "autocompact" => self.autocompact_command(ctx, arg),
             "sources" => self.sources_command(ctx),
             "new" | "reset" => {

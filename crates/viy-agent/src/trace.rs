@@ -197,6 +197,19 @@ impl Tracer {
         self.trace_dir().join(format!("{}.jsonl", self.sid()))
     }
 
+    /// A larger artifact beside the trace (a helper's whole transcript):
+    /// its path, or `None` when tracing is off or the write failed.
+    pub fn save_json(&self, name: &str, data: &Value) -> Option<String> {
+        if !self.enabled {
+            return None;
+        }
+        let path = self.trace_dir().join(self.sid()).join(name);
+        let text = serde_json::to_string_pretty(data).ok()?;
+        std::fs::create_dir_all(path.parent()?).ok()?;
+        std::fs::write(&path, text).ok()?;
+        Some(path.display().to_string())
+    }
+
     /// One event in the session's trace; `fields` is a JSON object.
     pub fn event(&self, kind: &str, fields: Value) {
         if !self.enabled {
@@ -616,6 +629,12 @@ impl TurnMonitor {
                  result ({n}x now). Use it, or do something different."
             )
         })
+    }
+
+    /// Helpers an explore call ran in this turn, and how many failed.
+    pub fn add_helpers(&mut self, n: u64, failed: u64) {
+        self.helpers += n;
+        self.helper_failures += failed;
     }
 
     /// An alarm the caller decided (the tool cap, the retry, no answer).

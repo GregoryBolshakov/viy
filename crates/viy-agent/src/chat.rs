@@ -169,6 +169,10 @@ pub struct Chat {
     /// TOOL_ELIDE_THRESHOLD and TOOL_ELIDE_KEEP_TURNS ([`compact`]).
     elide_threshold: f64,
     elide_keep_turns: usize,
+    /// EXPLORE_ENABLED, SYSTEM_GUIDE_TRUST_EXPLORE, and explore's limits.
+    explore_on: bool,
+    guide_trust_explore: bool,
+    explore: workflows::ExploreSettings,
     /// COMPACT_TRIM_TARGET, COMPACT_BACKGROUND_AT, COMPACT_CONSOLIDATE_AT.
     fractions: compact::Fractions,
     /// Set after a failed auto-compaction, so one broken pod does not mean
@@ -320,6 +324,9 @@ impl Chat {
             auto_compact: on("AUTO_COMPACT", "1"),
             elide_threshold: elide.0,
             elide_keep_turns: elide.1,
+            explore_on: on("EXPLORE_ENABLED", "1"),
+            guide_trust_explore: on("SYSTEM_GUIDE_TRUST_EXPLORE", "1"),
+            explore: workflows::ExploreSettings::from_config(cfg),
             fractions: compact::Fractions::from_config(cfg),
             compact_failed: false,
             background: None,
@@ -1106,6 +1113,9 @@ impl Chat {
         }
         if self.tools_on {
             specs.extend(viy_tools::build::tools(self.sandbox_net == "host"));
+            if self.explore_on {
+                specs.push(viy_tools::explore::explore_tool());
+            }
         }
         specs
     }
@@ -1148,7 +1158,7 @@ impl Chat {
             tools_on: self.tools_on,
             search_on: self.search_on,
             guide_on: self.guide_on,
-            explore_trust: false,
+            explore_trust: self.explore_on && self.guide_trust_explore,
             consult: false,
             toolbox_index: None,
             workspace: &self.places.workspace,
@@ -1988,6 +1998,8 @@ pub mod compact;
 mod tools;
 #[path = "web.rs"]
 pub mod web;
+#[path = "workflows.rs"]
+pub mod workflows;
 
 /// `n` random bytes as hex, for a tool call that came without an id.
 fn random_hex(n: usize) -> String {

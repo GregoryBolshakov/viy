@@ -1,0 +1,82 @@
+Scenario: explore-one-helper
+
+## Window 1
+settings: model="qwen3.8-abliterated" tool_choice="auto" max_tokens=1 stream=false tools=[write_file, read_file, list_dir, run_shell]
+-- request 1 (no stream, tools auto) --
+00:user:
+    ping
+
+## Window 2 (after request 1: messages diverged at item 00, settings changed (chat_template_kwargs, max_tokens, stream, stream_options, temperature, tools, top_k, top_p))
+settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature=1.0 top_p=0.95 max_tokens=16384 stream_options={"include_usage":true} top_k=20 chat_template_kwargs={"reasoning_effort":"medium","preserve_thinking":false} tools=[write_file, read_file, list_dir, run_shell, explore]
+-- request 2 (stream, tools auto) --
+00:system:
+    You are working directly inside the user's project and have tools to act on it: write_file, read_file, list_dir, and run_shell (run_shell's working directory is... (942 chars)
+    
+    Today is {TODAY}. The user's machine runs Linux. run_shell commands run with bash in {WORKSPACE}.
+    
+    How to help:
+    - Work toward what the user is trying to achieve, not just the literal request. When they ask for advice or are unsure what is best, give your own recommendatio... (312 chars)
+    - If a request is ambiguous, pick the most sensible reading, say which one you picked, and go ahead. Ask first only when a wrong guess would be costly or hard t... (167 chars)
+    - End every turn with a final answer in plain text: what you did or found, and what is still open. Never leave the answer only in your reasoning.
+    - Put the answer first. Keep it as short as the question allows. Cite files as path:line.
+    
+    How to work with the tools:
+    - Keep actions within the task. Reading, searching and running read-only commands are always fine. Changes the task did not call for -- editing unrelated files,... (324 chars)
+    - Before changing code, read the files involved and the code around the change, and match their style and naming.
+    - To explain code, answer from reading it. Write and run a test script only when reading cannot settle the question.
+    - After a change, check it: run the tests or the code, or read the file back. Report failures as they are. Never say something works unless you checked it.
+    - Call each tool only with the parameters its schema lists.
+    - Explore reports are reliable: use their findings and file:line citations directly. Re-read a file only to edit it or to check something the report marks as un... (168 chars)
+01:user:
+    How many retries does the app make? Use explore.
+
+## Window 3 (after request 2: messages diverged at item 00, settings changed (stream, stream_options, tools))
+settings: model="qwen3.8-abliterated" tool_choice="auto" stream=false temperature=1.0 top_p=0.95 max_tokens=16384 top_k=20 chat_template_kwargs={"reasoning_effort":"medium","preserve_thinking":false} tools=[read_file, list_dir, run_shell]
+-- request 3 (no stream, tools auto) --
+00:system:
+    You are a read-only research helper inside a coding agent. You get one question about the project in the workspace. Find the answer with your tools: read_file, ... (618 chars)
+01:user:
+    Where is the retry count set and what is it?
+    
+    Start with: app
+-- request 4 (no stream, tools auto) --
+02:assistant:
+    -> list_dir(h1) {"path": "app"}
+03:tool[h1]:
+    {"path": "app", "entries": ["config.py", "main.py"]}
+-- request 5 (no stream, tools auto) --
+04:assistant:
+    -> read_file(h2) {"path": "app/config.py"}
+    -> run_shell(h3) {"command": "grep -rn RETRIES app"}
+05:tool[h2]:
+    {"path": "app/config.py", "lines": 3, "content": "RETRIES = 7\nTIMEOUT = 30\n", "truncated": false}
+06:tool[h3]:
+    {"exit_code": 0, "timed_out": false, "stdout": "app/config.py:1:RETRIES = 7\napp/main.py:1:from app.config import RETRIES\n", "stderr": ""}
+
+## Window 4 (after request 5: messages diverged at item 00, settings changed (stream, stream_options, tools))
+settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature=1.0 top_p=0.95 max_tokens=16384 stream_options={"include_usage":true} top_k=20 chat_template_kwargs={"reasoning_effort":"medium","preserve_thinking":false} tools=[write_file, read_file, list_dir, run_shell, explore]
+-- request 6 (stream, tools auto) --
+00:system:
+    You are working directly inside the user's project and have tools to act on it: write_file, read_file, list_dir, and run_shell (run_shell's working directory is... (942 chars)
+    
+    Today is {TODAY}. The user's machine runs Linux. run_shell commands run with bash in {WORKSPACE}.
+    
+    How to help:
+    - Work toward what the user is trying to achieve, not just the literal request. When they ask for advice or are unsure what is best, give your own recommendatio... (312 chars)
+    - If a request is ambiguous, pick the most sensible reading, say which one you picked, and go ahead. Ask first only when a wrong guess would be costly or hard t... (167 chars)
+    - End every turn with a final answer in plain text: what you did or found, and what is still open. Never leave the answer only in your reasoning.
+    - Put the answer first. Keep it as short as the question allows. Cite files as path:line.
+    
+    How to work with the tools:
+    - Keep actions within the task. Reading, searching and running read-only commands are always fine. Changes the task did not call for -- editing unrelated files,... (324 chars)
+    - Before changing code, read the files involved and the code around the change, and match their style and naming.
+    - To explain code, answer from reading it. Write and run a test script only when reading cannot settle the question.
+    - After a change, check it: run the tests or the code, or read the file back. Report failures as they are. Never say something works unless you checked it.
+    - Call each tool only with the parameters its schema lists.
+    - Explore reports are reliable: use their findings and file:line citations directly. Re-read a file only to edit it or to check something the report marks as un... (168 chars)
+01:user:
+    How many retries does the app make? Use explore.
+02:assistant:
+    -> explore(call_x1) {"tasks": [{"question": "Where is the retry count set and what is it?", "paths": ["app"]}]}
+03:tool[call_x1]:
+    {"results": [{"question": "Where is the retry count set and what is it?", "status": "ok", "rounds": 3, "files_read": ["app/config.py"], "report": "RETRIES = 7 i... (495 chars)

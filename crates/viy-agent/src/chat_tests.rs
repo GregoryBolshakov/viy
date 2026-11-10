@@ -18,6 +18,13 @@ use super::*;
 use crate::engine::Engine;
 use crate::sessions;
 
+/// The build tools and explore, as a chat with TOOLS_ENABLED offers them.
+fn with_explore(host_net: bool) -> Vec<Value> {
+    let mut specs = viy_tools::build::tools(host_net);
+    specs.push(viy_tools::explore::explore_tool());
+    specs
+}
+
 /// Places with no instruction files in them.
 fn nowhere() -> Places {
     Places {
@@ -1373,8 +1380,8 @@ fn the_tool_schema_follows_sandbox_net() {
         json!([]),
         &[("TOOLS_ENABLED", "1"), ("SANDBOX_NET", " Host ")],
     );
-    assert_eq!(proxied.chat.tool_specs(), viy_tools::build::tools(false));
-    assert_eq!(host.chat.tool_specs(), viy_tools::build::tools(true));
+    assert_eq!(proxied.chat.tool_specs(), with_explore(false));
+    assert_eq!(host.chat.tool_specs(), with_explore(true));
     assert_ne!(names(&proxied.chat), names(&host.chat));
 }
 
@@ -1438,7 +1445,7 @@ async fn tools_command_turns_the_build_tools_on_and_off() {
     assert!(said[4].starts_with("there is one approval now"), "{said:?}");
     assert_eq!(said[5], "usage: /tools [on|off]");
     d.chat.command(&ctx, "/tools on").await;
-    assert_eq!(d.chat.tool_specs().len(), 4);
+    assert_eq!(d.chat.tool_specs().len(), 5); // and explore
     let on = d.said()[0].clone();
     assert!(
         on.starts_with("build tools on: write_file, read_file, list_dir, run_shell. workspace: ")
@@ -1761,7 +1768,7 @@ async fn host_mode_warns_and_tells_the_reviewer_the_whole_network() {
         eprintln!("skipped: no sandbox here");
         return;
     }
-    assert_eq!(d.chat.tool_specs(), viy_tools::build::tools(true));
+    assert_eq!(d.chat.tool_specs(), with_explore(true));
     let ctx = d.ctx.clone();
     let (result, _) = d
         .chat
@@ -1786,7 +1793,7 @@ fn an_unknown_sandbox_net_is_the_proxy() {
         json!([]),
         &[("TOOLS_ENABLED", "1"), ("SANDBOX_NET", "hots")],
     );
-    assert_eq!(d.chat.tool_specs(), viy_tools::build::tools(false));
+    assert_eq!(d.chat.tool_specs(), with_explore(false));
 }
 
 // rpctl's ChatEgressTests.test_offline_commands_get_no_proxy, with the real

@@ -3,7 +3,7 @@
 //! `_tool_run_shell`, `_approve_auto`'s hearing, `_report_quarantine`).
 //!
 //! Every call gets a result, in order: a tool that is off, or that viy
-//! does not have yet (explore, ask_claude and find_tool until phase 7),
+//! does not have yet (ask_claude and find_tool until phase 7),
 //! answers rpctl's "is off" error, which rpctl gives when the tool is off.
 //! web_search and fetch_url run in [`super::web`]. Every result passes
 //! [`untrusted::neutralize`] before the model sees it.
@@ -262,7 +262,7 @@ impl Chat {
         }
     }
 
-    fn sandbox_host(&self) -> sandbox::Host {
+    pub(crate) fn sandbox_host(&self) -> sandbox::Host {
         sandbox::Host::new(self.places.home.clone(), self.files.clients.clone())
     }
 
@@ -539,9 +539,11 @@ impl Chat {
             "web_search" => self.run_search(ctx, &c.arguments).await,
             "fetch_url" if !self.fetch_on => off(name),
             "fetch_url" => self.run_fetch(ctx, &c.arguments).await,
-            // Phase 7 (explore, ask_claude, the toolbox): off, as rpctl's
-            // are when not enabled.
-            "ask_claude" | "find_tool" | "explore" => off(name),
+            "explore" if !(self.tools_on && self.explore_on) => off(name),
+            "explore" => (self.run_explore(ctx, &c.arguments).await, Card::default()),
+            // Phase 7 (ask_claude, the toolbox): off, as rpctl's are when
+            // not enabled.
+            "ask_claude" | "find_tool" => off(name),
             _ if build::NAMES.contains(&name) => {
                 if !self.tools_on {
                     let e = format!("the {name} tool is off; enable it with /tools on");
@@ -1059,13 +1061,13 @@ async fn quiet_call(
     arguments: &str,
     tools_on: bool,
 ) -> Option<(Value, Card, Option<(PathBuf, String)>)> {
-    if matches!(name.as_str(), "web_search" | "fetch_url") {
+    if matches!(name.as_str(), "web_search" | "fetch_url" | "explore") {
         // They hold the chat's web state: run one by one after the batch's
         // reads, in call order.
         return None;
     }
     if !build::NAMES.contains(&name.as_str()) {
-        // explore and find_tool (phase 7), off as in dispatch.
+        // find_tool (phase 7), off as in dispatch.
         let e = format!("the {name} tool is off");
         return Some((json!({"error": e}), Card::default(), None));
     }

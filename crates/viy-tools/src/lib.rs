@@ -20,6 +20,7 @@ pub mod approve;
 pub mod build;
 pub mod doctrines;
 pub mod egress;
+pub mod explore;
 pub mod guard;
 pub mod modes;
 pub mod mounts;

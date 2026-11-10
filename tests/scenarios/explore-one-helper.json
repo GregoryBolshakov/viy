@@ -1,0 +1,104 @@
+{
+ "name": "explore-one-helper",
+ "about": "Build tools on with explore, search off. The model calls explore with one question; the helper (non-streamed requests with read_file, list_dir and run_shell offered) lists the workspace, reads a file, and reports with a file:line citation; only the report reaches the main chat, which answers from it.",
+ "config": {
+  "TOOLS_ENABLED": "1",
+  "EXPLORE_ENABLED": "1",
+  "SEARCH_ENABLED": "0",
+  "CONSULT_ENABLED": "0",
+  "CHAT_AUTO_TITLE": "0"
+ },
+ "max_model_len": 65536,
+ "workspace": {
+  "app/config.py": "RETRIES = 7\nTIMEOUT = 30\n",
+  "app/main.py": "from app.config import RETRIES\n"
+ },
+ "steps": [
+  {
+   "user": "How many retries does the app make? Use explore."
+  }
+ ],
+ "responses": [
+  {
+   "expect": {
+    "stream": false,
+    "tools": "auto"
+   },
+   "message": ""
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "call_x1",
+      "name": "explore",
+      "arguments": "{\"tasks\": [{\"question\": \"Where is the retry count set and what is it?\", \"paths\": [\"app\"]}]}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": false,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "message": "",
+   "tool_calls": [
+    {
+     "id": "h1",
+     "name": "list_dir",
+     "arguments": "{\"path\": \"app\"}"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": false,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "message": "",
+   "tool_calls": [
+    {
+     "id": "h2",
+     "name": "read_file",
+     "arguments": "{\"path\": \"app/config.py\"}"
+    },
+    {
+     "id": "h3",
+     "name": "run_shell",
+     "arguments": "{\"command\": \"grep -rn RETRIES app\"}"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": false,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "message": "RETRIES = 7 is set in app/config.py:1 and imported by app/main.py:1."
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "stream": [
+    {
+     "content": "The app retries 7 times (app/config.py:1)."
+    }
+   ]
+  }
+ ]
+}

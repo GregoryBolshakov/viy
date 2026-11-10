@@ -3843,6 +3843,7 @@ TOOLS_CONFIGS = [
     ("build_tools_host_net", {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "0", "SANDBOX_NET": "host"}),
     ("search_without_fetch", {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "1", "FETCH_ENABLED": "0"}),
     ("tools_off", {"TOOLS_ENABLED": "0", "SEARCH_ENABLED": "0"}),
+    ("with_explore", {"TOOLS_ENABLED": "1", "SEARCH_ENABLED": "1", "EXPLORE_ENABLED": "1"}),
 ]
 
 
@@ -3861,7 +3862,7 @@ def gen_chat_tools(snap):
                               json.dumps(TOOLS_CONFIGS)],
                              cwd=tmp / "ws", env=env, check=True, capture_output=True, text=True)
     return {
-        "about": "rp's Chat._tool_specs() per config over DEFAULTS (consult, explore, toolbox "
+        "about": "rp's Chat._tool_specs() per config over DEFAULTS (consult, explore (but in with_explore), toolbox "
                  "and instructions off, the sandbox taken as working, a workspace without "
                  ".git), keys in order; and the tool loop's notices, PARALLEL_SAFE and "
                  "BUILD_TOOL_NAMES",

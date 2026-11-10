@@ -38,6 +38,15 @@ fn web_tools_come_first_as_rpctl_orders_them() {
 }
 
 #[test]
+fn explore_comes_after_the_build_tools() {
+    let theirs = rpctl("with_explore")["tools"].as_array().unwrap().clone();
+    let mut ours = vec![crate::web::search_tool(), crate::web::fetch_tool()];
+    ours.extend(tools(false));
+    ours.push(crate::explore::explore_tool());
+    assert_eq!(text(&ours), text(&theirs));
+}
+
+#[test]
 fn names_and_parallel_safe_tools_are_rpctls() {
     let n = rpctl("notices");
     let list = |k: &str| -> Vec<String> {

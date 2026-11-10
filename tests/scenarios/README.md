@@ -67,7 +67,9 @@ scenario with build tools off. Keep stream text ASCII: fakellm's
     "index"}}`, `{"finish": "length"}` (default `stop`), `{"usage": {...}}`,
     `{"delay": seconds}`, `{"drop": true}` (cut the connection, no
     `[DONE]`), `{"raw": "data: ...\n\n"}`.
-  - `{"message": "text"}`: a non-streamed chat.completion.
+  - `{"message": "text"}`: a non-streamed chat.completion; with
+    `"tool_calls": [{"id", "name", "arguments"}]` its message carries
+    those calls (finish `tool_calls`), as an explore helper's reply does.
   - `{"status": 503, "body": "..."}`: an HTTP error.
   - Any of them may carry `"delay": seconds` before replying, and
     `"expect"`: checks on the request (`stream`: bool; `tools`: `auto`,

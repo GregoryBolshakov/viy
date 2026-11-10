@@ -392,11 +392,25 @@ fn reply(conn: &mut TcpStream, r: &Value, model: &str) -> io::Result<()> {
         return respond(conn, status, "text/plain", body.as_bytes());
     }
     if let Some(text) = r.get("message") {
+        let mut message = json!({"role": "assistant", "content": text});
+        let mut finish = r.get("finish").cloned().unwrap_or(json!("stop"));
+        if let Some(calls) = r
+            .get("tool_calls")
+            .and_then(Value::as_array)
+            .filter(|c| !c.is_empty())
+        {
+            message["tool_calls"] = calls
+                .iter()
+                .map(|c| {
+                    json!({"id": c["id"], "type": "function",
+                                "function": {"name": c["name"], "arguments": c["arguments"]}})
+                })
+                .collect();
+            finish = r.get("finish").cloned().unwrap_or(json!("tool_calls"));
+        }
         let body = json!({
             "id": "chatcmpl-fake", "object": "chat.completion", "created": 0, "model": model,
-            "choices": [{"index": 0,
-                         "finish_reason": r.get("finish").cloned().unwrap_or(json!("stop")),
-                         "message": {"role": "assistant", "content": text}}],
+            "choices": [{"index": 0, "finish_reason": finish, "message": message}],
             "usage": r.get("usage").cloned().unwrap_or_else(default_usage)});
         return respond(conn, 200, "application/json", body.to_string().as_bytes());
     }

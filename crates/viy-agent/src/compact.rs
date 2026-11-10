@@ -490,6 +490,28 @@ pub(crate) struct Background {
     job: JoinHandle<(Option<Reply>, bool, f64)>,
 }
 
+impl Background {
+    /// A background summary that never finishes, for tests of what runs
+    /// meanwhile.
+    #[cfg(test)]
+    pub(crate) fn pending() -> Self {
+        Self {
+            plan: Plan {
+                pinned: Vec::new(),
+                chunk: Vec::new(),
+                end: 0,
+                dropped: 0,
+                mode: Mode::Full,
+                think: false,
+                msgs: Vec::new(),
+                plain_msgs: Vec::new(),
+            },
+            fp: (None, 0, Vec::new()),
+            job: tokio::spawn(std::future::pending()),
+        }
+    }
+}
+
 /// "ok", or why a summary cannot be used.
 fn summary_status(out: Option<&Reply>, summary: &str) -> &'static str {
     match out {

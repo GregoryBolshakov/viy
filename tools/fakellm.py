@@ -244,11 +244,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if "status" in resp:
             return self._send(resp["status"], resp.get("body", ""), "text/plain")
         if "message" in resp:
+            message = {"role": "assistant", "content": resp["message"]}
+            finish = resp.get("finish", "stop")
+            if resp.get("tool_calls"):
+                message["tool_calls"] = [
+                    {"id": c["id"], "type": "function",
+                     "function": {"name": c["name"], "arguments": c["arguments"]}}
+                    for c in resp["tool_calls"]]
+                finish = resp.get("finish", "tool_calls")
             return self._send(200, dumps({
                 "id": "chatcmpl-fake", "object": "chat.completion", "created": 0,
                 "model": srv.model,
-                "choices": [{"index": 0, "finish_reason": resp.get("finish", "stop"),
-                             "message": {"role": "assistant", "content": resp["message"]}}],
+                "choices": [{"index": 0, "finish_reason": finish, "message": message}],
                 "usage": resp.get("usage", DEFAULT_USAGE)}))
         self._stream(resp.get("stream") or [])
 

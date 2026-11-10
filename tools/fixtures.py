@@ -4024,9 +4024,180 @@ def gen_chat_elision(snap):
     }
 
 
+# ---------------------------------------------------------- chat/compaction
+
+# rpctl's compaction plans and their pieces: `_plan_summary(focus, merge)`
+# (plan: pinned, chunk, end, dropped, mode, think and both request message
+# lists), `_trim_plan(extra)` (trim: n and the fraction), `_apply_summary`
+# (apply: the history and the write guard's reads after), and the pure
+# `_incremental_instruction` and `_restates`. Chats as chat/elision's.
+COMPACTION_RUNNER = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import chat, config
+job = json.loads(sys.stdin.read())
+
+def make(over):
+    cfg = dict(config.DEFAULTS, VLLM_API_KEY="k", TRACE_ENABLED="0", CONSULT_ENABLED="0",
+               INSTRUCTIONS_ENABLED="0", TOOLBOX_ENABLED="0", TOOLS_ENABLED="0",
+               SEARCH_ENABLED="0")
+    cfg.update(over)
+    c = chat.Chat(cfg, "http://127.0.0.1:1")
+    c._today = "2026-07-03 (Friday)"
+    return c
+
+out = []
+for case in job:
+    k = case["kind"]
+    if k == "instruction":
+        out.append({"text": chat._incremental_instruction(case["chunk"], case["tokens"])})
+        continue
+    if k == "restates":
+        out.append({"restates": chat._restates(case["earlier"], case["new"])})
+        continue
+    c = make(case.get("config", {}))
+    c.messages = case["history"]
+    if case.get("system"):
+        c.system = case["system"]
+    if k == "plan":
+        p = c._plan_summary(case.get("focus"), case.get("merge", False))
+        out.append({"plan": p})
+    elif k == "trim":
+        t = c._trim_plan(case.get("extra", []))
+        out.append({"trim": None if t is None else {"n": t["n"], "frac": t["frac"]}})
+    elif k == "apply":
+        c._seen = {str(c._resolve_in_workspace(r)): "sha" for r in case.get("seen", [])}
+        p = c._plan_summary(None, case.get("merge", False))
+        c._apply_summary(p, case["summary"])
+        out.append({"messages": c.messages, "seen_after": sorted(c._seen)})
+print(json.dumps(out))
+"""
+
+
+def _compaction_turns(n, size=1500, tools=True):
+    """n turns of a user question, a read_file and its result, an answer."""
+    out = []
+    for i in range(n):
+        out.append({"role": "user", "content": f"question {i}: " + "why " * 20})
+        if tools:
+            out.append({"role": "assistant", "content": None, "tool_calls": [
+                {"id": f"t{i}", "type": "function", "function": {
+                    "name": "read_file", "arguments": json.dumps({"path": f"f{i}.py"})}}]})
+            out.append({"role": "tool", "tool_call_id": f"t{i}",
+                        "content": f"file {i}\n" + ("code line\n" * (size // 10))})
+        out.append({"role": "assistant", "content": f"answer {i}: " + "because " * 30})
+    return out
+
+
+def compaction_job():
+    summary_line = "- a remembered fact about the project that is long enough to count"
+    summary = "[Summary of the conversation so far. Continue from here.]\n\n" + "\n".join(
+        f"{summary_line} {i}" for i in range(12))
+    pinned = [{"role": "user", "content": summary},
+              {"role": "assistant", "content": "Understood. I'll continue from the summary above."}]
+    big_summary = pinned[:1] and [{"role": "user", "content": summary + "\n" + "more " * 3000},
+                                  pinned[1]]
+    h4 = _compaction_turns(4)
+    small = {"MAX_MODEL_LEN": "5000", "MAX_TOKENS": "1000"}
+    huge_last = h4[:-4] + [{"role": "user", "content": "now this: " + "data " * 15000},
+                           {"role": "assistant", "content": "ok"}]
+    plans = [
+        dict(name="first_summary_keeps_the_newest_turn", history=h4),
+        dict(name="focus_is_appended", history=h4, focus="the build flags"),
+        dict(name="one_turn_only", history=h4[:4]),
+        dict(name="newest_turn_too_big_to_keep", history=huge_last),
+        dict(name="incremental_after_a_summary", history=pinned + h4),
+        dict(name="merge_below_the_limit_stays_incremental", history=pinned + h4, merge=True),
+        dict(name="merge_of_large_summaries_consolidates", history=big_summary + h4, merge=True,
+             config={"MAX_TOKENS": "2000"}),
+        dict(name="nothing_after_the_summary", history=pinned),
+        dict(name="only_the_newest_turn_after_it", history=pinned + h4[:4]),
+        dict(name="small_window_drops_old_turns", history=_compaction_turns(8), config=small),
+        dict(name="drops_never_open_on_a_tool_result",
+             history=[{"role": "tool", "tool_call_id": "x", "content": "orphan " * 300}]
+             + _compaction_turns(8), config=small),
+        dict(name="not_even_one_turn_fits",
+             history=_compaction_turns(3, size=30000), config=small),
+        dict(name="a_single_message_too_big", config=small, history=[
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": "big " * 6000},
+            {"role": "user", "content": "next"}, {"role": "assistant", "content": "ok"}]),
+        dict(name="user_system_prompt_in_plain", history=h4, system="You are terse."),
+        dict(name="thinking_on", history=h4, config={"COMPACT_THINKING": "1"}),
+        dict(name="multipart_user_message", history=[
+            {"role": "user", "content": [{"type": "text", "text": "look"}]},
+            {"role": "assistant", "content": "seen"}] + h4),
+    ]
+    trims = [
+        dict(name="elides_all_but_the_newest", history=h4),
+        dict(name="with_the_next_message", history=h4, extra=[{"role": "user", "content": "x " * 900}]),
+        dict(name="one_turn", history=h4[:4]),
+        dict(name="nothing_to_elide", history=_compaction_turns(3, tools=False)),
+    ]
+    applies = [
+        dict(name="first_summary", history=h4, summary="S1\n- fact", seen=["f0.py", "f3.py"]),
+        dict(name="appended_to_the_earlier", history=pinned + h4, summary="new part\n- done"),
+        dict(name="a_rewrite_replaces", history=pinned + h4,
+             summary="\n".join(f"{summary_line} {i}" for i in range(12))),
+        dict(name="consolidation_replaces", history=big_summary + h4, merge=True,
+             config={"MAX_TOKENS": "2000"}, summary="merged"),
+    ]
+    instructions = [
+        dict(name="names_the_start", chunk=[{"role": "assistant", "content": "a"},
+                                            {"role": "user", "content": '  say "hi"\n\tto  ' + "w" * 120}],
+             tokens=4000),
+        dict(name="no_user_text", chunk=[{"role": "user", "content": [{"type": "text", "text": "x"}]}],
+             tokens=100),
+        dict(name="empty_first_user", chunk=[{"role": "user", "content": ""},
+                                             {"role": "user", "content": "second"}], tokens=99999),
+        dict(name="words_floor", chunk=[], tokens=0),
+        dict(name="words_middle", chunk=[], tokens=5000),
+    ]
+    lines = [f"line {i} of the earlier summary, long enough to be counted" for i in range(10)]
+    restates = [
+        dict(name="rewrote_it", earlier="\n".join(lines), new=" ".join(lines[:4]) + " new"),
+        dict(name="added_to_it", earlier="\n".join(lines), new=lines[0] + "\nonly new things"),
+        dict(name="too_few_long_lines", earlier="\n".join(lines[:4]), new="\n".join(lines[:4])),
+        dict(name="whitespace_folded", earlier="\n".join(lines),
+             new="  ".join(l.replace(" ", "\n ") for l in lines[:3])),
+    ]
+    job = ([dict(kind="plan", **c) for c in plans] + [dict(kind="trim", **c) for c in trims]
+           + [dict(kind="apply", **c) for c in applies]
+           + [dict(kind="instruction", **c) for c in instructions]
+           + [dict(kind="restates", **c) for c in restates])
+    return job
+
+
+def gen_chat_compaction(snap):
+    job = compaction_job()
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+        for name, sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"),
+                          ("XDG_STATE_HOME", "state"), ("XDG_DATA_HOME", "data"),
+                          ("XDG_CACHE_HOME", "cache")):
+            (tmp / sub).mkdir()
+            env[name] = str(tmp / sub)
+        (tmp / "project" / ".rpctl").mkdir(parents=True)
+        out = subprocess.run([sys.executable, "-I", "-c", COMPACTION_RUNNER, str(snap)],
+                             input=json.dumps(job), cwd=tmp / "project", env=env, check=True,
+                             capture_output=True, text=True)
+        got = json.loads(json.dumps(json.loads(out.stdout)).replace(str(tmp), "$T"))
+    return {
+        "about": "rpctl chat's compaction plans: _plan_summary(focus, merge) (plan), "
+                 "_trim_plan(extra) (trim: n and frac), _apply_summary on the plan "
+                 "_plan_summary(None, merge) makes (apply: the history and the write guard's "
+                 "reads after), _incremental_instruction (instruction) and _restates; DEFAULTS "
+                 "plus VLLM_API_KEY k, TRACE, CONSULT, INSTRUCTIONS, TOOLBOX, TOOLS and SEARCH "
+                 "off, then the case's config; workspace $T/project, the date 2026-07-03 (Friday)",
+        "cases": [dict(case, **result) for case, result in zip(job, got)],
+    }
+
+
 GENERATORS = {
     "approve/decisions": gen_approve_decisions,
     "approve/review": gen_approve_review,
+    "chat/compaction": gen_chat_compaction,
     "chat/context": gen_chat_context,
     "chat/elision": gen_chat_elision,
     "chat/modes": gen_chat_modes,

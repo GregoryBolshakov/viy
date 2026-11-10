@@ -1,0 +1,91 @@
+{
+ "name": "compact-command-summary",
+ "about": "Web search on (its schemas in the prompt), build tools off. Two turns, then /compact: no tool output to trim, so one model pass summarises the first turn with the tools in the prompt and calls forbidden, the newest turn kept verbatim; then /compact with a focus always summarises: it summarises what followed the first summary, with the focus appended, and appends it; a third turn goes out after the summary.",
+ "config": {
+  "TOOLS_ENABLED": "0",
+  "SEARCH_ENABLED": "1",
+  "CHAT_AUTO_TITLE": "0",
+  "TAVILY_API_KEY": "",
+  "TAVILY_VAULT_TOKEN": ""
+ },
+ "max_model_len": 65536,
+ "steps": [
+  {
+   "user": "Where does the service read its config: The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. "
+  },
+  {
+   "user": "And how many retries?"
+  },
+  {
+   "command": "/compact"
+  },
+  {
+   "command": "/compact the retry policy"
+  },
+  {
+   "user": "Thanks. Anything else?"
+  }
+ ],
+ "responses": [
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "content": "From /etc/acme/app.toml."
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "content": "Three."
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "none",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "content": "1. Intent and requests -- the user configures the acme service.\n2. Key facts -- config at /etc/acme/app.toml, three retries."
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "none",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "content": "1. Intent and requests -- the user configures the acme service.\n2. Key facts -- config at /etc/acme/app.toml, three retries.\n5. Open threads -- the retry policy."
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "content": "No, that covers it."
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,74 @@
+{
+ "name": "background-summary-taken-by-compact",
+ "about": "Web search on, build tools off, COMPACT_BACKGROUND_AT 0.2: after the second turn the history is past it and there is no tool output to trim, so the summary a compaction would need is written in the background (a non-streamed request with the tools in the prompt and calls forbidden); /compact then takes it instead of a model pass of its own, and the third turn goes out after it.",
+ "config": {
+  "TOOLS_ENABLED": "0",
+  "SEARCH_ENABLED": "1",
+  "CHAT_AUTO_TITLE": "0",
+  "TAVILY_API_KEY": "",
+  "TAVILY_VAULT_TOKEN": "",
+  "MAX_TOKENS": "1000",
+  "COMPACT_BACKGROUND_AT": "0.2"
+ },
+ "max_model_len": 8000,
+ "steps": [
+  {
+   "user": "Where does the service read its config: The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. "
+  },
+  {
+   "user": "And how many retries: The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. The service reads its config from /etc/acme/app.toml and retries three times. "
+  },
+  {
+   "command": "/compact"
+  },
+  {
+   "user": "Thanks."
+  }
+ ],
+ "responses": [
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "content": "From /etc/acme/app.toml."
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "content": "Three."
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": false,
+    "tools": "none",
+    "last_role": "user"
+   },
+   "message": "1. Intent and requests -- the user configures the acme service.\n2. Key facts -- config at /etc/acme/app.toml, three retries."
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "content": "You're welcome."
+    }
+   ]
+  }
+ ]
+}

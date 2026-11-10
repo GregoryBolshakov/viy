@@ -20,8 +20,8 @@
 //! A request that fails keeps only what had streamed; a turn interrupted
 //! keeps the user's message and what had streamed, marked `[interrupted]`.
 //!
-//! Old tool output is elided once the history passes TOOL_ELIDE_THRESHOLD
-//! ([`compact`]). Not yet: compaction (WP 6.2).
+//! Old tool output is elided once the history passes TOOL_ELIDE_THRESHOLD,
+//! and a turn that would not fit compacts the history first ([`compact`]).
 //!
 //! Each turn is watched by a [`TurnMonitor`] ([`crate::trace`]): its
 //! notes go into the tool results the model reads, its alarms are said as
@@ -169,6 +169,13 @@ pub struct Chat {
     /// TOOL_ELIDE_THRESHOLD and TOOL_ELIDE_KEEP_TURNS ([`compact`]).
     elide_threshold: f64,
     elide_keep_turns: usize,
+    /// COMPACT_TRIM_TARGET, COMPACT_BACKGROUND_AT, COMPACT_CONSOLIDATE_AT.
+    fractions: compact::Fractions,
+    /// Set after a failed auto-compaction, so one broken pod does not mean
+    /// a failed pass in front of every message; cleared once back under.
+    compact_failed: bool,
+    /// The summary being written in the background, if any.
+    background: Option<compact::Background>,
     stats: Option<TurnStats>,
     /// The background title request.
     title_job: Option<JoinHandle<()>>,
@@ -313,6 +320,9 @@ impl Chat {
             auto_compact: on("AUTO_COMPACT", "1"),
             elide_threshold: elide.0,
             elide_keep_turns: elide.1,
+            fractions: compact::Fractions::from_config(cfg),
+            compact_failed: false,
+            background: None,
             auto_compact_threshold: cfg
                 .get("AUTO_COMPACT_THRESHOLD")
                 .and_then(|n| n.trim().parse().ok())
@@ -560,6 +570,8 @@ impl Chat {
         self.inflight = None;
         // Files read by the old chat are unknown to this one.
         self.files.forget_reads();
+        self.compact_failed = false;
+        self.abort_background();
         self.mem_files = FileHistory::in_memory();
         self.reset_web(&[]);
         self.mount_note = self.mounts_note();
@@ -640,6 +652,8 @@ impl Chat {
         self.inflight = None;
         // Reads made by the chat left behind do not count.
         self.files.forget_reads();
+        self.compact_failed = false;
+        self.abort_background();
         let history = std::mem::take(&mut self.messages);
         self.reset_web(&history);
         self.messages = history;
@@ -1176,6 +1190,7 @@ impl Chat {
         self.announce_label(ctx, content.as_str());
         let outcome = self.turn(ctx, content).await;
         self.maybe_start_title(ctx);
+        self.maybe_start_background();
         self.inflight = None;
         self.checkpoint(ctx);
         // A turn cut short (a failed request) still gets its row.
@@ -1185,9 +1200,11 @@ impl Chat {
 
     async fn turn(&mut self, ctx: &TurnContext, content: Value) -> TurnOutcome {
         let started = tokio::time::Instant::now();
-        // Before anything is sent: stale tool output first, which often
-        // makes compaction unnecessary.
+        // Before anything is sent: shrink the history if this turn would
+        // spill; dropping stale tool output first often makes compaction
+        // unnecessary.
         self.maybe_elide_tool_results(ctx, &content);
+        self.maybe_auto_compact(ctx, &content).await;
         let user = json!({"role": "user", "content": content});
         let mut msgs = Vec::new();
         if let Some(system) = self.system_prompt() {

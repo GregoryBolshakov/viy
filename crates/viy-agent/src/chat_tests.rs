@@ -35,7 +35,7 @@ fn nowhere() -> Places {
 }
 
 struct Rig {
-    mock: MockLlm,
+    pub(crate) mock: MockLlm,
     turns: Arc<ChatTurns>,
     engine: Engine,
     touched: Arc<AtomicUsize>,
@@ -857,7 +857,7 @@ async fn chat_redacts_only_when_enabled() {
 /// A chat for the session commands, called directly; its events go to
 /// `rx`.
 pub(crate) struct Direct {
-    mock: MockLlm,
+    pub(crate) mock: MockLlm,
     pub(crate) chat: Chat,
     pub(crate) ctx: TurnContext,
     pub(crate) rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
@@ -881,7 +881,7 @@ pub(crate) fn direct(responses: Value, over: &[(&str, &str)]) -> Direct {
 }
 
 impl Direct {
-    async fn send(&mut self, text: &str) {
+    pub(crate) async fn send(&mut self, text: &str) {
         self.chat.send(&self.ctx, json!(text)).await;
     }
 
@@ -900,6 +900,10 @@ impl Direct {
 
     fn id(&self) -> String {
         self.chat.session_id().unwrap()
+    }
+
+    pub(crate) fn store(&self) -> &Sessions {
+        &self.store
     }
 
     pub(crate) fn store_path(&self, id: &str) -> std::path::PathBuf {

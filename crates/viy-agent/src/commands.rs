@@ -123,7 +123,6 @@ const HELP: &str = "  /help              show this
 fn later(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
         "ssh" | "unssh" | "git" => "phase 4",
-        "compact" | "autocompact" => "phase 6",
         "consult" | "toolbox" => "phase 7",
         _ => return None,
     })
@@ -355,6 +354,8 @@ impl Chat {
         match cmd {
             "help" => info("help", HELP.to_string()),
             "search" => self.search_command(ctx, arg).await,
+            "compact" => self.compact_command(ctx, arg).await,
+            "autocompact" => self.autocompact_command(ctx, arg),
             "sources" => self.sources_command(ctx),
             "new" | "reset" => {
                 self.new_session(ctx, None).await;
@@ -1212,6 +1213,8 @@ impl Chat {
         }
         let dropped = self.messages.split_off(cut);
         self.files.rewound(&self.messages, &files);
+        self.abort_background();
+        self.compact_failed = false;
         let parts: Vec<Value> = match &dropped[0]["content"] {
             Value::Array(parts) => parts.clone(),
             other => vec![json!({"type": "text", "text": other.as_str().unwrap_or_default()})],

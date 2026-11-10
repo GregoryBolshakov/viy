@@ -62,8 +62,9 @@ fn scripted(response: &Value, kind: &str) -> String {
 
 /// Sends a recorded request again: (status, body).
 fn replay(mock: &MockLlm, entry: &Value) -> (u16, Vec<u8>) {
-    http(
+    http_as(
         &mock.uri(),
+        entry["host"].as_str(),
         entry["method"].as_str().unwrap(),
         entry["path"].as_str().unwrap(),
         entry.get("body"),
@@ -80,8 +81,34 @@ fn serves_each_scenario_to_rps_recorded_requests() {
         let log = scenario::rp_log(&name).unwrap();
         let mock = MockLlm::start(&sc).unwrap();
         let mut responses = sc["responses"].as_array().unwrap().iter();
+        let tavily = |kind: &str| sc["web"][kind].as_array().cloned().unwrap_or_default();
+        let mut searches = tavily("search").into_iter();
+        let mut extracts = tavily("extract").into_iter();
         for entry in &log.entries {
             let (status, body) = replay(&mock, entry);
+            if let Some(host) = entry["host"].as_str() {
+                // A page: its scripted status, 404 when the scenario has none.
+                let page =
+                    &sc["web"]["pages"][format!("{host}{}", entry["path"].as_str().unwrap())];
+                let want = match page {
+                    Value::Null => 404,
+                    Value::String(_) => 200,
+                    p => p["status"].as_u64().unwrap_or(200),
+                };
+                assert_eq!(u64::from(status), want, "{name}: {entry}");
+                continue;
+            }
+            let answer = match entry["path"].as_str() {
+                Some("/tavily/search") => searches.next(),
+                Some("/tavily/extract") => extracts.next(),
+                _ => None,
+            };
+            if let Some(answer) = answer {
+                // A Tavily answer: its scripted status.
+                let want = answer["status"].as_u64().unwrap_or(200);
+                assert_eq!(u64::from(status), want, "{name}: {entry}");
+                continue;
+            }
             if entry["path"] != "/v1/chat/completions" {
                 assert_eq!(status, 200, "{name}: {entry}");
                 continue;

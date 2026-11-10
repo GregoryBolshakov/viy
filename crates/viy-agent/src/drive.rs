@@ -11,16 +11,35 @@
 //!
 //! The model server, the workspace and the temporary XDG directories are
 //! the caller's: `tools/drive_rp.py --client viy` gives `viy dev drive`
-//! all three, as it gives them to rp.
+//! all three, as it gives them to rp. A scenario's `web` section is served
+//! by the same server: [`scenario_web`] points the chat's web tools there,
+//! as drive_rp points rp's.
+
+use std::collections::HashMap;
+use std::net::IpAddr;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::Value;
+use viy_http::BoxFuture;
+use viy_http::HttpClient;
+use viy_http::HttpError;
+use viy_http::Request;
+use viy_http::Response;
 use viy_protocol::Answer;
 use viy_protocol::BackgroundState;
 use viy_protocol::BackgroundTask;
 use viy_protocol::Event;
 use viy_protocol::EventMsg;
 use viy_protocol::Op;
+use viy_tools::approve::Pending;
+use viy_tools::netguard::Connect;
+use viy_tools::netguard::ConnectError;
+use viy_tools::netguard::Io;
+use viy_tools::netguard::Resolver;
 
+use crate::chat::web::WebNet;
 use crate::engine::Engine;
 
 /// One step of a scenario.
@@ -188,3 +207,92 @@ async fn follow<'a>(
 #[cfg(test)]
 #[path = "drive_tests.rs"]
 mod tests;
+
+/// The chat's web tools pointed at the scenario server `url` when the
+/// scenario has a `web` section: every name resolves to a public address
+/// (or the one its `resolve` gives), every page connection reaches the
+/// server in plain HTTP with the page's Host, and Tavily's endpoints are
+/// the server's `/tavily/`. An error when the server's URL is not
+/// `http://<ip>:<port>`: the scenario must not reach the internet.
+pub fn scenario_web(
+    url: &str,
+    scenario: &Value,
+    http: Arc<dyn HttpClient>,
+) -> Result<Option<WebNet>, String> {
+    let Some(web) = scenario.get("web").filter(|w| !w.is_null()) else {
+        return Ok(None);
+    };
+    let base = url.trim_end_matches('/').to_string();
+    let addr: SocketAddr = base
+        .strip_prefix("http://")
+        .and_then(|a| a.parse().ok())
+        .ok_or_else(|| {
+            format!(
+                "a scenario with a web section needs the server as http://<ip>:<port>, not {url}"
+            )
+        })?;
+    let names = web["resolve"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(host, ip)| Some((host.clone(), ip.as_str()?.parse().ok()?)))
+        .collect();
+    Ok(Some(WebNet {
+        resolver: Arc::new(Names(names)),
+        connect: Arc::new(ToServer(addr)),
+        http: Arc::new(TavilyAt { base, http }),
+    }))
+}
+
+/// A scenario's names, each else a public address.
+struct Names(HashMap<String, IpAddr>);
+
+impl Resolver for Names {
+    fn resolve<'a>(&'a self, host: &'a str, _: u16) -> Pending<'a, Result<Vec<IpAddr>, String>> {
+        let ip = self
+            .0
+            .get(host)
+            .copied()
+            .unwrap_or(IpAddr::from([93, 184, 216, 34]));
+        Box::pin(async move { Ok(vec![ip]) })
+    }
+}
+
+/// Every page connection to the scenario server, in plain HTTP.
+struct ToServer(SocketAddr);
+
+impl Connect for ToServer {
+    fn connect<'a>(
+        &'a self,
+        _: IpAddr,
+        _: u16,
+        _: &'a str,
+        _: &'a str,
+        timeout: Duration,
+    ) -> Pending<'a, Result<Box<dyn Io>, ConnectError>> {
+        Box::pin(async move {
+            match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(self.0)).await {
+                Ok(Ok(s)) => Ok(Box::new(s) as Box<dyn Io>),
+                Ok(Err(e)) => Err(ConnectError::Other(e.to_string())),
+                Err(_) => Err(ConnectError::Other("timed out".into())),
+            }
+        })
+    }
+}
+
+/// Tavily's requests sent to the scenario server instead.
+struct TavilyAt {
+    base: String,
+    http: Arc<dyn HttpClient>,
+}
+
+impl HttpClient for TavilyAt {
+    fn request(&self, mut request: Request) -> BoxFuture<'_, Result<Response, HttpError>> {
+        if request.url == viy_tools::search::TAVILY_URL {
+            request.url = format!("{}/tavily/search", self.base);
+        } else if request.url == viy_tools::webfetch::TAVILY_EXTRACT_URL {
+            request.url = format!("{}/tavily/extract", self.base);
+        }
+        self.http.request(request)
+    }
+}

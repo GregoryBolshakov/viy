@@ -123,7 +123,6 @@ const HELP: &str = "  /help              show this
 fn later(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
         "ssh" | "unssh" | "git" => "phase 4",
-        "search" | "sources" => "phase 5",
         "compact" | "autocompact" => "phase 6",
         "consult" | "toolbox" => "phase 7",
         _ => return None,
@@ -355,6 +354,8 @@ impl Chat {
         let warn = |code: &str, text: String| notice(ctx, NoticeLevel::Warn, code, text);
         match cmd {
             "help" => info("help", HELP.to_string()),
+            "search" => self.search_command(ctx, arg).await,
+            "sources" => self.sources_command(ctx),
             "new" | "reset" => {
                 self.new_session(ctx, None).await;
                 self.redraw(ctx, RewriteReason::New);

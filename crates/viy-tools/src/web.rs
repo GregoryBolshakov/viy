@@ -1,7 +1,8 @@
 //! The schemas of the two internet tools, `web_search` and `fetch_url`,
 //! as rpctl's `SEARCH_TOOL` and `FETCH_TOOL` (chat.py 53-124) offer them.
 //! Key order is kept: the chat template renders them with `tojson`. What
-//! the tools do comes with phase 5.
+//! they do is [`crate::search`] and [`crate::webfetch`], run by viy-agent's
+//! chat.
 
 use serde_json::Value;
 use serde_json::json;

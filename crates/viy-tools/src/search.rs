@@ -166,34 +166,45 @@ impl SearchClient {
         }
     }
 
-    /// TAVILY_API_KEY, else the open vault token TAVILY_VAULT_TOKEN names,
-    /// else "". The vault is asked once per chat, and blocks while `tok`
-    /// runs (about a second).
-    pub fn key(&mut self) -> &str {
-        if !self.api_key.is_empty() {
-            return &self.api_key;
+    /// Reads the open vault token TAVILY_VAULT_TOKEN names, when
+    /// TAVILY_API_KEY is empty and it was not read yet: once per chat, off
+    /// the runtime's thread, as `tok` takes about a second.
+    pub async fn load_key(&mut self) {
+        if !self.api_key.is_empty() || self.vault_key.is_some() {
+            return;
         }
-        if self.vault_key.is_none() {
-            let found = if self.vault_token.is_empty() {
-                Err(None)
-            } else {
-                self.tok.open_token(&self.vault_token).map_err(Some)
-            };
-            match found {
-                Ok(value) => {
-                    // Outbound URLs and queries are checked against it like any key.
-                    if !self.secrets.contains(&value) {
-                        self.secrets.push(value.clone());
-                    }
-                    self.vault_key = Some(value);
+        let found = if self.vault_token.is_empty() {
+            Err(None)
+        } else {
+            let (tok, name) = (self.tok.clone(), self.vault_token.clone());
+            tokio::task::spawn_blocking(move || tok.open_token(&name))
+                .await
+                .unwrap_or_else(|e| Err(format!("tok failed: {e}")))
+                .map_err(Some)
+        };
+        match found {
+            Ok(value) => {
+                // Outbound URLs and queries are checked against it like any key.
+                if !self.secrets.contains(&value) {
+                    self.secrets.push(value.clone());
                 }
-                Err(why) => {
-                    self.key_problem = why;
-                    self.vault_key = Some(String::new());
-                }
+                self.vault_key = Some(value);
+            }
+            Err(why) => {
+                self.key_problem = why;
+                self.vault_key = Some(String::new());
             }
         }
-        self.vault_key.as_deref().unwrap_or_default()
+    }
+
+    /// TAVILY_API_KEY, else the vault's key once [`Self::load_key`] read
+    /// it, else "".
+    pub fn key(&self) -> &str {
+        if self.api_key.is_empty() {
+            self.vault_key.as_deref().unwrap_or_default()
+        } else {
+            &self.api_key
+        }
     }
 
     /// The values outbound URLs and queries must not carry, the vault's
@@ -202,8 +213,8 @@ impl SearchClient {
         &self.secrets
     }
 
-    /// One line for `/search`.
-    pub fn status(&mut self) -> String {
+    /// One line for `/search`, once [`Self::load_key`] ran.
+    pub fn status(&self) -> String {
         if self.key().is_empty() {
             match &self.key_problem {
                 Some(why) => format!("no Tavily key ({why})"),
@@ -280,6 +291,7 @@ impl SearchClient {
             });
         }
 
+        self.load_key().await;
         let key = self.key().to_string();
         let why = if key.is_empty() {
             match &self.key_problem {
@@ -410,25 +422,43 @@ fn disable_reason(status: u16) -> Option<&'static str> {
     }
 }
 
+/// A tool argument read as rp's `int(x or default)` reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntArg {
+    /// Absent or empty (null, 0, "", false, [] or {}): the default holds.
+    Missing,
+    /// Present but not a whole number.
+    Bad,
+    Int(i64),
+}
+
+/// `v` as [`IntArg`]: an integer, a number cut toward zero, a string of
+/// digits, true as 1.
+pub fn int_arg(v: Option<&Value>) -> IntArg {
+    match v {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => IntArg::Missing,
+        Some(Value::String(s)) if s.is_empty() => IntArg::Missing,
+        Some(Value::Array(a)) if a.is_empty() => IntArg::Missing,
+        Some(Value::Object(o)) if o.is_empty() => IntArg::Missing,
+        Some(Value::Number(n)) if n.as_f64() == Some(0.0) => IntArg::Missing,
+        Some(Value::Bool(true)) => IntArg::Int(1),
+        Some(Value::Number(n)) => n
+            .as_i64()
+            .or_else(|| n.as_f64().filter(|f| f.is_finite()).map(|f| f as i64))
+            .map_or(IntArg::Bad, IntArg::Int),
+        Some(Value::String(s)) => s.trim().parse().map_or(IntArg::Bad, IntArg::Int),
+        Some(_) => IntArg::Bad,
+    }
+}
+
 /// How many results to ask for, 1 to 10: the model's `max_results` when it
 /// gave one, else SEARCH_MAX_RESULTS; 5 when the one used is not a number.
 pub fn result_count(k: Option<&Value>, configured: Option<i64>) -> usize {
-    let given = match k {
-        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
-        Some(Value::String(s)) if s.is_empty() => None,
-        Some(Value::Array(a)) if a.is_empty() => None,
-        Some(Value::Object(o)) if o.is_empty() => None,
-        Some(Value::Number(n)) if n.as_f64() == Some(0.0) => None,
-        Some(v) => Some(match v {
-            Value::Bool(_) => Some(1),
-            Value::Number(n) => n
-                .as_i64()
-                .or_else(|| n.as_f64().filter(|f| f.is_finite()).map(|f| f as i64)),
-            Value::String(s) => s.trim().parse().ok(),
-            _ => None,
-        }),
+    let k = match int_arg(k) {
+        IntArg::Missing => configured.unwrap_or(DEFAULT_RESULTS),
+        IntArg::Bad => DEFAULT_RESULTS,
+        IntArg::Int(n) => n,
     };
-    let k = given.unwrap_or(configured).unwrap_or(DEFAULT_RESULTS);
     k.clamp(1, 10) as usize
 }
 

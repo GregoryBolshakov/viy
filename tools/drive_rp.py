@@ -100,6 +100,8 @@ def child(job):
 
     chat._ask_line = ask_line
     sys.stdin = Tty()
+    if scenario.get("web"):
+        point_web_at(job["url"], scenario["web"])
 
     cfg = dict(config.DEFAULTS, VLLM_API_KEY=job["api_key"])
     cfg.update(scenario.get("config") or {})
@@ -131,6 +133,23 @@ def child(job):
     if answers:
         raise SystemExit(f"drive_rp: {len(answers)} scripted answer(s) never asked")
     json.dump({"today": c._today, "asked": asked}, open(job["result"], "w"))
+
+
+def point_web_at(url, web):
+    """The internet as the scenario's "web" section: every name resolves to
+    a public address (or the one `resolve` gives it), every page connection
+    reaches fakellm in plain HTTP with the page's Host, and Tavily's
+    endpoints are fakellm's."""
+    from rpctl import netguard, search, webfetch
+    port = int(url.rsplit(":", 1)[1])
+    names = web.get("resolve") or {}
+    netguard.resolve = lambda host, _port, timeout=5.0: [names.get(host, "93.184.216.34")]
+    open_connection = netguard._open_connection
+    netguard._open_connection = (
+        lambda ip, _port, _scheme, host, timeout:
+        open_connection("127.0.0.1", port, "http", host, timeout))
+    search.TAVILY_URL = url + "/tavily/search"
+    webfetch.TAVILY_EXTRACT_URL = url + "/tavily/extract"
 
 
 # ----------------------------------------------------------------- parent

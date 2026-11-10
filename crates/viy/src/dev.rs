@@ -192,7 +192,10 @@ fn drive_scenario(
         .map_err(|e| Failure::from(e.to_string()))?;
     let (run, today, session) = runtime.block_on(async {
         let start = start_dir(dir)?;
-        let mut chat = chat(&cfg, url, http, paths, &start, true)?;
+        let mut chat = chat(&cfg, url, Arc::clone(&http), paths, &start, true)?;
+        if let Some(net) = drive::scenario_web(url, &value, http).map_err(Failure::from)? {
+            chat.set_web_net(net);
+        }
         if !live {
             outside_files(&chat, &start)?;
         }

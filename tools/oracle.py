@@ -124,6 +124,29 @@ def search_tavily(query, k, recency, site, max_chars, status, body):
     return out
 
 
+def chat_fetch_decision(url, workspace, project_dir, known_urls, known_hosts,
+                        allowed_hosts, taint, user_texts):
+    """Chat._fetch_decision(url) in a chat whose workspace and project folder,
+    URLs and hosts, taint and user messages (the first as this turn's) are
+    given: (decision, the parsed URL or None, why), then the known URLs and
+    hosts after it, sorted."""
+    from pathlib import Path
+    from unittest import mock
+    from rpctl import chat, config
+    cfg = dict(config.DEFAULTS, VLLM_API_KEY="k", SEARCH_ENABLED="1", TOOLS_ENABLED="0",
+               INSTRUCTIONS_ENABLED="0", TAVILY_API_KEY="", TAVILY_VAULT_TOKEN="",
+               CHAT_AUTO_TITLE="0", TRACE_ENABLED="0")
+    c = chat.Chat(cfg, "http://127.0.0.1:1")
+    c.known_urls, c.known_hosts = set(known_urls), set(known_hosts)
+    c.allowed_hosts, c.web_taint = set(allowed_hosts), taint
+    c._turn_user = user_texts[0] if user_texts else None
+    c.messages = [{"role": "user", "content": t} for t in user_texts[1:]]
+    with mock.patch.object(c, "_workspace", return_value=Path(workspace)), \
+            mock.patch.object(chat.config, "PROJECT_DIR", Path(project_dir)):
+        d, t, why = c._fetch_decision(url)
+    return (d, t.url if t else None, why, sorted(c.known_urls), sorted(c.known_hosts))
+
+
 def shutdown_parse_when(text, now):
     """shutdown.parse_when(text, now) with `now` as an ISO local time."""
     from datetime import datetime
@@ -273,6 +296,8 @@ def egress_handle(head, command, answers):
 # must be free of I/O (plan 5.4).
 FUNCTIONS = {
     # rpctl
+    # Builds a Chat offline (no requests) in the oracle's temporary home.
+    "chat.fetch_decision": chat_fetch_decision,
     "approve.destructive_reason": ("rpctl.approve", "destructive_reason"),
     "approve.net_ask_reason": ("rpctl.approve", "net_ask_reason"),
     # Reads the files a command names under the given workspace.

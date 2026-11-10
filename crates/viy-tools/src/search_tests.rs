@@ -408,6 +408,7 @@ async fn search_client_uses_it_and_guards_it() {
         vec![],
         tok,
     );
+    c.load_key().await;
     assert_eq!(c.key(), "tvly-from-vault-01234");
     let http = FakeHttp::new([]);
     let e = search(&mut c, &http, "look up tvly-from-vault-01234")
@@ -417,8 +418,8 @@ async fn search_client_uses_it_and_guards_it() {
     assert!(c.secrets().contains(&"tvly-from-vault-01234".to_string()));
 }
 
-#[test]
-fn config_key_wins_and_empty_name_skips_the_vault() {
+#[tokio::test]
+async fn config_key_wins_and_empty_name_skips_the_vault() {
     let (_dir, tok) = fake_tok();
     let mut c = SearchClient::new(
         &cfg(&[
@@ -428,8 +429,10 @@ fn config_key_wins_and_empty_name_skips_the_vault() {
         vec![],
         tok.clone(),
     );
+    c.load_key().await;
     assert_eq!(c.key(), "tvly-config");
     let mut c = SearchClient::new(&cfg(&[("TAVILY_API_KEY", "")]), vec![], tok);
+    c.load_key().await;
     assert_eq!(c.key(), "");
     assert_eq!(c.status(), "no Tavily key");
     assert_eq!(c.take_loud(), Vec::<String>::new());
@@ -443,6 +446,7 @@ async fn gated_key_is_reported_once() {
         vec![],
         tok,
     );
+    c.load_key().await;
     assert_eq!(c.key(), "");
     let loud = c.take_loud();
     assert_eq!(loud.len(), 1);

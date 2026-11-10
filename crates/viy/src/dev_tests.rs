@@ -113,12 +113,11 @@ fn every_scenario_without_build_tools_sends_what_rp_sent() {
         let rp = scenario::rp_log(&name).unwrap().entries;
         assert_eq!(scenario::compare(&rp, &viy), None, "{name}");
         // And keeps the session rp kept: the same events, keys in order.
-        let rp_session = scenario::rp_session(&name).unwrap();
-        assert_eq!(session, rp_session, "{name}: the session log");
+        let rp_session = scenario::rp_session(&name).unwrap().unwrap();
         assert_eq!(
-            serde_json::to_string(&session).unwrap(),
-            serde_json::to_string(&rp_session).unwrap(),
-            "{name}: the session log's key order"
+            scenario::session_diff(&rp_session, &session.unwrap()),
+            None,
+            "{name}: the session log"
         );
     }
 }

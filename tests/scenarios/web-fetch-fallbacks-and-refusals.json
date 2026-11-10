@@ -1,0 +1,159 @@
+{
+ "name": "web-fetch-fallbacks-and-refusals",
+ "about": "Web search on, build tools off. The user gives four URLs. A page that answers HTTP 403 is read through Tavily's extract; a moved page is followed through its redirect; a JavaScript-only page falls to Tavily, which cannot extract it either, so the thin direct text stands with both reasons; a name that resolves to a private address is refused by netguard after the lookup.",
+ "config": {
+  "TOOLS_ENABLED": "0",
+  "SEARCH_ENABLED": "1",
+  "SEARCH_MAX_ROUNDS": "8",
+  "TAVILY_API_KEY": "fake-tavily-key-0001",
+  "TAVILY_VAULT_TOKEN": ""
+ },
+ "max_model_len": 65536,
+ "web": {
+  "resolve": {
+   "intranet.example-news.test": "10.1.2.3"
+  },
+  "extract": [
+   {
+    "body": {
+     "results": [
+      {
+       "url": "https://blocked.example-news.test/story",
+       "raw_content": "# Bike lanes approved\n\nThe council approved the new bike lanes on Tuesday after a long debate about parking. The council approved the new bike lanes on Tuesday after a long debate about parking. The council approved the new bike lanes on Tuesday after a long debate about parking. The council approved the new bike lanes on Tuesday after a long debate about parking. The council approved the new bike lanes on Tuesday after a long debate about parking. The council approved the new bike lanes on Tuesday after a long debate about parking. \n\nMore at [the council](https://council.example-news.test/minutes)."
+      }
+     ],
+     "failed_results": []
+    }
+   },
+   {
+    "body": {
+     "results": [],
+     "failed_results": [
+      {
+       "url": "https://app.example-news.test/",
+       "error": "blocked by robots"
+      }
+     ]
+    }
+   }
+  ],
+  "pages": {
+   "blocked.example-news.test/story": {
+    "status": 403,
+    "body": "<html><body>Access denied</body></html>"
+   },
+   "www.example-news.test/old": {
+    "status": 301,
+    "headers": {
+     "Location": "/new"
+    },
+    "body": ""
+   },
+   "www.example-news.test/new": "<html><head><title>Moved story</title></head><body><article><p>The council approved the new bike lanes on Tuesday after a long debate about parking. The council approved the new bike lanes on Tuesday after a long debate about parking. The council approved the new bike lanes on Tuesday after a long debate about parking. The council approved the new bike lanes on Tuesday after a long debate about parking. The council approved the new bike lanes on Tuesday after a long debate about parking. The council approved the new bike lanes on Tuesday after a long debate about parking. </p></article></body></html>",
+   "app.example-news.test/": "<html><head><title>App</title><script>render()</script></head><body><div id=root></div><noscript>Enable JavaScript.</noscript></body></html>"
+  }
+ },
+ "steps": [
+  {
+   "user": "Summarise these: https://blocked.example-news.test/story https://www.example-news.test/old https://app.example-news.test/ and https://intranet.example-news.test/wiki"
+  }
+ ],
+ "approvals": [],
+ "responses": [
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "call_f1",
+      "name": "fetch_url",
+      "arguments": "{\"url\": \"https://blocked.example-news.test/story\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "call_f2",
+      "name": "fetch_url",
+      "arguments": "{\"url\": \"https://www.example-news.test/old\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "call_f3",
+      "name": "fetch_url",
+      "arguments": "{\"url\": \"https://app.example-news.test/\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "call_f4",
+      "name": "fetch_url",
+      "arguments": "{\"url\": \"https://intranet.example-news.test/wiki\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "stream": [
+    {
+     "content": "The council approved bike lanes; the app page needs JavaScript; the intranet is not reachable."
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": false,
+    "tools": "omit"
+   },
+   "message": "Bike lane news"
+  }
+ ]
+}

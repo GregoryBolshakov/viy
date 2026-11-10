@@ -304,17 +304,17 @@ async fn a_cut_off_reply_is_not_retried() {
 }
 
 #[tokio::test]
-async fn a_web_tool_before_phase_5_answers_that_it_is_off() {
-    // web_search runs from phase 5; until then the call gets rpctl's
-    // "is off" result and the loop goes on to the answer.
+async fn a_web_tool_that_is_off_answers_so() {
+    // fetch_url is not offered with FETCH_ENABLED=0; a call to it anyway
+    // gets rpctl's "is off" result and the loop goes on to the answer.
     let mut rig = rig(
         json!([
-            {"stream": [{"content": "Let me search."},
-                        {"tool_call": {"id": "c1", "name": "web_search", "arguments": "{\"query\": \"x\"}"}},
+            {"stream": [{"content": "Let me read it."},
+                        {"tool_call": {"id": "c1", "name": "fetch_url", "arguments": "{\"url\": \"https://x.test/\"}"}},
                         {"finish": "tool_calls"}]},
             {"stream": [{"content": "From memory: x."}]},
         ]),
-        &[("SEARCH_ENABLED", "1")],
+        &[("SEARCH_ENABLED", "1"), ("FETCH_ENABLED", "0")],
     );
     rig.send("search x").await;
     assert_eq!(
@@ -326,7 +326,7 @@ async fn a_web_tool_before_phase_5_answers_that_it_is_off() {
     assert_eq!(
         m[2],
         json!({"role": "tool", "tool_call_id": "c1",
-               "content": "{\"error\":\"the web_search tool is off\"}"})
+               "content": "{\"error\":\"the fetch_url tool is off\"}"})
     );
     assert_eq!(
         m[3],
@@ -856,16 +856,16 @@ async fn chat_redacts_only_when_enabled() {
 
 /// A chat for the session commands, called directly; its events go to
 /// `rx`.
-struct Direct {
+pub(crate) struct Direct {
     mock: MockLlm,
-    chat: Chat,
-    ctx: TurnContext,
-    rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
+    pub(crate) chat: Chat,
+    pub(crate) ctx: TurnContext,
+    pub(crate) rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
     store: Sessions,
     _scratch: ScratchDir,
 }
 
-fn direct(responses: Value, over: &[(&str, &str)]) -> Direct {
+pub(crate) fn direct(responses: Value, over: &[(&str, &str)]) -> Direct {
     let mock = MockLlm::start(&json!({"responses": responses})).unwrap();
     let (scratch, store) = sessions_store();
     let chat = chat_at(&mock, over, &store);
@@ -886,7 +886,7 @@ impl Direct {
     }
 
     /// The notices said since the last call.
-    fn said(&mut self) -> Vec<String> {
+    pub(crate) fn said(&mut self) -> Vec<String> {
         let mut out = Vec::new();
         while let Ok(event) = self.rx.try_recv() {
             if let EventMsg::Notice(n) = event.msg
@@ -1159,7 +1159,7 @@ fn tooled(responses: Value, over: &[(&str, &str)]) -> (Direct, ScratchDir) {
 
 /// A chat with the build tools on in a workspace of its own, for calling
 /// its tools directly: no turn, so no preflight request.
-fn shell_chat(responses: Value, over: &[(&str, &str)]) -> (Direct, ScratchDir) {
+pub(crate) fn shell_chat(responses: Value, over: &[(&str, &str)]) -> (Direct, ScratchDir) {
     let mut all = vec![("TOOLS_ENABLED", "1")];
     all.extend_from_slice(over);
     let mut d = direct(responses, &all);
@@ -1559,8 +1559,8 @@ fn told_network(mock: &MockLlm) -> Vec<String> {
 }
 
 // rpctl's ChatEgressTests.test_policy_hosts_reach_the_prompt_and_the_reviewer,
-// with SANDBOX_NET_ALLOW in place of a host the user allowed for fetch_url
-// (phase 5). The reviewer refuses, so nothing runs.
+// with SANDBOX_NET_ALLOW beside a host the user allowed for fetch_url. The
+// reviewer refuses, so nothing runs.
 #[tokio::test]
 async fn policy_hosts_reach_the_prompt_and_the_reviewer() {
     let (mut d, _s) = shell_chat(

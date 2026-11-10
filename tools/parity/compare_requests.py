@@ -9,7 +9,8 @@ fakellm received. Exits 0 when the requests match, 1 with the first
 difference and its path when they do not.
 
 What "the same" means, from kb d031:
-- requests in the same order, with the same method and path;
+- requests in the same order, with the same method and path, and a page
+  request (a scenario's "web") for the same host;
 - bodies parsed as JSON and equal in content: object key order does not
   count, except inside "tools", where the chat template's `tojson` keeps it;
 - a tool result and a tool call's arguments are strings holding JSON, and are
@@ -19,14 +20,17 @@ What "the same" means, from kb d031:
   is not compared, but one naming viy is an error (CLAUDE.md).
 
 normalize() is shared with the drivers: it replaces the run's temporary paths
-and its date with {WORKSPACE}, {BASE} and {TODAY}, so logs from different runs
-and days compare. Implementation plan 3.4.
+and its date with {WORKSPACE}, {BASE} and {TODAY}, and each untrusted fence's
+random nonce with {NONCE}, so logs from different runs and days compare. Implementation plan 3.4.
 """
 import json
 import pathlib
+import re
 import sys
 
 CLIP = 160
+# The untrusted fence's nonce is fresh per tool result (untrusted.wrap).
+FENCE = re.compile(r"(<<<UNTRUSTED |UNTRUSTED )[0-9a-f]{8}\b")
 
 
 def normalize(value, meta):
@@ -40,7 +44,7 @@ def normalize(value, meta):
         if isinstance(v, str):
             for old, new in subs:
                 v = v.replace(old, new)
-            return v
+            return FENCE.sub(r"\1{NONCE}", v)
         if isinstance(v, list):
             return [walk(x) for x in v]
         if isinstance(v, dict):
@@ -158,7 +162,7 @@ def compare(ea, eb):
                 return f"{where}: {side}'s User-Agent names viy: {e['headers']['user-agent']}"
             if e.get("mismatch"):
                 return f"{where}: {side} hit a scenario mismatch: {e['mismatch']}"
-        for key in ("method", "path"):
+        for key in ("method", "path", "host"):
             if a.get(key) != b.get(key):
                 return f"{where}: {key} {a.get(key)!r} != {b.get(key)!r}"
         ha, hb = a.get("headers", {}), b.get("headers", {})

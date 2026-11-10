@@ -11,6 +11,11 @@ as one JSON line: method, path, the headers that matter, and the parsed
 body. A request the scenario did not expect, or one that fails a
 response's "expect", gets HTTP 500 and a "mismatch" line in the log.
 
+A scenario's "web" section stands in for the internet: Tavily's search and
+extract answers in order at /tavily/search and /tavily/extract, and pages
+for requests whose Host is not this server's (the clients' connections are
+pointed here). Those requests are logged too, a page's with its "host".
+
 The first stdout line is `listening http://127.0.0.1:PORT`; the server runs
 until killed. Stdlib only, no network beyond the loopback socket. The Rust
 twin for viy's own tests is viy_testkit::mock_llm, which serves the same
@@ -122,6 +127,10 @@ class Server(http.server.ThreadingHTTPServer):
         self.model = scenario.get("model", "qwen3.8-abliterated")
         self.responses = list(scenario.get("responses") or [])
         self.n = 0
+        web = scenario.get("web") or {}
+        self.pages = web.get("pages") or {}
+        self.tavily = {"search": list(web.get("search") or []),
+                       "extract": list(web.get("extract") or [])}
         self.lock = threading.Lock()
         self.log = open(log_path, "a", encoding="utf-8")
 
@@ -129,6 +138,11 @@ class Server(http.server.ThreadingHTTPServer):
         with self.lock:
             self.log.write(json.dumps(entry, ensure_ascii=False) + "\n")
             self.log.flush()
+
+    def next_tavily(self, kind):
+        with self.lock:
+            queue = self.tavily[kind]
+            return queue.pop(0) if queue else None
 
     def next_response(self):
         with self.lock:
@@ -158,8 +172,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _is_page(self):
+        own = f"127.0.0.1:{self.server.server_address[1]}"
+        return (self.headers.get("Host") or own) != own
+
+    def _page(self):
+        """A scenario page for a request the client meant for the internet."""
+        srv = self.server
+        host = self.headers.get("Host")
+        srv.record(dict(self._entry(), host=host))
+        page = srv.pages.get(host + self.path)
+        if page is None:
+            return self._send(404, "not found", "text/plain")
+        if isinstance(page, str):
+            page = {"body": page}
+        self.send_response(page.get("status", 200))
+        data = page.get("body", "").encode()
+        self.send_header("Content-Type", page.get("type", "text/html; charset=utf-8"))
+        for k, v in (page.get("headers") or {}).items():
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
         srv = self.server
+        if self._is_page():
+            return self._page()
         srv.record(self._entry())
         if self.path == "/health":
             self._send(200, b"", "text/plain")
@@ -181,6 +220,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             srv.record(dict(self._entry(), raw=raw.decode("utf-8", "replace"),
                             mismatch="body is not JSON"))
             return self._send(400, "body is not JSON", "text/plain")
+        if self.path in ("/tavily/search", "/tavily/extract"):
+            reply = srv.next_tavily(self.path.rsplit("/", 1)[1])
+            if reply is None:
+                srv.record(dict(self._entry(body), mismatch="no Tavily answer queued"))
+                return self._send(500, "fakellm: no Tavily answer queued", "text/plain")
+            srv.record(self._entry(body))
+            return self._send(reply.get("status", 200), dumps(reply.get("body", {})))
         if self.path != "/v1/chat/completions":
             srv.record(dict(self._entry(body), mismatch="unknown path"))
             return self._send(404, "not found", "text/plain")

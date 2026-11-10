@@ -3,9 +3,9 @@
 //! `_tool_run_shell`, `_approve_auto`'s hearing, `_report_quarantine`).
 //!
 //! Every call gets a result, in order: a tool that is off, or that viy
-//! does not have yet (the internet tools until phase 5, explore,
-//! ask_claude and find_tool until phase 7), answers rpctl's "is off"
-//! error, which rpctl gives when the tool is off. Every result passes
+//! does not have yet (explore, ask_claude and find_tool until phase 7),
+//! answers rpctl's "is off" error, which rpctl gives when the tool is off.
+//! web_search and fetch_url run in [`super::web`]. Every result passes
 //! [`untrusted::neutralize`] before the model sees it.
 //!
 //! run_shell runs each command in the sandbox (`viy_tools::sandbox`) after
@@ -122,7 +122,7 @@ fn reads_a_page(cmd: &str) -> bool {
 
 /// A call's arguments as an object: empty is `{}`; anything else that is
 /// not a JSON object is the error the model gets.
-fn parse_args(raw: &str) -> Result<Map<String, Value>, Value> {
+pub(super) fn parse_args(raw: &str) -> Result<Map<String, Value>, Value> {
     if raw.trim().is_empty() {
         return Ok(Map::new());
     }
@@ -130,6 +130,21 @@ fn parse_args(raw: &str) -> Result<Map<String, Value>, Value> {
         Ok(Value::Object(m)) => Ok(m),
         Ok(_) => Err(json!({"error": "arguments must be a JSON object"})),
         Err(e) => Err(json!({"error": format!("could not parse arguments: {e}")})),
+    }
+}
+
+/// A batch call's arguments as `_parallel_ok` reads them:
+/// `json.loads(arguments or "{}")`, an object or nothing (whitespace alone
+/// is not JSON there, unlike [`parse_args`]).
+fn batch_args(arguments: &str) -> Option<Map<String, Value>> {
+    let raw = if arguments.is_empty() {
+        "{}"
+    } else {
+        arguments
+    };
+    match serde_json::from_str::<Value>(raw) {
+        Ok(Value::Object(args)) => Some(args),
+        _ => None,
     }
 }
 
@@ -277,7 +292,7 @@ impl Chat {
 
     /// One refusal more in a row; three stop the turn (rp's
     /// `_count_denial`).
-    fn count_denial(&mut self) {
+    pub(crate) fn count_denial(&mut self) {
         self.denials += 1;
         if self.denials >= approve::MAX_CONSECUTIVE_DENIALS {
             self.abort_turn = Some(format!("{} requests in a row were refused", self.denials));
@@ -321,7 +336,7 @@ impl Chat {
     /// Whether a batch runs side by side (rp's `_parallel_ok`): every call
     /// only reads and none of them would stop to ask the user (a secret
     /// file), since a batch never holds a question.
-    pub(crate) fn parallel_ok(&self, calls: &[ToolCall]) -> bool {
+    pub(crate) fn parallel_ok(&mut self, calls: &[ToolCall]) -> bool {
         if !self.parallel_tools || calls.len() < 2 {
             return false;
         }
@@ -329,19 +344,28 @@ impl Chat {
             if !PARALLEL_SAFE.contains(&c.name.as_str()) {
                 return false;
             }
-            // fetch_url's question check comes with it (phase 5); until then
-            // it is off and asks nothing.
-            c.name != "read_file" || self.reads_without_asking(&c.arguments)
+            match c.name.as_str() {
+                "read_file" => self.reads_without_asking(&c.arguments),
+                "fetch_url" => self.fetches_without_asking(&c.arguments),
+                _ => true,
+            }
         })
+    }
+
+    /// Whether fetch_url with these arguments reads without a question.
+    fn fetches_without_asking(&mut self, arguments: &str) -> bool {
+        let Some(args) = batch_args(arguments) else {
+            return false;
+        };
+        let Some(url) = args.get("url").and_then(Value::as_str) else {
+            return false;
+        };
+        !matches!(self.fetch_decision(url), super::web::FetchDecision::Ask(..))
     }
 
     /// Whether read_file with these arguments reads without a question.
     fn reads_without_asking(&self, arguments: &str) -> bool {
-        let Ok(Value::Object(args)) = serde_json::from_str::<Value>(if arguments.is_empty() {
-            "{}"
-        } else {
-            arguments
-        }) else {
+        let Some(args) = batch_args(arguments) else {
             return false;
         };
         let Some(rel) = args
@@ -382,7 +406,7 @@ impl Chat {
         });
         let results = futures_util::future::join_all(runs).await;
         let mut out = Vec::with_capacity(calls.len());
-        for (c, (got, started)) in calls.iter().zip(results) {
+        for (c, (got, mut started)) in calls.iter().zip(results) {
             let (result, card) = match got {
                 Some((result, card, seen)) => {
                     if let Some((path, sha1)) = seen {
@@ -390,7 +414,17 @@ impl Chat {
                     }
                     (result, card)
                 }
-                None => self.dispatch(ctx, c).await,
+                // A call that would ask, or a web call, after the batch's
+                // reads: timed from its own start, and not run once a third
+                // refusal stopped the turn.
+                None if self.abort_turn.is_some() => (
+                    json!({"error": "not run: the turn was stopped"}),
+                    Card::default(),
+                ),
+                None => {
+                    started = Instant::now();
+                    self.dispatch(ctx, c).await
+                }
             };
             let secs = started.elapsed().as_secs_f64();
             out.push((self.end_call(ctx, c, &result, card, started), secs));
@@ -442,7 +476,12 @@ impl Chat {
             sandboxed: card.sandboxed,
             network: card.network,
         }));
-        self.defuse(ctx, &c.name, result.to_string())
+        let payload = match result {
+            // web_search's and fetch_url's text, fenced.
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        };
+        self.defuse(ctx, &c.name, payload)
     }
 
     /// Every tool result passes here: text spelling a chat-control token
@@ -491,9 +530,13 @@ impl Chat {
         };
         let name = c.name.as_str();
         match name {
-            // Phase 5 (search and fetch) and phase 7 (explore, ask_claude,
-            // the toolbox): off, as rpctl's are when not enabled.
-            "web_search" | "fetch_url" | "ask_claude" | "find_tool" | "explore" => off(name),
+            "web_search" | "fetch_url" if !self.search_on => off(name),
+            "web_search" => self.run_search(ctx, &c.arguments).await,
+            "fetch_url" if !self.fetch_on => off(name),
+            "fetch_url" => self.run_fetch(ctx, &c.arguments).await,
+            // Phase 7 (explore, ask_claude, the toolbox): off, as rpctl's
+            // are when not enabled.
+            "ask_claude" | "find_tool" | "explore" => off(name),
             _ if build::NAMES.contains(&name) => {
                 if !self.tools_on {
                     let e = format!("the {name} tool is off; enable it with /tools on");
@@ -572,8 +615,8 @@ impl Chat {
             network: net.is_some(),
         };
         let policy = (net == Some(Net::Proxy)).then(|| {
-            // fetch_url's hosts the user allowed come with phase 5.
-            Policy::new(&cmd, [], &self.sandbox_net_allow)
+            let allowed = self.web.allowed_hosts.iter().map(String::as_str);
+            Policy::new(&cmd, allowed, &self.sandbox_net_allow)
         });
         let reach = policy.as_ref().map(Policy::describe);
         if let Some(reach) = &reach {
@@ -1011,8 +1054,13 @@ async fn quiet_call(
     arguments: &str,
     tools_on: bool,
 ) -> Option<(Value, Card, Option<(PathBuf, String)>)> {
+    if matches!(name.as_str(), "web_search" | "fetch_url") {
+        // They hold the chat's web state: run one by one after the batch's
+        // reads, in call order.
+        return None;
+    }
     if !build::NAMES.contains(&name.as_str()) {
-        // The internet tools and explore (phases 5 and 7), off as in dispatch.
+        // explore and find_tool (phase 7), off as in dispatch.
         let e = format!("the {name} tool is off");
         return Some((json!({"error": e}), Card::default(), None));
     }
@@ -1048,9 +1096,9 @@ async fn quiet_call(
 /// What the tool card shows besides the status.
 #[derive(Debug, Default)]
 pub(crate) struct Card {
-    detail: Option<String>,
+    pub(crate) detail: Option<String>,
     pub(crate) sandboxed: bool,
-    network: bool,
+    pub(crate) network: bool,
 }
 
 impl Card {

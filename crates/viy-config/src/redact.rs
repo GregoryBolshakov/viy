@@ -89,6 +89,25 @@ pub fn literal_secrets<'a>(vars: impl IntoIterator<Item = (&'a str, &'a str)>) -
     values
 }
 
+/// [`literal_secrets`] of `cfg` and this process's environment (rp's
+/// `literal_secrets(cfg)`).
+pub fn config_secrets(cfg: &Config) -> Vec<String> {
+    // A name that is not UTF-8 is still read for its ending, as rpctl
+    // reads it; a value that is not UTF-8 can't occur in a chat's text.
+    let env: Vec<(String, String)> = std::env::vars_os()
+        .filter_map(|(name, value)| {
+            Some((
+                name.to_string_lossy().into_owned(),
+                value.into_string().ok()?,
+            ))
+        })
+        .collect();
+    let env = env
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()));
+    literal_secrets(cfg.iter().chain(env))
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Redactor {
     literals: Vec<String>,
@@ -105,20 +124,7 @@ impl Redactor {
 
     /// Masks the secrets in `cfg` and in this process's environment.
     pub fn from_config(cfg: &Config) -> Self {
-        // A name that is not UTF-8 is still read for its ending, as rpctl
-        // reads it; a value that is not UTF-8 can't occur in a chat's text.
-        let env: Vec<(String, String)> = std::env::vars_os()
-            .filter_map(|(name, value)| {
-                Some((
-                    name.to_string_lossy().into_owned(),
-                    value.into_string().ok()?,
-                ))
-            })
-            .collect();
-        let env = env
-            .iter()
-            .map(|(name, value)| (name.as_str(), value.as_str()));
-        Self::new(literal_secrets(cfg.iter().chain(env)))
+        Self::new(config_secrets(cfg))
     }
 
     /// `s` with every secret masked. An inline image (`data:`) is base64,

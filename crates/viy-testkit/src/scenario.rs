@@ -105,9 +105,38 @@ pub fn recorded() -> io::Result<Vec<String>> {
     Ok(names)
 }
 
+/// `s` with each untrusted fence's random nonce (`<<<UNTRUSTED 1a2b3c4d`,
+/// `UNTRUSTED 1a2b3c4d>>>`) as `{NONCE}`, as compare_requests.py does.
+pub fn fence_nonces(s: &str) -> String {
+    const MARK: &str = "UNTRUSTED ";
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find(MARK) {
+        let after = &rest[i + MARK.len()..];
+        let hex = after.len() >= 8
+            && after.as_bytes()[..8]
+                .iter()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b));
+        let ends = !after
+            .as_bytes()
+            .get(8)
+            .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_');
+        out.push_str(&rest[..i + MARK.len()]);
+        if hex && ends {
+            out.push_str("{NONCE}");
+            rest = &after[8..];
+        } else {
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// `value` with each `(from, to)` replaced in every string, longest `from`
 /// first, as compare_requests' `normalize` puts `{WORKSPACE}`, `{BASE}` and
-/// `{TODAY}` in place of a run's paths and date.
+/// `{TODAY}` in place of a run's paths and date, and the fence nonces
+/// ([`fence_nonces`]).
 pub fn normalize(value: &Value, subs: &[(&str, &str)]) -> Value {
     let mut subs: Vec<(&str, &str)> = subs
         .iter()
@@ -117,10 +146,11 @@ pub fn normalize(value: &Value, subs: &[(&str, &str)]) -> Value {
     subs.sort_by_key(|(from, _)| std::cmp::Reverse(from.len()));
     fn walk(v: &Value, subs: &[(&str, &str)]) -> Value {
         match v {
-            Value::String(s) => Value::String(
-                subs.iter()
+            Value::String(s) => Value::String(fence_nonces(
+                &subs
+                    .iter()
                     .fold(s.clone(), |s, (from, to)| s.replace(from, to)),
-            ),
+            )),
             Value::Array(items) => Value::Array(items.iter().map(|x| walk(x, subs)).collect()),
             Value::Object(map) => Value::Object(
                 map.iter()
@@ -163,7 +193,7 @@ pub fn compare(a: &[Value], b: &[Value]) -> Option<String> {
                 ));
             }
         }
-        for key in ["method", "path"] {
+        for key in ["method", "path", "host"] {
             if x[key] != y[key] {
                 return Some(format!("{at}: {key} {} != {}", x[key], y[key]));
             }
@@ -198,6 +228,40 @@ pub fn compare(a: &[Value], b: &[Value]) -> Option<String> {
 
 fn text(v: &Value) -> &str {
     v.as_str().unwrap_or_default()
+}
+
+/// The first difference between two session logs, as drive_rp's
+/// `same_session` sees one (kb d031): the same events with their keys in
+/// order, and a message's tool result or call arguments that hold JSON
+/// compared as the JSON they hold (viy writes it compactly, kb d030).
+pub fn session_diff(a: &[Value], b: &[Value]) -> Option<String> {
+    if a.len() != b.len() {
+        return Some(format!("{} events != {}", a.len(), b.len()));
+    }
+    let wrap = |e: &Value| {
+        let mut e = e.clone();
+        if e["message"].is_object() {
+            let parsed = json_strings(&serde_json::json!({"messages": [e["message"].clone()]}));
+            e["message"] = parsed["messages"][0].clone();
+        }
+        e
+    };
+    for (n, (x, y)) in a.iter().zip(b).enumerate() {
+        let keys = |v: &Value| -> Vec<String> {
+            v.as_object()
+                .into_iter()
+                .flatten()
+                .map(|(k, _)| k.clone())
+                .collect()
+        };
+        if keys(x) != keys(y) {
+            return Some(format!("event {n}: keys {:?} != {:?}", keys(x), keys(y)));
+        }
+        if let Some(d) = diff(&wrap(x), &wrap(y), &format!("event {n}"), false) {
+            return Some(d);
+        }
+    }
+    None
 }
 
 /// `body` with tool results and call arguments that hold JSON parsed.

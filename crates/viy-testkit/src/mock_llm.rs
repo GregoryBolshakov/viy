@@ -9,7 +9,10 @@
 //! chat-completions request takes the next scripted response; one the
 //! scenario did not expect, or one that fails the response's `expect`, gets
 //! HTTP 500 and is recorded with the reason. Every request is recorded in the
-//! shape of fakellm's log lines (implementation plan 3.4).
+//! shape of fakellm's log lines (implementation plan 3.4). A scenario's `web`
+//! is served as fakellm serves it: Tavily's answers in order at
+//! `/tavily/search` and `/tavily/extract`, and its pages for requests whose
+//! Host is not this server's, recorded with their `host`.
 
 use std::collections::VecDeque;
 use std::io;
@@ -46,6 +49,8 @@ pub struct CapturedRequest {
     /// Which scripted response it took.
     pub response: Option<usize>,
     pub mismatch: Option<String>,
+    /// A page request's Host (a scenario's `web`).
+    pub host: Option<String>,
 }
 
 impl CapturedRequest {
@@ -64,6 +69,9 @@ impl CapturedRequest {
             .map(|(k, v)| (k.clone(), Value::String(v.clone())))
             .collect();
         let mut entry = json!({"method": self.method, "path": self.path, "headers": headers});
+        if let Some(host) = &self.host {
+            entry["host"] = json!(host);
+        }
         if let Some(body) = &self.body {
             entry["body"] = body.clone();
         }
@@ -83,6 +91,12 @@ struct State {
     responses: VecDeque<Value>,
     served: usize,
     requests: Vec<CapturedRequest>,
+    /// The scenario's `web`: pages by host and path, Tavily's answers.
+    pages: serde_json::Map<String, Value>,
+    search: VecDeque<Value>,
+    extract: VecDeque<Value>,
+    /// This server's own Host.
+    own: String,
 }
 
 /// The running server; stopped on drop.
@@ -114,9 +128,18 @@ impl MockLlm {
                 .into(),
             served: 0,
             requests: Vec::new(),
+            pages: scenario["web"]["pages"]
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+            search: queue(&scenario["web"]["search"]),
+            extract: queue(&scenario["web"]["extract"]),
+            own: String::new(),
         };
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let addr = listener.local_addr()?;
+        let mut state = state;
+        state.own = addr.to_string();
         let state = Arc::new(Mutex::new(state));
         let stop = Arc::new(AtomicBool::new(false));
         let accept = {
@@ -178,6 +201,10 @@ impl Drop for MockLlm {
             let _ = t.join();
         }
     }
+}
+
+fn queue(v: &Value) -> VecDeque<Value> {
+    v.as_array().cloned().unwrap_or_default().into()
 }
 
 fn lock(state: &Mutex<State>) -> std::sync::MutexGuard<'_, State> {
@@ -251,8 +278,23 @@ fn serve(mut conn: TcpStream, state: &Mutex<State>) -> io::Result<()> {
         body: None,
         response: None,
         mismatch: None,
+        host: None,
     };
     let record = |c: CapturedRequest| lock(state).requests.push(c);
+    let host = req
+        .headers
+        .iter()
+        .find(|(k, _)| k == "host")
+        .map(|(_, v)| v.clone());
+    if let Some(host) = host.filter(|h| *h != lock(state).own) {
+        let page = lock(state)
+            .pages
+            .get(&format!("{host}{}", req.path))
+            .cloned();
+        captured.host = Some(host);
+        record(captured);
+        return serve_page(&mut conn, page);
+    }
 
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/health") => {
@@ -281,6 +323,33 @@ fn serve(mut conn: TcpStream, state: &Mutex<State>) -> io::Result<()> {
                 return respond(&mut conn, 400, "text/plain", b"body is not JSON");
             };
             captured.body = Some(body.clone());
+            if let Some(kind) = path
+                .strip_prefix("/tavily/")
+                .filter(|k| matches!(*k, "search" | "extract"))
+            {
+                let answer = {
+                    let mut s = lock(state);
+                    if kind == "search" {
+                        s.search.pop_front()
+                    } else {
+                        s.extract.pop_front()
+                    }
+                };
+                let Some(answer) = answer else {
+                    captured.mismatch = Some("no Tavily answer queued".into());
+                    record(captured);
+                    return respond(&mut conn, 500, "text/plain", b"no Tavily answer queued");
+                };
+                record(captured);
+                let status = answer["status"].as_u64().unwrap_or(200);
+                let body = answer.get("body").cloned().unwrap_or(json!({}));
+                return respond(
+                    &mut conn,
+                    status,
+                    "application/json",
+                    body.to_string().as_bytes(),
+                );
+            }
             if path != "/v1/chat/completions" {
                 captured.mismatch = Some("unknown path".to_string());
                 record(captured);
@@ -353,6 +422,33 @@ fn reply(conn: &mut TcpStream, r: &Value, model: &str) -> io::Result<()> {
             }
         }
     }
+    conn.flush()?;
+    conn.shutdown(Shutdown::Write)
+}
+
+/// A scenario page, as fakellm serves it: a string is an HTML body; an
+/// object has `status`, `type`, `headers` and `body`.
+fn serve_page(conn: &mut TcpStream, page: Option<Value>) -> io::Result<()> {
+    let Some(page) = page else {
+        return respond(conn, 404, "text/plain", b"not found");
+    };
+    let page = match page {
+        Value::String(body) => json!({"body": body}),
+        other => other,
+    };
+    let status = page["status"].as_u64().unwrap_or(200);
+    let ctype = page["type"].as_str().unwrap_or("text/html; charset=utf-8");
+    let body = page["body"].as_str().unwrap_or_default().as_bytes();
+    let mut head = format!("HTTP/1.1 {status} Status\r\ncontent-type: {ctype}\r\n");
+    for (k, v) in page["headers"].as_object().into_iter().flatten() {
+        head.push_str(&format!("{k}: {}\r\n", v.as_str().unwrap_or_default()));
+    }
+    head.push_str(&format!(
+        "content-length: {}\r\nconnection: close\r\n\r\n",
+        body.len()
+    ));
+    conn.write_all(head.as_bytes())?;
+    conn.write_all(body)?;
     conn.flush()?;
     conn.shutdown(Shutdown::Write)
 }
@@ -501,11 +597,24 @@ pub fn http(
     path: &str,
     body: Option<&Value>,
 ) -> io::Result<(u16, Vec<u8>)> {
+    http_as(uri, None, method, path, body)
+}
+
+/// [`http`] with another Host than the server's: a page of the
+/// scenario's `web`.
+pub fn http_as(
+    uri: &str,
+    host: Option<&str>,
+    method: &str,
+    path: &str,
+    body: Option<&Value>,
+) -> io::Result<(u16, Vec<u8>)> {
     let addr = uri.strip_prefix("http://").unwrap_or(uri);
     let mut conn = TcpStream::connect(addr)?;
     let payload = body.map(Value::to_string).unwrap_or_default();
+    let host = host.unwrap_or(addr);
     let head = format!(
-        "{method} {path} HTTP/1.1\r\nhost: {addr}\r\nauthorization: Bearer fake-key\r\n\
+        "{method} {path} HTTP/1.1\r\nhost: {host}\r\nauthorization: Bearer fake-key\r\n\
          content-type: application/json\r\nconnection: close\r\ncontent-length: {}\r\n\r\n",
         payload.len()
     );

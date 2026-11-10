@@ -20,10 +20,7 @@
 //! A request that fails keeps only what had streamed; a turn interrupted
 //! keeps the user's message and what had streamed, marked `[interrupted]`.
 //!
-//! Not yet: the tool loop and its cap (WP 4.10; web search and fetch, whose
-//! schemas a chat already offers, phase 5), so the model's tool calls are
-//! dropped as on rp's last round, and the build tools' parts of the system
-//! prompt with them (phase 4); elision and compaction (phase 6).
+//! Not yet: elision and compaction (phase 6).
 //!
 //! Each turn is watched by a [`TurnMonitor`] ([`crate::trace`]): its
 //! notes go into the tool results the model reads, its alarms are said as
@@ -218,6 +215,9 @@ pub struct Chat {
     /// Why network commands need the user's yes: internet text, or files
     /// from a mounted folder, in this chat (rp's `web_taint`).
     pub(crate) web_taint: Option<String>,
+    /// web_search's client, the pages read, and which URLs and hosts the
+    /// user, a search or a page vouched for ([`web`]).
+    pub(crate) web: web::Web,
     /// Whether the log had been written when its session last ended.
     closed_saved: bool,
     /// The chat's trace and alarms (TRACE_ENABLED), following its session.
@@ -274,6 +274,7 @@ impl Chat {
                 Arc::new(move || lock(&session).as_ref().map(|log| log.id().to_string())),
             )
         };
+        let web = web::Web::new(cfg, web::WebNet::system(Arc::clone(&endpoint.http)));
         Ok(Self {
             cfg: cfg.clone(),
             places,
@@ -338,6 +339,7 @@ impl Chat {
             probed: false,
             mount_note: None,
             web_taint: None,
+            web,
             closed_saved: false,
             tracer,
             monitor: None,
@@ -688,9 +690,10 @@ impl Chat {
 
     /// Forgets the old chat's web state; taints again if `messages` (a
     /// resumed chat) already hold internet text or files from a mount (rp's
-    /// `_reset_web`, the taint part).
+    /// `_reset_web`).
     pub(crate) fn reset_web(&mut self, messages: &[Value]) {
         const WEB: &str = "web results earlier in this chat";
+        self.web.clear();
         let mut taint: Option<&str> = None;
         for m in messages {
             if m["role"] == "tool"
@@ -794,6 +797,11 @@ impl Chat {
     /// Why network commands need the user's yes, if they do.
     pub fn web_taint(&self) -> Option<&str> {
         self.web_taint.as_deref()
+    }
+
+    /// What the web tools go through: tests and `viy dev drive` give fakes.
+    pub fn set_web_net(&mut self, net: web::WebNet) {
+        self.web.net = net;
     }
 
     /// Marks this chat, not yet written, as one-shot (`viy exec`).
@@ -1946,6 +1954,8 @@ impl Turns for ChatTurns {
 mod commands;
 #[path = "tools.rs"]
 mod tools;
+#[path = "web.rs"]
+pub mod web;
 
 /// `n` random bytes as hex, for a tool call that came without an id.
 fn random_hex(n: usize) -> String {

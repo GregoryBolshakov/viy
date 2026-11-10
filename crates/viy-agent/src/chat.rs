@@ -20,7 +20,8 @@
 //! A request that fails keeps only what had streamed; a turn interrupted
 //! keeps the user's message and what had streamed, marked `[interrupted]`.
 //!
-//! Not yet: elision and compaction (phase 6).
+//! Old tool output is elided once the history passes TOOL_ELIDE_THRESHOLD
+//! ([`compact`]). Not yet: compaction (WP 6.2).
 //!
 //! Each turn is watched by a [`TurnMonitor`] ([`crate::trace`]): its
 //! notes go into the tool results the model reads, its alarms are said as
@@ -165,6 +166,9 @@ pub struct Chat {
     /// AUTO_COMPACT, and AUTO_COMPACT_THRESHOLD as a fraction of the budget.
     auto_compact: bool,
     auto_compact_threshold: f64,
+    /// TOOL_ELIDE_THRESHOLD and TOOL_ELIDE_KEEP_TURNS ([`compact`]).
+    elide_threshold: f64,
+    elide_keep_turns: usize,
     stats: Option<TurnStats>,
     /// The background title request.
     title_job: Option<JoinHandle<()>>,
@@ -275,6 +279,10 @@ impl Chat {
             )
         };
         let web = web::Web::new(cfg, web::WebNet::system(Arc::clone(&endpoint.http)));
+        let elide = compact::elide_settings(
+            cfg.get("TOOL_ELIDE_THRESHOLD"),
+            cfg.get("TOOL_ELIDE_KEEP_TURNS"),
+        );
         Ok(Self {
             cfg: cfg.clone(),
             places,
@@ -303,6 +311,8 @@ impl Chat {
             discovered: false,
             estimator: Estimator::default(),
             auto_compact: on("AUTO_COMPACT", "1"),
+            elide_threshold: elide.0,
+            elide_keep_turns: elide.1,
             auto_compact_threshold: cfg
                 .get("AUTO_COMPACT_THRESHOLD")
                 .and_then(|n| n.trim().parse().ok())
@@ -1175,6 +1185,9 @@ impl Chat {
 
     async fn turn(&mut self, ctx: &TurnContext, content: Value) -> TurnOutcome {
         let started = tokio::time::Instant::now();
+        // Before anything is sent: stale tool output first, which often
+        // makes compaction unnecessary.
+        self.maybe_elide_tool_results(ctx, &content);
         let user = json!({"role": "user", "content": content});
         let mut msgs = Vec::new();
         if let Some(system) = self.system_prompt() {
@@ -1952,6 +1965,8 @@ impl Turns for ChatTurns {
 
 #[path = "commands.rs"]
 mod commands;
+#[path = "compact.rs"]
+pub mod compact;
 #[path = "tools.rs"]
 mod tools;
 #[path = "web.rs"]

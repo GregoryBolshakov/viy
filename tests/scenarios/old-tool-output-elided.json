@@ -1,0 +1,206 @@
+{
+ "name": "old-tool-output-elided",
+ "about": "Web search on, build tools and auto-compaction off (compaction is WP 6.2), a small context (6000 tokens, 1000 for the reply). Two turns each read five long search results, a third is plain; before the fourth the history is past TOOL_ELIDE_THRESHOLD (0.6), so the first turn's search result is elided to a note (the last two turns are kept) and the session log takes the new history as a replace.",
+ "config": {
+  "TOOLS_ENABLED": "0",
+  "SEARCH_ENABLED": "1",
+  "CHAT_AUTO_TITLE": "0",
+  "MAX_TOKENS": "1000",
+  "TAVILY_API_KEY": "fake-tavily-key-0001",
+  "TAVILY_VAULT_TOKEN": "",
+  "AUTO_COMPACT": "0"
+ },
+ "max_model_len": 6000,
+ "web": {
+  "search": [
+   {
+    "body": {
+     "results": [
+      {
+       "title": "lifetimes 0",
+       "url": "https://docs.example-0.test/lifetimes",
+       "content": "lifetimes part 0: Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their dat",
+       "published_date": "2026-05-19"
+      },
+      {
+       "title": "lifetimes 1",
+       "url": "https://docs.example-1.test/lifetimes",
+       "content": "lifetimes part 1: Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their dat",
+       "published_date": "2026-05-20"
+      },
+      {
+       "title": "lifetimes 2",
+       "url": "https://docs.example-2.test/lifetimes",
+       "content": "lifetimes part 2: Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their dat",
+       "published_date": "2026-05-21"
+      },
+      {
+       "title": "lifetimes 3",
+       "url": "https://docs.example-3.test/lifetimes",
+       "content": "lifetimes part 3: Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their dat",
+       "published_date": "2026-05-22"
+      },
+      {
+       "title": "lifetimes 4",
+       "url": "https://docs.example-4.test/lifetimes",
+       "content": "lifetimes part 4: Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their dat",
+       "published_date": "2026-05-23"
+      }
+     ]
+    }
+   },
+   {
+    "body": {
+     "results": [
+      {
+       "title": "traits 0",
+       "url": "https://docs.example-0.test/traits",
+       "content": "traits part 0: Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. ",
+       "published_date": "2026-05-19"
+      },
+      {
+       "title": "traits 1",
+       "url": "https://docs.example-1.test/traits",
+       "content": "traits part 1: Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. ",
+       "published_date": "2026-05-20"
+      },
+      {
+       "title": "traits 2",
+       "url": "https://docs.example-2.test/traits",
+       "content": "traits part 2: Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. ",
+       "published_date": "2026-05-21"
+      },
+      {
+       "title": "traits 3",
+       "url": "https://docs.example-3.test/traits",
+       "content": "traits part 3: Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. ",
+       "published_date": "2026-05-22"
+      },
+      {
+       "title": "traits 4",
+       "url": "https://docs.example-4.test/traits",
+       "content": "traits part 4: Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. Rust's borrow checker tracks lifetimes so references never outlive their data. ",
+       "published_date": "2026-05-23"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "steps": [
+  {
+   "user": "How do lifetimes work in Rust?"
+  },
+  {
+   "user": "And traits?"
+  },
+  {
+   "user": "Which should I learn first?"
+  },
+  {
+   "user": "Thanks. One line summary?"
+  }
+ ],
+ "responses": [
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "call_1",
+      "name": "web_search",
+      "arguments": "{\"query\": \"rust lifetimes\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "stream": [
+    {
+     "content": "Lifetimes tie references to the data they borrow."
+    },
+    {
+     "usage": {
+      "prompt_tokens": 2600,
+      "completion_tokens": 12,
+      "total_tokens": 2612
+     }
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "tool_call": {
+      "id": "call_2",
+      "name": "web_search",
+      "arguments": "{\"query\": \"rust traits\"}"
+     }
+    },
+    {
+     "finish": "tool_calls"
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "tool"
+   },
+   "stream": [
+    {
+     "content": "Traits define shared behaviour."
+    },
+    {
+     "usage": {
+      "prompt_tokens": 4300,
+      "completion_tokens": 8,
+      "total_tokens": 4308
+     }
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "content": "Traits first, then lifetimes."
+    }
+   ]
+  },
+  {
+   "expect": {
+    "stream": true,
+    "tools": "auto",
+    "last_role": "user"
+   },
+   "stream": [
+    {
+     "content": "Learn traits, then lifetimes."
+    }
+   ]
+  }
+ ]
+}

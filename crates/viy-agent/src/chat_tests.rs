@@ -902,7 +902,11 @@ impl Direct {
         self.chat.session_id().unwrap()
     }
 
-    fn replayed(&self, id: &str) -> sessions::State {
+    pub(crate) fn store_path(&self, id: &str) -> std::path::PathBuf {
+        self.store.path_of(id)
+    }
+
+    pub(crate) fn replayed(&self, id: &str) -> sessions::State {
         sessions::replay(&self.store.path_of(id)).unwrap()
     }
 }

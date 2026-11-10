@@ -297,6 +297,19 @@ impl FileTools {
         self.seen.clear();
     }
 
+    /// The paths read in this chat, for tests.
+    #[cfg(test)]
+    pub(crate) fn seen_paths(&self) -> Vec<PathBuf> {
+        self.seen.keys().cloned().collect()
+    }
+
+    /// Forgets the reads of `paths`: their contents left the context.
+    pub fn forget_paths(&mut self, paths: &[PathBuf]) {
+        for p in paths {
+            self.seen.remove(p);
+        }
+    }
+
     /// Keeps the reads of `keep` only.
     pub fn keep_reads(&mut self, keep: &[PathBuf]) {
         self.seen.retain(|p, _| keep.contains(p));
@@ -305,7 +318,7 @@ impl FileTools {
     /// The write guard's key for a read_file or write_file call; `None`
     /// for other tools and for paths that do not resolve (rp's
     /// `_call_path`).
-    fn call_path(&self, call: &Value) -> Option<PathBuf> {
+    pub(crate) fn call_path(&self, call: &Value) -> Option<PathBuf> {
         let function = &call["function"];
         if !matches!(function["name"].as_str(), Some("read_file" | "write_file")) {
             return None;

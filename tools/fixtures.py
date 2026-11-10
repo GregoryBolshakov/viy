@@ -3869,10 +3869,166 @@ def gen_chat_tools(snap):
     }
 
 
+# ------------------------------------------------------------ chat/elision
+
+# rpctl's elision of old tool output: `_elide_before(cut)` on histories
+# (elide cases: the new messages, n, saved, and the write guard's forget and
+# kept keys), and `_maybe_elide_tool_results` before a turn (maybe cases:
+# the history after, the line it prints, the write guard's reads after).
+# Every chat has build tools off (no workspace path in the system prompt),
+# its workspace $T/project; paths come out under $T.
+ELISION_RUNNER = r"""
+import contextlib, io, json, pathlib, re, sys
+sys.path.insert(0, sys.argv[1])
+from rpctl import chat, config
+job = json.loads(sys.stdin.read())
+
+def make(over):
+    cfg = dict(config.DEFAULTS, VLLM_API_KEY="k", TRACE_ENABLED="0", CONSULT_ENABLED="0",
+               INSTRUCTIONS_ENABLED="0", TOOLBOX_ENABLED="0", TOOLS_ENABLED="0",
+               SEARCH_ENABLED="0")
+    cfg.update(over)
+    c = chat.Chat(cfg, "http://127.0.0.1:1")
+    c._today = "2026-07-03 (Friday)"
+    return c
+
+keys = lambda s: sorted(str(k) for k in s if k is not None)
+out = []
+for case in job:
+    c = make(case.get("config", {}))
+    c.messages = case["history"]
+    if case["kind"] == "elide":
+        el = c._elide_before(case["cut"])
+        out.append({"messages": el["messages"], "n": el["n"], "saved": el["saved"],
+                    "forget": keys(el["forget"]), "kept": keys(el["kept"])})
+    else:
+        c._seen = {str(c._resolve_in_workspace(r)): "sha" for r in case.get("seen", [])}
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            c._maybe_elide_tool_results(case["user"])
+        out.append({"messages": c.messages,
+                    "printed": re.sub(r"\x1b\[[0-9;]*m", "", buf.getvalue()),
+                    "seen_after": keys(c._seen),
+                    "threshold": c.elide_threshold, "keep_turns": c.elide_keep_turns})
+print(json.dumps(out))
+"""
+
+
+def _elision_history():
+    """Three turns of tool work: reads, a write, shell, list_dir, web,
+    explore and ask_claude, short and long results, then a turn in full."""
+    long = lambda tag, n=600: (f"{tag} line one\n\n   indented\tline two " + "x" * n)
+
+    def call(i, name, args):
+        return {"id": f"c{i}", "type": "function",
+                "function": {"name": name, "arguments": args if isinstance(args, str)
+                             else json.dumps(args)}}
+
+    def tool(i, content):
+        return {"role": "tool", "tool_call_id": f"c{i}", "content": content}
+    big_write = "def f():\n    return 1\n" * 40
+    return [
+        {"role": "user", "content": "read the code"},
+        {"role": "assistant", "content": "", "tool_calls": [
+            call(1, "read_file", {"path": "a.py"}), call(2, "list_dir", {"path": "."}),
+            call(3, "read_file", {"path": "short.txt"})]},
+        tool(1, long("a.py")), tool(2, "x" * 400), tool(3, "tiny"),
+        {"role": "assistant", "content": "Read them."},
+        {"role": "user", "content": "now change it"},
+        {"role": "assistant", "content": None, "tool_calls": [
+            call(4, "write_file", {"path": "a.py", "content": big_write}),
+            call(5, "write_file", {"content": "short", "path": "b.py"}),
+            call(6, "run_shell", {"command": "pytest -q"}),
+            call(7, "write_file", "not json"),
+            call(8, "write_file", {"path": "c.py", "content": "é" * 401})]},
+        tool(4, "{\"ok\": true}"), tool(5, "{\"ok\": true}"),
+        tool(6, "Привет " * 120), tool(7, "{\"error\": \"bad\"}"), tool(8, "{\"ok\": true}"),
+        {"role": "assistant", "content": "Done."},
+        {"role": "user", "content": "look around"},
+        {"role": "assistant", "content": "", "tool_calls": [
+            call(9, "explore", {"task": "map it"}), call(10, "ask_claude", {"task": "review"}),
+            call(11, "web_search", {"query": "q"}), call(12, "fetch_url", {"url": "https://a/"}),
+            {"id": "c13", "type": "function", "function": {"arguments": "{}"}},
+            call(14, "read_file", {"path": "../escape.txt"})]},
+        tool(9, long("explore report", 900)), tool(10, long("claude says", 900)),
+        tool(11, long("web_search results for: q", 700)), tool(12, long("fetch_url: https://a/", 700)),
+        tool(13, long("nameless", 500)), tool(14, long("escape", 500)),
+        {"role": "tool", "tool_call_id": "c99", "content": long("orphan", 500)},
+        {"role": "assistant", "content": "Looked."},
+        {"role": "user", "content": "and read a.py again"},
+        {"role": "assistant", "content": "", "tool_calls": [call(15, "read_file", {"path": "a.py"})]},
+        tool(15, long("a.py again", 800)),
+        {"role": "assistant", "content": "Here it is."},
+    ]
+
+
+def elision_job():
+    h = _elision_history()
+    users = [i for i, m in enumerate(h) if m["role"] == "user"]
+    elide = [dict(kind="elide", name=f"cut_{n}", history=h, cut=cut) for n, cut in [
+        ("0", 0), ("before_turn_2", users[1]), ("before_turn_4", users[3]),
+        ("everything", len(h)), ("past_the_end", len(h) + 5)]]
+    small = {"MAX_MODEL_LEN": "6000", "MAX_TOKENS": "1000"}
+    maybe = [
+        dict(kind="maybe", name="over_threshold_keeps_two_turns", config=small, history=h,
+             user="next", seen=["a.py", "b.py", "c.py", "short.txt"]),
+        dict(kind="maybe", name="keep_one_turn", config=dict(small, TOOL_ELIDE_KEEP_TURNS="1"),
+             history=h, user="next", seen=["a.py", "c.py"]),
+        dict(kind="maybe", name="keep_zero_turns", config=dict(small, TOOL_ELIDE_KEEP_TURNS="0"),
+             history=h, user="next", seen=["a.py"]),
+        dict(kind="maybe", name="under_threshold", config={"MAX_MODEL_LEN": "262144"},
+             history=h, user="next", seen=["a.py"]),
+        dict(kind="maybe", name="threshold_zero_disables",
+             config=dict(small, TOOL_ELIDE_THRESHOLD="0"), history=h, user="next"),
+        dict(kind="maybe", name="too_few_turns", config=dict(small, TOOL_ELIDE_KEEP_TURNS="4"),
+             history=h, user="next"),
+        dict(kind="maybe", name="nothing_to_elide", config=dict(small, TOOL_ELIDE_KEEP_TURNS="1"),
+             history=[{"role": "user", "content": "x" * 30000}, {"role": "assistant", "content": "y"},
+                      {"role": "user", "content": "z"}, {"role": "assistant", "content": "w"}],
+             user="next"),
+        dict(kind="maybe", name="bad_setting_takes_both_defaults",
+             config=dict(small, TOOL_ELIDE_KEEP_TURNS="two", TOOL_ELIDE_THRESHOLD="0.01"),
+             history=h, user="next"),
+        dict(kind="maybe", name="empty_history", config=small, history=[], user="next"),
+        dict(kind="maybe", name="large_user_message_tips_it",
+             config={"MAX_MODEL_LEN": "9000", "MAX_TOKENS": "1000"}, history=h,
+             user="q " * 3000),
+    ]
+    return elide + maybe
+
+
+def gen_chat_elision(snap):
+    job = elision_job()
+    with tempfile.TemporaryDirectory(prefix="fixtures-") as tmp:
+        tmp = pathlib.Path(tmp).resolve()
+        env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+        for name, sub in (("HOME", "home"), ("XDG_CONFIG_HOME", "config"),
+                          ("XDG_STATE_HOME", "state"), ("XDG_DATA_HOME", "data"),
+                          ("XDG_CACHE_HOME", "cache")):
+            (tmp / sub).mkdir()
+            env[name] = str(tmp / sub)
+        (tmp / "project" / ".rpctl").mkdir(parents=True)
+        out = subprocess.run([sys.executable, "-I", "-c", ELISION_RUNNER, str(snap)],
+                             input=json.dumps(job), cwd=tmp / "project", env=env, check=True,
+                             capture_output=True, text=True)
+        got = json.loads(json.dumps(json.loads(out.stdout)).replace(str(tmp), "$T"))
+    return {
+        "about": "rpctl chat's elision of old tool output: _elide_before(cut) (elide: "
+                 "messages, n, saved, the write guard's forget and kept keys) and "
+                 "_maybe_elide_tool_results(user) before a turn (maybe: the history after, "
+                 "the line printed without colours, the write guard's reads after, the "
+                 "settings read); DEFAULTS plus VLLM_API_KEY k, TRACE, CONSULT, INSTRUCTIONS, "
+                 "TOOLBOX, TOOLS and SEARCH off, then the case's config; workspace "
+                 "$T/project, the date 2026-07-03 (Friday)",
+        "cases": [dict(case, **result) for case, result in zip(job, got)],
+    }
+
+
 GENERATORS = {
     "approve/decisions": gen_approve_decisions,
     "approve/review": gen_approve_review,
     "chat/context": gen_chat_context,
+    "chat/elision": gen_chat_elision,
     "chat/modes": gen_chat_modes,
     "chat/sessions": gen_chat_sessions,
     "chat/tools": gen_chat_tools,

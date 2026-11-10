@@ -100,6 +100,30 @@ def webfetch_eval_pages():
             "pages": {name: ev.ARTICLE.format(inject=html) for name, html in ev.PAGES.items()}}
 
 
+def search_tavily(query, k, recency, site, max_chars, status, body):
+    """SearchClient.search with a key, requests.post answering `status` and
+    `body` (text) and the DuckDuckGo fallback failing with "ddg": the JSON
+    body sent (None when nothing was), then the results or the error."""
+    from unittest import mock
+    from rpctl import config, search
+    cfg = dict(config.DEFAULTS, TAVILY_API_KEY="tvly-oracle-key", TAVILY_VAULT_TOKEN="",
+               SEARCH_MAX_CHARS_PER_RESULT=str(max_chars))
+    resp = mock.MagicMock()
+    resp.status_code = status
+    resp.text = body
+    resp.json.side_effect = lambda: json.loads(body)
+    client = search.SearchClient(cfg, ["literal-secret-value"])
+    with mock.patch.object(search.requests, "post", return_value=resp) as post, \
+            mock.patch.object(client, "_ddg", side_effect=search.SearchError("ddg")):
+        try:
+            res = client.search(query, k, recency, site)
+            out = {"results": res.results, "backend": res.backend, "quality": res.quality}
+        except search.SearchError as e:
+            out = {"error": str(e)}
+    out["sent"] = post.call_args.kwargs["json"] if post.called else None
+    return out
+
+
 def shutdown_parse_when(text, now):
     """shutdown.parse_when(text, now) with `now` as an ISO local time."""
     from datetime import datetime
@@ -285,6 +309,10 @@ FUNCTIONS = {
     # Resolves paths and asks git about core.hooksPath (no writes).
     "sandbox.protected_reason": ("rpctl.sandbox", "protected_reason"),
     "sandbox.secret_name_reason": ("rpctl.sandbox", "secret_name_reason"),
+    "search.normalise": ("rpctl.search", "normalise"),
+    "search.site": ("rpctl.search", "SearchClient._site"),
+    # requests.post and the DuckDuckGo fallback replaced; no network.
+    "search.tavily": search_tavily,
     "shutdown.fmt": ("rpctl.shutdown", "_fmt"),
     "shutdown.is_chat": shutdown_is_chat,
     "shutdown.parse_when": shutdown_parse_when,

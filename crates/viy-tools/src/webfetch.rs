@@ -363,7 +363,7 @@ static MD_LINK: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// `requests`' exception class for a failure, as rp names it.
-fn class_name(error: &HttpError) -> &'static str {
+pub(crate) fn class_name(error: &HttpError) -> &'static str {
     match error {
         HttpError::Timeout => "Timeout",
         HttpError::Connect(_) | HttpError::Network(_) => "ConnectionError",

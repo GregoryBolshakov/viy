@@ -13,8 +13,8 @@
 //! commands ([`egress`]) with the host rules of netguard it uses
 //! ([`netguard`]), the schemas of the internet tools ([`web`]), which
 //! the chat offers from phase 3 on, fetch_url's pages read as text
-//! ([`webfetch`]), and the user's doctrines for the network reviewer
-//! ([`doctrines`]), new in viy.
+//! ([`webfetch`]), web_search's Tavily client ([`search`]), and the
+//! user's doctrines for the network reviewer ([`doctrines`]), new in viy.
 
 pub mod approve;
 pub mod build;
@@ -27,6 +27,7 @@ pub mod netguard;
 pub mod quarantine;
 pub mod resolve;
 pub mod sandbox;
+pub mod search;
 pub mod secrets;
 pub mod untrusted;
 pub mod web;

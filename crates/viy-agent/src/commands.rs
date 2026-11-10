@@ -63,7 +63,7 @@ const HELP: &str = "  /help              show this
   /md on|off         render Markdown in replies (tables, headings, math), or
                      print it raw
   /search [on|off]   let the model search and read the web (needs a
-                     tool-capable pod); no argument shows the backends
+                     tool-capable pod); no argument shows the backend
   /tools on|off      let the model build: write/read/list files & run shell (on)
   /instructions [on|off]  show the AGENTS.md / QWEN.md / CLAUDE.md files loaded
                      into the system prompt, or stop/start loading them

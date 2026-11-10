@@ -48,7 +48,7 @@ viy-protocol = { workspace = true }
 [dev-dependencies]
 base64 = { workspace = true }
 pretty_assertions = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
 viy-testkit = { workspace = true }
 
 # Calls rpctl through the oracle.

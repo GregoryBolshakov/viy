@@ -186,12 +186,7 @@ fn user_text(m: &Value) -> String {
     match &m["content"] {
         Value::Array(parts) => parts
             .iter()
-            .filter(|p| {
-                p.is_object()
-                    && !p["text"]
-                        .as_str()
-                        .is_some_and(|t| t.starts_with(sessions::CLIENT_NOTE_PREFIX))
-            })
+            .filter(|p| p.is_object() && !p["text"].as_str().is_some_and(sessions::is_client_note))
             .map(|p| {
                 if p["type"] == "image_url" {
                     "[image]".to_string()
@@ -1288,7 +1283,7 @@ impl Chat {
             .iter()
             .filter(|p| p["type"] == "text")
             .filter_map(|p| p["text"].as_str())
-            .filter(|t| !t.starts_with(sessions::CLIENT_NOTE_PREFIX))
+            .filter(|t| !sessions::is_client_note(t))
             .collect::<Vec<_>>()
             .join("\n");
         let images: Vec<String> = parts

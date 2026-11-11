@@ -802,7 +802,7 @@ fn remote_matches_rpctl() {
             .map(|_| (*g.pick(&["hetzner", "box", "a b"])).to_string())
             .collect();
         assert_eq!(
-            call("remote.note", json!([wire, gone])),
+            call("remote.note", json!([wire, gone])).to_viy(),
             Outcome::Returned(json!(note(&hosts, &gone))),
             "note {at}"
         );
@@ -819,4 +819,15 @@ fn remote_matches_rpctl() {
         }
     }
     eprintln!("match: none, run, refused: {seen:?}");
+}
+
+// kb d131: rp's ssh notes in chats rp saved still read as ssh notes.
+#[test]
+fn ssh_notes_of_both_names() {
+    assert!(is_note(&note(&[], &["box".to_string()])));
+    assert!(note(&[], &["box".to_string()]).starts_with("[viy chat: ssh: "));
+    assert!(is_note(
+        "[rp chat: ssh: the user took back ssh access to box]"
+    ));
+    assert!(!is_note("[viy chat: the user mounted /srv]"));
 }

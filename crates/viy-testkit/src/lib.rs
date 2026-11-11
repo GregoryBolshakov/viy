@@ -21,6 +21,7 @@ pub mod mock_llm;
 #[cfg(feature = "oracle")]
 pub mod oracle;
 pub mod pty;
+pub mod rp_names;
 pub mod scenario;
 pub mod scratch;
 pub mod screen;

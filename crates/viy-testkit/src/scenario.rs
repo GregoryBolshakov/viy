@@ -39,7 +39,8 @@ impl RequestLog {
     }
 }
 
-/// Loads `tests/scenarios/<name>.rp.jsonl`, rp's requests for that scenario.
+/// Loads `tests/scenarios/<name>.rp.jsonl`, rp's requests for that scenario,
+/// with viy's names for rp's ([`crate::rp_names`]).
 pub fn rp_log(name: &str) -> io::Result<RequestLog> {
     let text = std::fs::read_to_string(dir().join(format!("{name}.rp.jsonl")))?;
     let mut lines = text.lines().filter(|l| !l.trim().is_empty());
@@ -50,7 +51,10 @@ pub fn rp_log(name: &str) -> io::Result<RequestLog> {
         .transpose()?
         .and_then(|mut first| first.get_mut("meta").map(Value::take))
         .ok_or_else(|| io::Error::other(format!("{name}.rp.jsonl: no meta header")))?;
-    let entries = lines.map(parse).collect::<io::Result<_>>()?;
+    // rp's names read as viy's (flags F21, kb d131)
+    let entries = lines
+        .map(|l| parse(l).map(|v| crate::rp_names::value_to_viy(&v)))
+        .collect::<io::Result<_>>()?;
     Ok(RequestLog { meta, entries })
 }
 
@@ -63,7 +67,11 @@ pub fn rp_session(name: &str) -> io::Result<Option<Vec<Value>>> {
     }
     std::fs::read_to_string(path)?
         .lines()
-        .map(|l| serde_json::from_str(l).map_err(io::Error::other))
+        .map(|l| {
+            serde_json::from_str(l)
+                .map(|v| crate::rp_names::value_to_viy(&v))
+                .map_err(io::Error::other)
+        })
         .collect::<io::Result<_>>()
         .map(Some)
 }

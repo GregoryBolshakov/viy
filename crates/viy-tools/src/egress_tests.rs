@@ -407,8 +407,11 @@ fn responses_match_rpctl() {
             };
             let want = String::from_utf8(response(status, reason)).unwrap();
             assert_eq!(got["$bytes"].is_string(), true);
+            // rpctl's response names it; viy's names viy (flags F21, kb d131)
             assert_eq!(
-                decode64(got["$bytes"].as_str().unwrap()),
+                viy_testkit::rp_names::http_response_to_viy(&decode64(
+                    got["$bytes"].as_str().unwrap()
+                )),
                 want.into_bytes(),
                 "{status} {reason:?}"
             );

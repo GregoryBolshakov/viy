@@ -1,0 +1,20 @@
+{
+ "about": "rp's names in what the model sees, and viy's in their place (flags F21, kb d131): tests that compare viy with rpctl's fixtures, oracle and scenario recordings read rpctl's side through this map. Only what stays on this machine: ~/rp-work and RPCTL_SANDBOX on a lent server keep rp's names, and the pod side is rpctl's (kb d003).",
+ "map": [
+  ["[rpctl: ", "[viy: "],
+  ["[... truncated by rpctl ...]", "[... truncated by viy ...]"],
+  ["rpctl_note", "viy_note"],
+  ["rpctl: this returned exactly", "viy: this returned exactly"],
+  ["rpctl: you already made this exact call", "viy: you already made this exact call"],
+  ["[rp chat: ", "[viy chat: "],
+  ["X-Rpctl-Blocked", "X-Proxy-Blocked"],
+  ["rpctl egress proxy: ", "viy egress proxy: "],
+  ["rpctl: network launcher failed", "viy: network launcher failed"],
+  ["rpctl: the client did not take the proxy port", "viy: the client did not take the proxy port"],
+  ["rpctl: cannot run ", "viy: cannot run "],
+  ["editor and rpctl config", "editor and viy config"],
+  ["RPCTL_SANDBOX", "VIY_SANDBOX"],
+  ["/run/rpctl/host.git", "/run/viy/host.git"],
+  ["rpctl's ask_claude tool", "viy's ask_claude tool"]
+ ]
+}

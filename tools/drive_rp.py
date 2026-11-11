@@ -59,6 +59,24 @@ def _compare_module():
     return mod
 
 
+def viy_names(value):
+    """`value` with rp's model-visible names read as viy's, from
+    tests/rp-names.json (flags F21, kb d131): what --check compares viy's
+    run with."""
+    pairs = json.loads((ROOT / "tests" / "rp-names.json").read_text(encoding="utf-8"))["map"]
+    def walk(v):
+        if isinstance(v, str):
+            for rp, viy in pairs:
+                v = v.replace(rp, viy)
+            return v
+        if isinstance(v, list):
+            return [walk(x) for x in v]
+        if isinstance(v, dict):
+            return {walk(k): walk(x) for k, x in v.items()}
+        return v
+    return walk(value)
+
+
 def snapshot():
     out = subprocess.run([str(ROOT / "tools" / "refsnap.sh")], cwd=ROOT, check=True,
                          capture_output=True, text=True).stdout.strip()
@@ -320,11 +338,17 @@ def main(argv):
             print(f"recorded {recorded_session.relative_to(ROOT)}")
     elif a.check:
         cmp = _compare_module()
-        d = cmp.compare(cmp.load(recorded)[1], cmp.load(log)[1])
+        want_log = cmp.load(recorded)[1]
+        if viy:
+            want_log = viy_names(want_log)
+        d = cmp.compare(want_log, cmp.load(log)[1])
         if d:
             print(f"differs from {recorded.relative_to(ROOT)}: {d}")
             return 1
         want = recorded_session.read_text(encoding="utf-8") if recorded_session.exists() else None
+        if viy and want is not None:
+            want = "".join(json.dumps(viy_names(json.loads(line)), ensure_ascii=False) + "\n"
+                           for line in want.splitlines())
         got = session.read_text(encoding="utf-8") if session.exists() else None
         if want != got and not same_session(cmp, want, got):
             print(f"the session log differs from {recorded_session.relative_to(ROOT)}:\n"

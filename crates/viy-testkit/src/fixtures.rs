@@ -37,7 +37,8 @@ impl Fixture {
 }
 
 /// Loads `tests/fixtures/<name>.json`, refusing one generated from a commit
-/// other than the pinned one.
+/// other than the pinned one; its cases with viy's names for rp's
+/// ([`crate::rp_names`]).
 pub fn load(name: &str) -> io::Result<Fixture> {
     let text = std::fs::read_to_string(path(name))?;
     let mut doc: Value = serde_json::from_str(&text).map_err(io::Error::other)?;
@@ -58,7 +59,8 @@ pub fn load(name: &str) -> io::Result<Fixture> {
     }
     let about = field(&doc, "about")?;
     let cases = match doc.get_mut("cases").map(Value::take) {
-        Some(Value::Array(cases)) => cases,
+        // rpctl's names read as viy's (flags F21, kb d131)
+        Some(Value::Array(cases)) => cases.iter().map(crate::rp_names::value_to_viy).collect(),
         _ => return Err(io::Error::other(format!("fixture {name}: no cases"))),
     };
     Ok(Fixture {

@@ -39,10 +39,14 @@ use viy_config::vault::wait_with_timeout;
 use crate::secrets;
 
 /// What starts every note from the client to the model about `/ssh`
-/// (rpctl `sessions.SSH_NOTE_PREFIX`; the name stays rp's, flag F21).
-pub const NOTE_PREFIX: &str = "[rp chat: ssh: ";
+/// (rpctl `sessions.SSH_NOTE_PREFIX`, renamed: flag F21, kb d131).
+pub const NOTE_PREFIX: &str = "[viy chat: ssh: ";
+/// rp's, in the chats rp saved.
+pub const RP_NOTE_PREFIX: &str = "[rp chat: ssh: ";
 /// Under the remote `$HOME`: the only place a boxed command writes, kept
-/// between commands so the model can build something up there.
+/// between commands so the model can build something up there. It keeps
+/// rp's name, as does `RPCTL_SANDBOX` in [`box_command`]: both are seen on
+/// the server, where viy's name never goes (kb d131).
 pub const BOX_DIR: &str = "rp-work";
 /// Home folders hidden behind an empty tmpfs: keys, tokens, app config.
 const BOX_HIDE_DIRS: [&str; 9] = [
@@ -1205,8 +1209,9 @@ pub fn note(hosts: &[Host], gone: &[String]) -> String {
     format!("{NOTE_PREFIX}{text}]")
 }
 
+/// Whether `text` is an ssh note, viy's or one rp wrote.
 pub fn is_note(text: &str) -> bool {
-    text.starts_with(NOTE_PREFIX)
+    text.starts_with(NOTE_PREFIX) || text.starts_with(RP_NOTE_PREFIX)
 }
 
 #[cfg(test)]

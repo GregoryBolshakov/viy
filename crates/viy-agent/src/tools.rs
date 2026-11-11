@@ -900,7 +900,7 @@ impl Chat {
             self.report_quarantine(ctx, &moved);
             result["quarantined"] = json!(moved.iter().map(|(r, _)| r).collect::<Vec<_>>());
             result["quarantine_note"] = json!(
-                "these were moved out of the workspace: git repositories, editor and rpctl \
+                "these were moved out of the workspace: git repositories, editor and viy \
                  config can run code outside the sandbox. Do not recreate them."
             );
         }
@@ -1038,7 +1038,7 @@ impl Chat {
             ctx,
             NoticeLevel::Info,
             "quarantine",
-            "  (git repos, editor configs and .rpctl/ run code outside the sandbox, so new ones \
+            "  (git repos, editor configs and .viy/ run code outside the sandbox, so new ones \
              are moved out)",
         );
     }

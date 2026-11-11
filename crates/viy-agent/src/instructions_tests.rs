@@ -158,11 +158,37 @@ fn every_case_equals_rpctl() {
     assert!(fixture.cases.len() >= 25);
     for case in &fixture.cases {
         let name = case["name"].as_str().unwrap();
+        // A cut file's size counts the marker, whose name is viy's: two
+        // characters shorter than rp's (flags F21, kb d131).
+        let shrink = "rpctl".len() - "viy".len();
+        let loaded: Vec<Value> = case["loaded"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| match row[2].as_bool() {
+                Some(true) => json!([row[0], row[1].as_u64().unwrap() as usize - shrink, row[2]]),
+                _ => row.clone(),
+            })
+            .collect();
+        let report: Vec<Value> = case["report"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|line| {
+                let line = line.as_str().unwrap();
+                let Some((head, tail)) = line.rsplit_once(" chars, truncated)") else {
+                    return json!(line);
+                };
+                let (start, n) = head.rsplit_once('(').unwrap();
+                let n: usize = n.parse().unwrap();
+                json!(format!("{start}({} chars, truncated){tail}", n - shrink))
+            })
+            .collect();
         let want = json!({
             "system": case["system"],
             "workspace": case["workspace"],
-            "loaded": case["loaded"],
-            "report": case["report"],
+            "loaded": loaded,
+            "report": report,
         });
         assert_eq!(replay(case), want, "{name}");
     }

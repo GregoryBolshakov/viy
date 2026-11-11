@@ -17,9 +17,9 @@ use viy_config::Config;
 const DEFAULT_NAMES: &str = "AGENTS.md,QWEN.md,CLAUDE.md";
 const DEFAULT_MAX_CHARS: usize = 32000;
 
-/// What ends a file cut to the budget; rpctl's words, kept verbatim until
-/// cutover (kb d014).
-const TRUNCATED: &str = "\n\n[... truncated by rpctl ...]";
+/// What ends a file cut to the budget; rpctl's words with viy's name
+/// (flags F21, kb d131).
+const TRUNCATED: &str = "\n\n[... truncated by viy ...]";
 
 const HEADER: &str = "# Project instructions\n\nThe files below were loaded automatically \
     from this project and its parent directories. They are standing instructions from the \

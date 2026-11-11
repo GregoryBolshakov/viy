@@ -23,7 +23,7 @@ settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature
     <instructions path="{WORKSPACE}/AGENTS.md">
     Answer in exactly one sentence. Prefer plain words over jargon, and never use bullet lists i
     
-    [... truncated by rpctl ...]
+    [... truncated by viy ...]
     </instructions>
     
     <instructions path="{WORKSPACE}/QWEN.md">
@@ -65,7 +65,7 @@ settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature
     <instructions path="{WORKSPACE}/AGENTS.md">
     Answer in exactly one sentence. Prefer plain words over jargon, and never use bullet lists i
     
-    [... truncated by rpctl ...]
+    [... truncated by viy ...]
     </instructions>
     
     <instructions path="{WORKSPACE}/QWEN.md">

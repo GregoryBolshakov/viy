@@ -29,7 +29,7 @@ use super::PROXY_PORT;
 /// The interpreter the launcher runs with.
 pub const LAUNCHER_ARGV: [&str; 4] = ["python3", "-I", "-S", "-c"];
 
-/// rpctl's launcher, word for word (its messages name rpctl, flags F21).
+/// rpctl's launcher, word for word but its messages, which name viy (flags F21).
 pub const LAUNCHER: &str = r#"
 import os, signal, socket, sys
 fd, argv = int(sys.argv[1]), sys.argv[3:]
@@ -43,17 +43,17 @@ try:
     lis.close()
     pair.close()
 except OSError as e:
-    sys.stderr.write("rpctl: network launcher failed: %s\n" % e)
+    sys.stderr.write("viy: network launcher failed: %s\n" % e)
     sys.exit(125)
 if go != b"G":
-    sys.stderr.write("rpctl: the client did not take the proxy port\n")
+    sys.stderr.write("viy: the client did not take the proxy port\n")
     sys.exit(125)
 for sig in (signal.SIGPIPE, signal.SIGXFSZ):
     signal.signal(sig, signal.SIG_DFL)
 try:
     os.execvp(argv[0], argv)
 except OSError as e:
-    sys.stderr.write("rpctl: cannot run %s: %s\n" % (argv[0], e))
+    sys.stderr.write("viy: cannot run %s: %s\n" % (argv[0], e))
     sys.exit(127)
 "#;
 

@@ -30,8 +30,8 @@
 //!   sockets.
 //!
 //! Where rpctl names itself, viy protects both tools' names and code (kb
-//! d014); the names a command sees (`RPCTL_SANDBOX`, `/run/rpctl/host.git`,
-//! the launcher's `rpctl:` lines) stay rpctl's until cutover (flags F21).
+//! d014); the names a command sees are viy's (`VIY_SANDBOX`,
+//! `/run/viy/host.git`, the launcher's `viy:` lines; flags F21, kb d131).
 
 pub mod launch;
 pub mod seccomp;
@@ -70,7 +70,7 @@ pub const PROXY_PORT: u16 = 3128;
 pub const PROXY_URL: &str = "http://127.0.0.1:3128";
 
 /// Where a sandbox with its own repository sees the real `.git`.
-pub const HOST_GIT: &str = "/run/rpctl/host.git";
+pub const HOST_GIT: &str = "/run/viy/host.git";
 
 /// What a proxied command's environment says about the proxy
 /// (netaccess/stage6-egress-proxy.md section 2): NO_PROXY empty so nothing
@@ -401,7 +401,7 @@ pub fn bwrap_argv(host: &Host, jail: &Jail<'_>, seccomp_fd: i32) -> Vec<OsString
         ("LANG", host.lang.clone().into()),
         ("TERM", "dumb".into()),
         ("TMPDIR", "/tmp".into()),
-        ("RPCTL_SANDBOX", "1".into()),
+        ("VIY_SANDBOX", "1".into()),
     ];
     if jail.net == Net::Proxy {
         env.extend(PROXY_ENV.iter().map(|(k, v)| (*k, OsString::from(v))));

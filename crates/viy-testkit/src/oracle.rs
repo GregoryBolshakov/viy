@@ -31,6 +31,20 @@ pub enum Outcome {
     Raised { kind: String, message: String },
 }
 
+impl Outcome {
+    /// With viy's names where rpctl names itself in what the model sees
+    /// ([`crate::rp_names`]; flags F21, kb d131).
+    pub fn to_viy(self) -> Self {
+        match self {
+            Self::Returned(v) => Self::Returned(crate::rp_names::answer_to_viy(&v)),
+            Self::Raised { kind, message } => Self::Raised {
+                kind,
+                message: crate::rp_names::to_viy(&message),
+            },
+        }
+    }
+}
+
 /// One call's result, with whatever the function printed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Answer {

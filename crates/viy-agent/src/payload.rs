@@ -11,12 +11,12 @@ use serde_json::json;
 use viy_config::Config;
 
 /// Sent on a turn's last allowed request (rpctl kb f064, f065).
-pub const TOOL_BUDGET_NOTICE: &str = "[rpctl: tool-call budget for this turn is used up. Do not \
+pub const TOOL_BUDGET_NOTICE: &str = "[viy: tool-call budget for this turn is used up. Do not \
     call any more tools. Give your final answer now from what you already have, and say briefly \
     what you could not verify.]";
 
 /// Sent when a request ended with reasoning but no answer text.
-pub const NO_ANSWER_NOTICE: &str = "[rpctl: your last reply ended without an answer to the \
+pub const NO_ANSWER_NOTICE: &str = "[viy: your last reply ended without an answer to the \
     user. Do not call any more tools. Give your final answer now from what you already have, and \
     say briefly what you could not verify.]";
 

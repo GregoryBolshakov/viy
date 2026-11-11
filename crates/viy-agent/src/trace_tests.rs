@@ -183,7 +183,7 @@ fn tool_errors_as_rp_reads_them() {
 
 #[test]
 fn notes_go_into_an_object_or_on_a_line_of_their_own() {
-    assert_eq!(with_note(r#"{"a":1}"#, "n"), r#"{"a":1,"rpctl_note":"n"}"#);
+    assert_eq!(with_note(r#"{"a":1}"#, "n"), r#"{"a":1,"viy_note":"n"}"#);
     assert_eq!(with_note("[1]", "n"), "[1]\nn");
     assert_eq!(with_note("text", "n"), "text\nn");
 }
@@ -419,7 +419,8 @@ fn monitor_matches_rpctl() {
                 json!({}),
             )
             .unwrap()
-            .outcome;
+            .outcome
+            .to_viy();
         assert_eq!(
             theirs,
             Outcome::Returned(mine),

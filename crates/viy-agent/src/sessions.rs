@@ -55,7 +55,15 @@ pub const TITLE_CHARS: usize = 60;
 /// A text part of a user message that the client added, not the user (the
 /// /mount note, the /ssh note). Titles and /rewind leave it out. rp's words,
 /// kept: the model reads them.
-pub const CLIENT_NOTE_PREFIX: &str = "[rp chat: ";
+pub const CLIENT_NOTE_PREFIX: &str = "[viy chat: ";
+/// rp's prefix (flag F21), in the chats rp saved.
+pub const RP_CLIENT_NOTE_PREFIX: &str = "[rp chat: ";
+
+/// Whether a user message's text part is a note of the client's, viy's or
+/// one rp wrote.
+pub fn is_client_note(text: &str) -> bool {
+    text.starts_with(CLIENT_NOTE_PREFIX) || text.starts_with(RP_CLIENT_NOTE_PREFIX)
+}
 
 /// How a compaction's summary opens.
 pub const SUMMARY_PREFIX: &str = "[Summary of the conversation";
@@ -139,11 +147,7 @@ pub fn default_title(messages: &[Value]) -> Option<String> {
         if let Some(parts) = m["content"].as_array() {
             let kept: Vec<Value> = parts
                 .iter()
-                .filter(|p| {
-                    !p["text"]
-                        .as_str()
-                        .is_some_and(|t| t.starts_with(CLIENT_NOTE_PREFIX))
-                })
+                .filter(|p| !p["text"].as_str().is_some_and(is_client_note))
                 .cloned()
                 .collect();
             m = json!({"content": kept});

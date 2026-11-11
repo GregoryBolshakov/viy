@@ -1006,3 +1006,11 @@ fn a_new_log_never_appends_to_an_existing_one() {
     let two = replay(&s.sessions.path_of(second.id())).unwrap();
     assert_eq!(two.messages, [json!({"role": "user", "content": "two"})]);
 }
+
+// kb d131: a client note is viy's or one rp wrote.
+#[test]
+fn client_notes_of_both_names() {
+    assert!(is_client_note("[viy chat: ssh: lent]"));
+    assert!(is_client_note("[rp chat: the user mounted /srv]"));
+    assert!(!is_client_note("rp chat: not a note"));
+}

@@ -239,7 +239,8 @@ fn note_and_parse_arg_match_rpctl() {
         let theirs = oracle
             .call("mounts.note", json!([ms, gone]), json!({}))
             .unwrap()
-            .outcome;
+            .outcome
+            .to_viy();
         let mounts: Vec<Mount> = ms.iter().map(|(p, rw)| Mount::new(p, *rw)).collect();
         let gone: Vec<PathBuf> = gone.iter().map(PathBuf::from).collect();
         assert_eq!(
@@ -313,4 +314,15 @@ fn secret_files_walk_finds_them_and_skips_pub() {
         .collect();
     found.sort();
     assert_eq!(found, [".env", "id_rsa", "secrets.json"]);
+}
+
+// kb d131: viy's notes are `[viy chat: `; rp's `[rp chat: ` in chats rp
+// saved still read as notes, an ssh note of either as not a mount's.
+#[test]
+fn notes_of_both_names_are_mount_notes() {
+    assert!(is_note("[viy chat: the user mounted /srv]"));
+    assert!(is_note("[rp chat: the user mounted /srv]"));
+    assert!(!is_note("[viy chat: ssh: lent]"));
+    assert!(!is_note("[rp chat: ssh: lent]"));
+    assert!(!is_note("the user mounted /srv"));
 }

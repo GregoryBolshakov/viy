@@ -37,14 +37,14 @@ settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature
 04:assistant:
     -> read_file(c2) {"path": "./notes.txt"}
 05:tool[c2]:
-    {"path": "notes.txt", "content": "line 01 of the notes, kept long enough to count\nline 02 of the notes, kept long enough to count\nline 03 of the notes, kept l... (585 chars)
+    {"path": "notes.txt", "content": "line 01 of the notes, kept long enough to count\nline 02 of the notes, kept long enough to count\nline 03 of the notes, kept l... (581 chars)
 -- request 5 (stream, tools auto) --
 06:assistant:
     -> read_file(c3) {"path": "notes.txt"}
 07:tool[c3]:
-    {"path": "notes.txt", "content": "line 01 of the notes, kept long enough to count\nline 02 of the notes, kept long enough to count\nline 03 of the notes, kept l... (595 chars)
+    {"path": "notes.txt", "content": "line 01 of the notes, kept long enough to count\nline 02 of the notes, kept long enough to count\nline 03 of the notes, kept l... (591 chars)
 -- request 6 (stream, tools auto) --
 08:assistant:
     -> read_file(c4) {"path": "notes.txt"}
 09:tool[c4]:
-    {"path": "notes.txt", "content": "line 01 of the notes, kept long enough to count\nline 02 of the notes, kept long enough to count\nline 03 of the notes, kept l... (595 chars)
+    {"path": "notes.txt", "content": "line 01 of the notes, kept long enough to count\nline 02 of the notes, kept long enough to count\nline 03 of the notes, kept l... (591 chars)

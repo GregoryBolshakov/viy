@@ -65,4 +65,4 @@ settings: model="qwen3.8-abliterated" tool_choice="none" stream=true temperature
 05:tool[c2]:
     {"path": "a.txt", "content": "a\n", "truncated": false}
     
-    [rpctl: tool-call budget for this turn is used up. Do not call any more tools. Give your final answer now from what you already have, and say briefly what you c... (177 chars)
+    [viy: tool-call budget for this turn is used up. Do not call any more tools. Give your final answer now from what you already have, and say briefly what you cou... (175 chars)

@@ -64,9 +64,13 @@ pub const WALK_SKIP: [&str; 9] = [
     "dist",
 ];
 /// The first words of a note from the client to the model (rpctl
-/// sessions.py `CLIENT_NOTE_PREFIX`, viy-agent's sessions).
-pub const NOTE_PREFIX: &str = "[rp chat: ";
+/// sessions.py `CLIENT_NOTE_PREFIX`, viy-agent's sessions; rp's `[rp chat: `
+/// renamed, flag F21).
+pub const NOTE_PREFIX: &str = "[viy chat: ";
+/// rp's, in the chats rp saved.
+const RP_NOTE_PREFIX: &str = "[rp chat: ";
 use crate::remote::NOTE_PREFIX as SSH_NOTE_PREFIX;
+use crate::remote::RP_NOTE_PREFIX as RP_SSH_NOTE_PREFIX;
 
 /// One lent folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -472,8 +476,10 @@ pub fn note(mounts: &[Mount], gone: &[PathBuf]) -> String {
     format!("{NOTE_PREFIX}{text}]")
 }
 
+/// Whether `text` is a mount note, viy's or one rp wrote.
 pub fn is_note(text: &str) -> bool {
-    text.starts_with(NOTE_PREFIX) && !text.starts_with(SSH_NOTE_PREFIX)
+    (text.starts_with(NOTE_PREFIX) && !text.starts_with(SSH_NOTE_PREFIX))
+        || (text.starts_with(RP_NOTE_PREFIX) && !text.starts_with(RP_SSH_NOTE_PREFIX))
 }
 
 #[cfg(test)]

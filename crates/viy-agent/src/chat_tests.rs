@@ -2131,8 +2131,8 @@ async fn the_turn_row_alarm_and_note_reach_the_model() {
         .filter(|m| m["role"] == "tool")
         .map(|m| m["content"].as_str().unwrap())
         .collect();
-    assert!(!results[0].contains("rpctl_note"), "{}", results[0]);
-    assert!(results[1].contains("rpctl_note"), "{}", results[1]);
+    assert!(!results[0].contains("viy_note"), "{}", results[0]);
+    assert!(results[1].contains("viy_note"), "{}", results[1]);
     let said = d.said();
     assert!(
         said.iter().any(|s| s.starts_with("  [alarm: repeat_call]")),

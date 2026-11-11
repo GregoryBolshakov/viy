@@ -135,7 +135,7 @@ pub fn report_schema() -> Value {
 /// Claude's system prompt, appended to its own.
 pub fn system_prompt(workspace: &Path, folder: &Path) -> String {
     format!(
-        "You were started by rpctl's ask_claude tool. A local model (Qwen) working for the \
+        "You were started by viy's ask_claude tool. A local model (Qwen) working for the \
 user in the workspace {ws} handed you a task it could not do well. The user's own latest \
 message to it is included. If Qwen's description of the task disagrees with the user's \
 message, follow the user and say so in your report.

@@ -31,7 +31,7 @@
 //! own error, as Codex's trace writer appends best-effort.
 //!
 //! The notes [`TurnMonitor::on_tool`] adds to a result reach the model, so
-//! they keep rpctl's words and key (`rpctl_note`).
+//! they keep rpctl's words, the name viy's (`viy_note`; flags F21, kb d131).
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -379,11 +379,11 @@ pub fn repeated_sentence(text: &str) -> Option<(String, usize)> {
 }
 
 /// `payload` with the monitor's note: a JSON object gets it as
-/// `rpctl_note`, anything else on a line of its own (rp's `_with_note`).
+/// `viy_note` (rp's `rpctl_note`, flag F21), anything else on a line of its own (rp's `_with_note`).
 pub fn with_note(payload: &str, note: &str) -> String {
     match serde_json::from_str::<Value>(payload) {
         Ok(Value::Object(mut d)) => {
-            d.insert("rpctl_note".into(), json!(note));
+            d.insert("viy_note".into(), json!(note));
             Value::Object(d).to_string()
         }
         _ => format!("{payload}\n{note}"),
@@ -618,14 +618,14 @@ impl TurnMonitor {
         }
         if same {
             return Some(
-                "rpctl: this returned exactly the same output as an earlier call in this turn. \
+                "viy: this returned exactly the same output as an earlier call in this turn. \
                  Use that result, or change your approach."
                     .into(),
             );
         }
         (n >= 2).then(|| {
             format!(
-                "rpctl: you already made this exact call earlier in this turn and got the same \
+                "viy: you already made this exact call earlier in this turn and got the same \
                  result ({n}x now). Use it, or do something different."
             )
         })

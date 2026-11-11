@@ -15,7 +15,8 @@
 //! Anything else is a 400.
 //!
 //! Per connection, in order; the first failure answers 403 with the reason
-//! in X-Rpctl-Blocked and the body (rpctl's words: the model reads them):
+//! in X-Proxy-Blocked and the body (rpctl's words, viy's name in the body,
+//! none in the header, kb d131: the model reads them):
 //!   1. the target passes netguard's host rules: no userinfo, IDNA, no
 //!      local names, IP literals public, and no IP spelled any other way
 //!      (127.1, 2130706433, 0x7f.0.0.1) (T4)

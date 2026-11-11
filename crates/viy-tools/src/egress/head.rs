@@ -57,9 +57,9 @@ pub fn response(status: u16, reason: &str) -> Vec<u8> {
         _ => "Error",
     };
     let why = safe(reason, 200);
-    let body = format!("rpctl egress proxy: {why}\n");
+    let body = format!("viy egress proxy: {why}\n");
     format!(
-        "HTTP/1.1 {status} {text}\r\nX-Rpctl-Blocked: {why}\r\nContent-Type: text/plain\r\n\
+        "HTTP/1.1 {status} {text}\r\nX-Proxy-Blocked: {why}\r\nContent-Type: text/plain\r\n\
          Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     )

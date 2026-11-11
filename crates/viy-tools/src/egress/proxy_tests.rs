@@ -148,8 +148,8 @@ impl Harness {
         let (status, headers, _, _) = self.connect(target);
         assert_eq!(status, Some(403), "{target}");
         let said = headers
-            .get("X-Rpctl-Blocked")
-            .unwrap_or_else(|| panic!("{target}: no X-Rpctl-Blocked"));
+            .get("X-Proxy-Blocked")
+            .unwrap_or_else(|| panic!("{target}: no X-Proxy-Blocked"));
         if let Some(why) = why {
             assert!(said.contains(why), "{target}: {said}");
         }
@@ -430,7 +430,7 @@ fn port_in_host_header_and_blocked_host() {
     );
     let (status, headers, _, _) = h.ask(b"GET http://evil.test/x HTTP/1.1\r\n\r\n");
     assert_eq!(status, Some(403));
-    assert_eq!(headers["X-Rpctl-Blocked"], NOT_ALLOWED);
+    assert_eq!(headers["X-Proxy-Blocked"], NOT_ALLOWED);
 }
 
 #[test]
@@ -469,7 +469,7 @@ fn requests_that_are_not_proxy_requests() {
     for head in heads {
         let (status, headers, _, _) = h.ask(head);
         assert_eq!(status, Some(400), "{}", String::from_utf8_lossy(head));
-        assert!(headers.contains_key("X-Rpctl-Blocked"));
+        assert!(headers.contains_key("X-Proxy-Blocked"));
     }
     assert_eq!(h.connected(), []);
     assert!(!h.proxy.report()["blocked"].as_array().unwrap().is_empty());
@@ -484,7 +484,7 @@ fn oversized_head() {
     );
     let (status, headers, _, _) = h.ask(big.as_bytes());
     assert_eq!(status, Some(400));
-    assert!(headers["X-Rpctl-Blocked"].contains("16 KiB"));
+    assert!(headers["X-Proxy-Blocked"].contains("16 KiB"));
     // No end of head at all.
     let mut s = h.open();
     s.write_all(&[b'A'; 20 * 1024]).unwrap();
@@ -520,7 +520,7 @@ fn simultaneous_cap() {
     let held: Vec<StdStream> = (0..2).map(|_| h.connect("pypi.org:443").3).collect();
     let (status, headers, _, _) = h.connect("pypi.org:443");
     assert_eq!(status, Some(503));
-    assert!(headers["X-Rpctl-Blocked"].contains("at once"));
+    assert!(headers["X-Proxy-Blocked"].contains("at once"));
     drop(held);
     assert!(h.wait_idle());
     assert_eq!(h.status("pypi.org:443"), Some(200));
@@ -746,6 +746,8 @@ fn requests_match_rpctl() {
         let Outcome::Returned(want) = want else {
             panic!("{at}: {want:?}")
         };
+        // rpctl's refusals name it; viy's name viy (flags F21, kb d131)
+        let want = viy_testkit::rp_names::answer_to_viy(&want);
         let got = viy_handle(&head, command, &answers);
         assert_eq!(got, want, "{at}");
     }

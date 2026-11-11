@@ -32,7 +32,7 @@ settings: model="qwen3.8-abliterated" tool_choice="auto" stream=true temperature
 02:assistant:
     -> run_shell(q1) {"command": "mkdir -p sub/.git && echo ok"}
 03:tool[q1]:
-    {"command": "mkdir -p sub/.git && echo ok", "exit_code": 0, "timed_out": false, "stdout": "ok\n", "stderr": "", "quarantined": ["sub/.git"], "quarantine_note": ... (299 chars)
+    {"command": "mkdir -p sub/.git && echo ok", "exit_code": 0, "timed_out": false, "stdout": "ok\n", "stderr": "", "quarantined": ["sub/.git"], "quarantine_note": ... (297 chars)
 -- request 4 (stream, tools auto) --
 04:assistant:
     -> read_file(q2) {"path": "tokens.txt"}

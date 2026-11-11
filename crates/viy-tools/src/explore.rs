@@ -101,9 +101,9 @@ pub fn helper_tools(shell: bool) -> Vec<Value> {
     tools
 }
 
-pub const BUDGET_NOTICE: &str = "[rpctl: your tool budget is used up. Do not call any more \
+pub const BUDGET_NOTICE: &str = "[viy: your tool budget is used up. Do not call any more \
 tools. Write your report now from what you have, and say what you could not verify.]";
-pub const EMPTY_NOTICE: &str = "[rpctl: your last reply had no report. Write the report now \
+pub const EMPTY_NOTICE: &str = "[viy: your last reply had no report. Write the report now \
 from what you already found. No more tools.]";
 
 /// The note on explore's result.

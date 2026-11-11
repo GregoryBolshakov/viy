@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: 1d7eead4c9c5b6bc35f9cc38d99a9bd3970f0be2
+commit: 573dbaaeb6b1caf7b1629171b5cc2c3b62a39fbb
 branch: leak-protection
 pinned: 2026-07-29
-subject: Drop a backup candidate whose region RunPod's pod API does not take
+subject: inline_python.py: count run_shell calls in session logs

@@ -107,3 +107,13 @@ fn the_servers_stem_pattern_is_the_local_rule() {
         assert_eq!(pattern.is_match(&name), secret_stem(&low), "{name}");
     }
 }
+
+// rpctl 5f2e731: a newline before the stem does not hide it (found by the
+// oracle fuzz, seed 12, 2026-07-28).
+#[test]
+fn a_newline_in_the_name_does_not_hide_the_stem() {
+    for n in ["\n-secrets.yaml", "a\nb_secret.json", "x\n.secrets.toml"] {
+        assert!(is_secret_name(n), "{n:?}");
+    }
+    assert!(!is_secret_name("a\nsecretsanta.json"));
+}

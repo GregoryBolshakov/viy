@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "1d7eead4c9c5b6bc35f9cc38d99a9bd3970f0be2",
+ "rpctl_commit": "573dbaaeb6b1caf7b1629171b5cc2c3b62a39fbb",
  "generator": "tools/fixtures.py chat/tools",
  "about": "rp's Chat._tool_specs() per config over DEFAULTS (consult, explore (but in with_explore), toolbox and instructions off, the sandbox taken as working, a workspace without .git), keys in order; and the tool loop's notices, PARALLEL_SAFE and BUILD_TOOL_NAMES; build_tools_git and build_tools_host_net_git are rpctl's BUILD_TOOLS_SANDBOXED_GIT and _HOST_NET_GIT",
  "cases": [

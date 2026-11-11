@@ -79,9 +79,10 @@ pub fn is_secret_name(name: &str) -> bool {
 }
 
 /// rpctl's `(.*[-_.])?secrets?\.(json|ya?ml|toml|ini|txt|enc|conf|cfg)$`,
-/// matched from the start: a `secret` or `secrets` stem, alone or after a
-/// `-`, `_` or `.`, then a data extension. Python's `$` also matches before
-/// a final newline, so one is allowed (a name may hold one).
+/// matched from the start with re.DOTALL since rpctl 5f2e731: a `secret`
+/// or `secrets` stem, alone or after a `-`, `_` or `.` (anything before it,
+/// newlines included), then a data extension. Python's `$` also matches
+/// before a final newline, so one is allowed (a name may hold one).
 fn secret_stem(low: &str) -> bool {
     let low = low.strip_suffix('\n').unwrap_or(low);
     let Some((stem, ext)) = low.rsplit_once('.') else {

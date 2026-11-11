@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "1d7eead4c9c5b6bc35f9cc38d99a9bd3970f0be2",
+ "rpctl_commit": "573dbaaeb6b1caf7b1629171b5cc2c3b62a39fbb",
  "generator": "tools/fixtures.py pod/bootreport",
  "about": "rpctl's boot report and wait summaries on synthetic platform-log lines, by `call`: measure (bootreport.measure of latest_boot(entries) between parse_ts(created) and parse_ts(ready): stages as [key, label, seconds] and details), facts (bootreport.facts), render (bootreport.render with the default budget: text and over), redact (pod._redact_log, config keys over DEFAULTS), progress (pod._startup_progress for require_ssh, the log fetched once per list in fetches: after each the summary or the StartupError, and pod_ready), watchdog (pod._report_watchdog with config keys over DEFAULTS: what it said with its colour)",
  "cases": [

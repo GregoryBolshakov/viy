@@ -497,3 +497,16 @@ fn hosts_are_limited_to_drivers_the_image_supports() {
     let body = build_pod_body(&with([("CUDA_VERSIONS", "")]), "k", "v", None).unwrap();
     assert!(body.get("allowedCudaVersions").is_none());
 }
+
+// rpctl's test_features.py ContextTests.test_prefix_caching_flag_follows_config.
+#[test]
+fn prefix_caching_flag_follows_config() {
+    let on = with([("VLLM_PORT", "8000"), ("SERVED_MODEL_NAME", "m")]);
+    assert!(build_vllm_args(&on, "k", None).contains(&"--enable-prefix-caching".to_string()));
+    let off = with([
+        ("VLLM_PORT", "8000"),
+        ("SERVED_MODEL_NAME", "m"),
+        ("PREFIX_CACHING", "0"),
+    ]);
+    assert!(!build_vllm_args(&off, "k", None).contains(&"--enable-prefix-caching".to_string()));
+}

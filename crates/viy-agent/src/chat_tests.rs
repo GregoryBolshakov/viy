@@ -2508,3 +2508,44 @@ async fn kb_writes_the_knowledge_base_and_the_guide_reaches_the_model() {
         "{said}"
     );
 }
+
+// rpctl's test_features.py BrokenToolArgsTests
+// .test_a_call_cut_off_by_max_tokens_is_stored_valid_and_explained: a reply
+// cut at max_tokens in the middle of a call is kept with valid arguments,
+// not run, and the model is told why.
+#[tokio::test]
+async fn a_call_cut_off_by_max_tokens_is_stored_valid_and_explained() {
+    let cut = "{\"path\": \"a.py\", \"content\": \"#!/usr/bin/env python3\\nimport";
+    let (mut d, _s) = tooled(
+        json!([
+            {"stream": [call_ev("c1", "write_file", cut), {"finish": "length"}]},
+            {"stream": [{"content": "ok"}]}
+        ]),
+        &[],
+    );
+    d.send("write it").await;
+    let stored: Vec<Value> = d
+        .chat
+        .messages()
+        .iter()
+        .flat_map(|m| m["tool_calls"].as_array().cloned().unwrap_or_default())
+        .collect();
+    assert_eq!(stored[0]["function"]["arguments"], "{}");
+    let last = d.mock.chat_bodies().pop().unwrap();
+    let result = last["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|m| m["role"] == "tool")
+        .unwrap()["content"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let error: Value = serde_json::from_str(&result).unwrap();
+    assert!(
+        error["error"].as_str().unwrap().contains("output limit"),
+        "{result}"
+    );
+    assert!(!d.chat.places.workspace.join("a.py").exists());
+}

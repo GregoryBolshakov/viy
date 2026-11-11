@@ -291,3 +291,26 @@ fn a_mount_table_with_a_latin1_label() {
     assert_eq!(rows[1].target, PathBuf::from("/media/me/USB stick"));
     assert!(rows[1].read_only);
 }
+
+// rpctl's test_secret_files.py WalkTests.test_secret_files_walk_finds_them_and_skips_pub.
+#[test]
+fn secret_files_walk_finds_them_and_skips_pub() {
+    let d = viy_testkit::scratch::ScratchDir::new("secret-walk").unwrap();
+    let root = d.path();
+    std::fs::create_dir(root.join("sub")).unwrap();
+    for n in [
+        "secrets.json",
+        ".env",
+        "sub/id_rsa",
+        "sub/id_rsa.pub",
+        "app.py",
+    ] {
+        std::fs::write(root.join(n), "x").unwrap();
+    }
+    let mut found: Vec<String> = secret_files(root, crate::sandbox::SECRET_LIMIT)
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    found.sort();
+    assert_eq!(found, [".env", "id_rsa", "secrets.json"]);
+}

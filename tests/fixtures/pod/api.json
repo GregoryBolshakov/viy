@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "03ec13a57747c7f5a7775d3566eaac6d8c571d26",
+ "rpctl_commit": "1d7eead4c9c5b6bc35f9cc38d99a9bd3970f0be2",
  "generator": "tools/fixtures.py pod/api",
  "about": "rpctl api.RunPod and api.proxy_url: each call with the reply its one HTTP request gets (status, body chunks, then EOF or a read timeout; or a refused connection), what requests would send (method, URL, headers, body, timeout) and the outcome: the value returned (cuda_stock as [dc, gpu, fit, old] rows) or RunPodError's text, status_code and transient. Played through a transport adapter, run by the installed rp's interpreter; the key is 'rpa_SYNTHETICKEY0000'",
  "cases": [

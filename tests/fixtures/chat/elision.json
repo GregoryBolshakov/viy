@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "03ec13a57747c7f5a7775d3566eaac6d8c571d26",
+ "rpctl_commit": "1d7eead4c9c5b6bc35f9cc38d99a9bd3970f0be2",
  "generator": "tools/fixtures.py chat/elision",
  "about": "rpctl chat's elision of old tool output: _elide_before(cut) (elide: messages, n, saved, the write guard's forget and kept keys) and _maybe_elide_tool_results(user) before a turn (maybe: the history after, the line printed without colours, the write guard's reads after, the settings read); DEFAULTS plus VLLM_API_KEY k, TRACE, CONSULT, INSTRUCTIONS, TOOLBOX, TOOLS and SEARCH off, then the case's config; workspace $T/project, the date 2026-07-03 (Friday)",
  "cases": [

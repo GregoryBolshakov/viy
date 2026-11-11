@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "03ec13a57747c7f5a7775d3566eaac6d8c571d26",
+ "rpctl_commit": "1d7eead4c9c5b6bc35f9cc38d99a9bd3970f0be2",
  "generator": "tools/fixtures.py pod/failover",
  "about": "rpctl's pod creation with region failover (pod._create_pod on volume 'prim' with the user's answers, the default without a terminal), regions.retire_replaced, regions.expire, regions.cmd_backup, regions.rank and regions.is_capacity_error, config keys over DEFAULTS and FO_CONFIG, against a scripted RunPod (`world`, see tools/fixtures.py) played through a transport adapter at a fixed clock (FO_NOW). `sent` are the requests made (a pod's body cut to name, dataCenterIds, networkVolumeId and allowedCudaVersions), `replies` what each got (hang: a Ctrl-C arrived while it was in flight), `presses` the request counts at each Ctrl-C, `asked` the questions with their defaults, `said` the notices with their colour ($HOME for the home directory), then the outcome and the state files after",
  "cases": [
@@ -9994,6 +9994,801 @@
      "status_code": 500,
      "capacity": true,
      "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    }
+   ]
+  },
+  {
+   "name": "a_region_the_pod_api_does_not_take_is_dropped",
+   "world": {
+    "volumes": [
+     {
+      "id": "prim",
+      "name": "w",
+      "size": 100,
+      "dataCenterId": "EUR-IS-1"
+     },
+     {
+      "id": "bk",
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "US-MO-1"
+     }
+    ],
+    "later": {
+     "EU-RO-1": 1
+    },
+    "stock": [
+     {
+      "id": "EU-RO-1",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA A100-SXM4-80GB",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     },
+     {
+      "id": "US-NE-1",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA A100-SXM4-80GB",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     }
+    ],
+    "refuse": {
+     "US-NE-1": "At #/paths/pods/post for POST https://rest.runpod.io/v1/pods, The request body is defined as an object. However, it does not meet the schema requirements of the specification. Problem: At /pods/properties/dataCenterIds/items/enum: value must be one of 'EU-RO-1', 'CA-MTL-3', 'EUR-IS-1', 'US-MO-1'"
+    }
+   },
+   "answers": [
+    true,
+    true
+   ],
+   "cfg": {
+    "NETWORK_VOLUME_NAME": "w",
+    "NETWORK_VOLUME_ID": "prim",
+    "FAILOVER_RETRY_MIN": "1",
+    "POD_NAME": "qwen-pod",
+    "CUDA_VERSIONS": "",
+    "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000",
+    "RUNPOD_API_KEY": "rpa_SYNTHETICKEY0000"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EUR-IS-1"
+      ],
+      "networkVolumeId": "prim"
+     }
+    },
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": null
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "US-MO-1"
+      ],
+      "networkVolumeId": "bk"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": {
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "EU-RO-1"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EU-RO-1"
+      ],
+      "networkVolumeId": "new1"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": {
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "US-NE-1"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "US-NE-1"
+      ],
+      "networkVolumeId": "new2"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EUR-IS-1"
+      ],
+      "networkVolumeId": "prim"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "US-MO-1"
+      ],
+      "networkVolumeId": "bk"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EU-RO-1"
+      ],
+      "networkVolumeId": "new1"
+     }
+    },
+    {
+     "method": "DELETE",
+     "url": "https://rest.runpod.io/v1/networkvolumes/new2",
+     "body": null
+    }
+   ],
+   "replies": [
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "[{\"id\": \"prim\", \"name\": \"w\", \"size\": 100, \"dataCenterId\": \"EUR-IS-1\"}, {\"id\": \"bk\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"US-MO-1\"}]"
+    },
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"US-NE-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"US-NE-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"US-NE-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"new1\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"EU-RO-1\"}"
+    },
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"new2\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"US-NE-1\"}"
+    },
+    {
+     "status": 400,
+     "body": "{\"error\": \"At #/paths/pods/post for POST https://rest.runpod.io/v1/pods, The request body is defined as an object. However, it does not meet the schema requirements of the specification. Problem: At /pods/properties/dataCenterIds/items/enum: value must be one of 'EU-RO-1', 'CA-MTL-3', 'EUR-IS-1', 'US-MO-1'\"}"
+    },
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"pod-EU-RO-1\", \"costPerHr\": 1.89, \"networkVolumeId\": \"new1\"}"
+    },
+    {
+     "status": 200,
+     "body": ""
+    }
+   ],
+   "presses": [],
+   "asked": [
+    [
+     "EUR-IS-1 has no GPU free. Try the backup volume in US-MO-1?",
+     true
+    ],
+    [
+     "Switch the backup to the first of EU-RO-1, US-NE-1 that takes the pod? It makes a new volume in each region it tries and boots cold (~5 min: weights download, first compile), retrying refusals there and in EUR-IS-1 and US-MO-1 for up to 1 min; new volumes left unused are deleted. The old backup bk in US-MO-1 is deleted once rp is up on the new one.",
+     false
+    ]
+   ],
+   "said": [
+    [
+     "dim",
+     "Creating pod in EUR-IS-1 (1x from: NVIDIA A100 80GB PCIe, NVIDIA A100-SXM4-80GB, NVIDIA RTX PRO 6000 Blackwell Server Edition...)"
+    ],
+    [
+     "warn",
+     "  EUR-IS-1 (primary): no GPU free"
+    ],
+    [
+     "warn",
+     "  US-MO-1 (backup): no GPU free"
+    ],
+    [
+     "warn",
+     "The backup region US-MO-1 has no GPU free either."
+    ],
+    [
+     "warn",
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
+    ],
+    [
+     "warn",
+     "GPU free now (of 3 samples): EU-RO-1 3/3 (NVIDIA A100-SXM4-80GB), US-NE-1 3/3 (NVIDIA A100-SXM4-80GB)"
+    ],
+    [
+     "warn",
+     "  EU-RO-1 (new backup): no GPU free"
+    ],
+    [
+     "warn",
+     "  US-NE-1: RunPod's pod API does not take this region; dropped, its new volume deleted"
+    ],
+    [
+     "warn",
+     "No region took the pod; retrying every 10s for 1 min (Ctrl-C stops and deletes the new volumes)."
+    ],
+    [
+     "ok",
+     "  pod created in EU-RO-1 on the backup volume new1"
+    ]
+   ],
+   "ok": [
+    {
+     "id": "pod-EU-RO-1",
+     "costPerHr": 1.89,
+     "networkVolumeId": "new1"
+    },
+    "new1",
+    true
+   ],
+   "region_after": "EU-RO-1",
+   "answer_wait": 10.0,
+   "backups_after": {
+    "bk": {
+     "name": "w-backup",
+     "region": "US-MO-1",
+     "last_used": 1784194200.0
+    },
+    "new1": {
+     "name": "w-backup",
+     "region": "EU-RO-1",
+     "last_used": 1784194214.0,
+     "replaces": "bk"
+    }
+   },
+   "stock_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB",
+      "US-NE-1": "NVIDIA A100-SXM4-80GB"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:02+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB",
+      "US-NE-1": "NVIDIA A100-SXM4-80GB"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:04+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB",
+      "US-NE-1": "NVIDIA A100-SXM4-80GB"
+     }
+    }
+   ],
+   "failures_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "EUR-IS-1",
+     "role": "primary",
+     "volume_id": "prim",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    },
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "US-MO-1",
+     "role": "backup",
+     "volume_id": "bk",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    },
+    {
+     "at": "2026-07-16T09:30:04+00:00",
+     "region": "EU-RO-1",
+     "role": "new backup",
+     "volume_id": "new1",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    },
+    {
+     "at": "2026-07-16T09:30:04+00:00",
+     "region": "US-NE-1",
+     "role": "new backup",
+     "volume_id": "new2",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 400,
+     "capacity": false,
+     "error": "POST /pods -> HTTP 400\n{\n  \"error\": \"At #/paths/pods/post for POST https://rest.runpod.io/v1/pods, The request body is defined as an object. However, it does not meet the schema requirements of the specification. Problem: At /pods/properties/dataCenterIds/items/enum: value must be one of 'EU-RO-1', 'CA-MTL-3', 'EUR-IS-1', 'US-MO-1'\"\n}"
+    },
+    {
+     "at": "2026-07-16T09:30:14+00:00",
+     "region": "EUR-IS-1",
+     "role": "primary",
+     "volume_id": "prim",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    },
+    {
+     "at": "2026-07-16T09:30:14+00:00",
+     "region": "US-MO-1",
+     "role": "backup",
+     "volume_id": "bk",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    }
+   ]
+  },
+  {
+   "name": "every_candidate_dropped_the_warm_volumes_are_retried",
+   "world": {
+    "volumes": [
+     {
+      "id": "prim",
+      "name": "w",
+      "size": 100,
+      "dataCenterId": "EUR-IS-1"
+     },
+     {
+      "id": "bk",
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "US-MO-1"
+     }
+    ],
+    "later": {
+     "EUR-IS-1": 1
+    },
+    "stock": [
+     {
+      "id": "US-NE-1",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA A100-SXM4-80GB",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     }
+    ],
+    "refuse": {
+     "US-NE-1": "At #/paths/pods/post for POST https://rest.runpod.io/v1/pods, The request body is defined as an object. However, it does not meet the schema requirements of the specification. Problem: At /pods/properties/dataCenterIds/items/enum: value must be one of 'EU-RO-1', 'CA-MTL-3', 'EUR-IS-1', 'US-MO-1'"
+    }
+   },
+   "answers": [
+    true,
+    true
+   ],
+   "cfg": {
+    "NETWORK_VOLUME_NAME": "w",
+    "NETWORK_VOLUME_ID": "prim",
+    "FAILOVER_RETRY_MIN": "1",
+    "POD_NAME": "qwen-pod",
+    "CUDA_VERSIONS": "",
+    "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000",
+    "RUNPOD_API_KEY": "rpa_SYNTHETICKEY0000"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EUR-IS-1"
+      ],
+      "networkVolumeId": "prim"
+     }
+    },
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": null
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "US-MO-1"
+      ],
+      "networkVolumeId": "bk"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": {
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "US-NE-1"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "US-NE-1"
+      ],
+      "networkVolumeId": "new1"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EUR-IS-1"
+      ],
+      "networkVolumeId": "prim"
+     }
+    },
+    {
+     "method": "DELETE",
+     "url": "https://rest.runpod.io/v1/networkvolumes/new1",
+     "body": null
+    }
+   ],
+   "replies": [
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "[{\"id\": \"prim\", \"name\": \"w\", \"size\": 100, \"dataCenterId\": \"EUR-IS-1\"}, {\"id\": \"bk\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"US-MO-1\"}]"
+    },
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"US-NE-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"US-NE-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"US-NE-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"new1\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"US-NE-1\"}"
+    },
+    {
+     "status": 400,
+     "body": "{\"error\": \"At #/paths/pods/post for POST https://rest.runpod.io/v1/pods, The request body is defined as an object. However, it does not meet the schema requirements of the specification. Problem: At /pods/properties/dataCenterIds/items/enum: value must be one of 'EU-RO-1', 'CA-MTL-3', 'EUR-IS-1', 'US-MO-1'\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"pod-EUR-IS-1\", \"costPerHr\": 1.89, \"networkVolumeId\": \"prim\"}"
+    },
+    {
+     "status": 200,
+     "body": ""
+    }
+   ],
+   "presses": [],
+   "asked": [
+    [
+     "EUR-IS-1 has no GPU free. Try the backup volume in US-MO-1?",
+     true
+    ],
+    [
+     "Switch the backup to US-NE-1? It makes a new volume in each region it tries and boots cold (~5 min: weights download, first compile), retrying refusals there and in EUR-IS-1 and US-MO-1 for up to 1 min; new volumes left unused are deleted. The old backup bk in US-MO-1 is deleted once rp is up on the new one.",
+     false
+    ]
+   ],
+   "said": [
+    [
+     "dim",
+     "Creating pod in EUR-IS-1 (1x from: NVIDIA A100 80GB PCIe, NVIDIA A100-SXM4-80GB, NVIDIA RTX PRO 6000 Blackwell Server Edition...)"
+    ],
+    [
+     "warn",
+     "  EUR-IS-1 (primary): no GPU free"
+    ],
+    [
+     "warn",
+     "  US-MO-1 (backup): no GPU free"
+    ],
+    [
+     "warn",
+     "The backup region US-MO-1 has no GPU free either."
+    ],
+    [
+     "warn",
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
+    ],
+    [
+     "warn",
+     "GPU free now (of 3 samples): US-NE-1 3/3 (NVIDIA A100-SXM4-80GB)"
+    ],
+    [
+     "warn",
+     "  US-NE-1: RunPod's pod API does not take this region; dropped, its new volume deleted"
+    ],
+    [
+     "warn",
+     "No region took the pod; retrying every 10s for 1 min (Ctrl-C stops and deletes the new volumes)."
+    ],
+    [
+     "ok",
+     "  pod created in EUR-IS-1 on the primary volume after all"
+    ]
+   ],
+   "ok": [
+    {
+     "id": "pod-EUR-IS-1",
+     "costPerHr": 1.89,
+     "networkVolumeId": "prim"
+    },
+    "prim",
+    false
+   ],
+   "region_after": "EUR-IS-1",
+   "answer_wait": 10.0,
+   "backups_after": {
+    "bk": {
+     "name": "w-backup",
+     "region": "US-MO-1",
+     "last_used": 1784194200.0
+    }
+   },
+   "stock_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "free": {
+      "US-NE-1": "NVIDIA A100-SXM4-80GB"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:02+00:00",
+     "free": {
+      "US-NE-1": "NVIDIA A100-SXM4-80GB"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:04+00:00",
+     "free": {
+      "US-NE-1": "NVIDIA A100-SXM4-80GB"
+     }
+    }
+   ],
+   "failures_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "EUR-IS-1",
+     "role": "primary",
+     "volume_id": "prim",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    },
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "US-MO-1",
+     "role": "backup",
+     "volume_id": "bk",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    },
+    {
+     "at": "2026-07-16T09:30:04+00:00",
+     "region": "US-NE-1",
+     "role": "new backup",
+     "volume_id": "new1",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 400,
+     "capacity": false,
+     "error": "POST /pods -> HTTP 400\n{\n  \"error\": \"At #/paths/pods/post for POST https://rest.runpod.io/v1/pods, The request body is defined as an object. However, it does not meet the schema requirements of the specification. Problem: At /pods/properties/dataCenterIds/items/enum: value must be one of 'EU-RO-1', 'CA-MTL-3', 'EUR-IS-1', 'US-MO-1'\"\n}"
     }
    ]
   },

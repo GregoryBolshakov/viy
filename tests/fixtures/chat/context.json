@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "03ec13a57747c7f5a7775d3566eaac6d8c571d26",
+ "rpctl_commit": "1d7eead4c9c5b6bc35f9cc38d99a9bd3970f0be2",
  "generator": "tools/fixtures.py chat/context",
  "about": "rpctl chat's context accounting: _measure, _tool_schema_chars and _estimate_tokens over message lists (estimates), chars-per-token after each _calibrate (calibrations, from 3.6), max_model_len and _prompt_budget (budgets), _context_state with the system prompt (states, the date fixed at 2026-07-03 (Friday), workspace $T/project); DEFAULTS plus VLLM_API_KEY k, TRACE 0, CONSULT 0, INSTRUCTIONS 0, TOOLBOX 0, TOOLS_ENABLED 0, then the case's config",
  "cases": [

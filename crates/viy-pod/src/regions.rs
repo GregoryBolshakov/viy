@@ -67,6 +67,14 @@ const DAY_S: f64 = 86400.0;
 /// specifications". Only this refusal is one another region can fix; a
 /// credit or request error would fail anywhere, and must never move the
 /// backup.
+/// True when RunPod's REST API refuses the pod request for its region:
+/// dataCenterIds names a region outside the API's list. GraphQL's
+/// dataCenters may still list that region as supporting network volumes
+/// (US-NE-1 on 2026-07-29, where a volume was made and the pod refused).
+pub fn is_region_rejected(error: &RunPodError) -> bool {
+    error.status_code() == Some(400) && error.to_string().contains("dataCenterIds")
+}
+
 pub fn is_capacity_error(error: &RunPodError) -> bool {
     static CAPACITY: LazyLock<Regex> = LazyLock::new(|| {
         crate::compile_regex(

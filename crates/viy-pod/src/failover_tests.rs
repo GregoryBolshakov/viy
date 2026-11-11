@@ -847,3 +847,38 @@ async fn history_reads_the_old_a100_rows_too() {
             .contains("the first of EU-RO-1, CA-MTL-3")
     );
 }
+
+// rpctl 1d7eead: a candidate whose region RunPod's pod API does not take
+// (US-NE-1 on 2026-07-29) is dropped, and the rest go on.
+#[tokio::test(start_paused = true)]
+async fn a_region_the_pod_api_does_not_take_is_dropped_and_the_rest_go_on() {
+    let r = replay_named("a_region_the_pod_api_does_not_take_is_dropped").await;
+    assert_eq!(r.outcome["ok"][0]["id"], "pod-EU-RO-1");
+    assert!(
+        r.said.iter().filter_map(|s| s[1].as_str()).any(|s| s
+            == "  US-NE-1: RunPod's pod API does not take this region; dropped, its new volume deleted")
+    );
+    assert!(
+        r.volume_calls()
+            .contains(&"DELETE /v1/networkvolumes/new2".to_string())
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn with_every_candidate_dropped_the_warm_volumes_are_still_retried() {
+    let r = replay_named("every_candidate_dropped_the_warm_volumes_are_retried").await;
+    assert_eq!(r.outcome["ok"][0]["id"], "pod-EUR-IS-1");
+    assert_eq!(r.outcome["ok"][2], false);
+}
+
+#[test]
+fn a_region_rejection_of_the_backup_itself_still_stops() {
+    let rejected = RunPodError::new(
+        "POST /pods -> HTTP 400\n... dataCenterIds/items/enum: value must be one of ...",
+        Some(400),
+    );
+    assert!(regions::is_region_rejected(&rejected));
+    assert!(!regions::is_capacity_error(&rejected));
+    let full = RunPodError::new("There are no instances currently available", Some(500));
+    assert!(!regions::is_region_rejected(&full));
+}

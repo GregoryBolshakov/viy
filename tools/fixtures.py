@@ -1955,6 +1955,10 @@ def _bk(last_used, **kw):
 
 
 TWO = [_dc("CA-MTL-3", True), _dc("EU-RO-1", True)]
+NOT_A_POD_REGION = ("At #/paths/pods/post for POST https://rest.runpod.io/v1/pods, The request body "
+                    "is defined as an object. However, it does not meet the schema requirements of "
+                    "the specification. Problem: At /pods/properties/dataCenterIds/items/enum: "
+                    "value must be one of 'EU-RO-1', 'CA-MTL-3', 'EUR-IS-1', 'US-MO-1'")
 FAILOVER_CASES = [
     # The primary request, and the retry without the exact CUDA version.
     dict(name="success_is_one_create_request", world=dict(free=["EUR-IS-1"])),
@@ -2064,6 +2068,16 @@ FAILOVER_CASES = [
     dict(name="the_cheapest_type_free_is_offered_first",
          world=dict(free=["CA-MTL-3", "EU-RO-1"], volumes=[PRIM, BK],
                     stock=[_dc("EU-RO-1", True, gpu="NVIDIA H200"), _dc("CA-MTL-3", True)]),
+         answers=[True, True]),
+    # A region RunPod's pod API does not take is dropped (rpctl 1d7eead).
+    dict(name="a_region_the_pod_api_does_not_take_is_dropped",
+         world=dict(volumes=[PRIM, BK], later={"EU-RO-1": 1},
+                    stock=[_dc("EU-RO-1", True), _dc("US-NE-1", True)],
+                    refuse={"US-NE-1": NOT_A_POD_REGION}),
+         answers=[True, True]),
+    dict(name="every_candidate_dropped_the_warm_volumes_are_retried",
+         world=dict(volumes=[PRIM, BK], later={"EUR-IS-1": 1}, stock=[_dc("US-NE-1", True)],
+                    refuse={"US-NE-1": NOT_A_POD_REGION}),
          answers=[True, True]),
     dict(name="stock_history_reads_old_and_new_rows", world=dict(
         free=["EU-RO-1"], volumes=[PRIM], stock=TWO), answers=[True],

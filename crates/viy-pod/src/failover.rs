@@ -530,12 +530,15 @@ impl<'a> Creation<'a> {
     /// [`RETRY_GAP_S`] until `minutes` run out.
     async fn grab(
         &mut self,
-        candidates: &[String],
+        offered: &[String],
         backup: Option<(&Value, &str)>,
         primary_volume: &str,
         minutes: f64,
     ) -> Result<Won, Stop> {
         let paths = self.env.paths;
+        // A candidate whose region RunPod's pod API does not take is
+        // dropped from here (rpctl 1d7eead).
+        let mut candidates: Vec<String> = offered.to_vec();
         let mut warm: Vec<(String, String, &str)> = Vec::new();
         if !primary_volume.is_empty() {
             warm.push((self.primary.clone(), primary_volume.to_string(), "primary"));
@@ -597,6 +600,16 @@ impl<'a> Creation<'a> {
                             created,
                         });
                         break 'rounds;
+                    }
+                    Err(error) if role == "new backup" && regions::is_region_rejected(&error) => {
+                        candidates.retain(|r| *r != region);
+                        self.say(
+                            Tone::Warn,
+                            format!(
+                                "  {region}: RunPod's pod API does not take this region; \
+                                 dropped, its new volume deleted"
+                            ),
+                        );
                     }
                     Err(error) if !is_capacity_error(&error) => {
                         failed = Some(Stop::Refused(error));

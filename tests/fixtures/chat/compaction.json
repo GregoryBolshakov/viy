@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "03ec13a57747c7f5a7775d3566eaac6d8c571d26",
+ "rpctl_commit": "1d7eead4c9c5b6bc35f9cc38d99a9bd3970f0be2",
  "generator": "tools/fixtures.py chat/compaction",
  "about": "rpctl chat's compaction plans: _plan_summary(focus, merge) (plan), _trim_plan(extra) (trim: n and frac), _apply_summary on the plan _plan_summary(None, merge) makes (apply: the history and the write guard's reads after), _incremental_instruction (instruction) and _restates; DEFAULTS plus VLLM_API_KEY k, TRACE, CONSULT, INSTRUCTIONS, TOOLBOX, TOOLS and SEARCH off, then the case's config; workspace $T/project, the date 2026-07-03 (Friday)",
  "cases": [

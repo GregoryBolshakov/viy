@@ -194,6 +194,12 @@ pub enum DevCommand {
         /// not DEFAULTS and the fake key; the scripted responses are unused.
         #[arg(long)]
         live: bool,
+        /// Where to append every main-chat request's reply, one JSON line
+        /// each, as rpctl's bench harnesses logged them (bench/capcheck,
+        /// bench/workflows): turn, round, secs, tools, finish, usage, text,
+        /// reasoning, tool calls.
+        #[arg(long)]
+        rounds: Option<std::path::PathBuf>,
     },
     /// Opens the chat in viy's terminal UI against a model server, with
     /// viy's own config and build tools off (they come with phase 4); the
@@ -218,6 +224,21 @@ pub enum DevCommand {
         /// The command and its arguments.
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<std::ffi::OsString>,
+    },
+    /// For the benches that replay a chat's last round (bench/capcheck,
+    /// bench/reasoning-ab): JSON lines on stdin, one answer line each on
+    /// stdout. `{"op": "system"}` gives the system prompt viy's chat sends
+    /// from this workspace and config, `{"op": "body", "messages", "tools"}`
+    /// the request body it sends for those messages (tools `auto`, `none`
+    /// or `omit`), `{"op": "notice", "messages"}` the messages with the
+    /// tool-budget notice. No request is made.
+    Payload {
+        /// Where the chat runs, in place of the working directory.
+        #[arg(long)]
+        dir: Option<std::path::PathBuf>,
+        /// A config value over viy's own, as KEY=VALUE; repeatable.
+        #[arg(long = "set", value_name = "KEY=VALUE")]
+        set: Vec<String>,
     },
 }
 

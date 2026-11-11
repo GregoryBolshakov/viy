@@ -441,3 +441,56 @@ fn start_mode_comes_from_config() {
     cfg.set("CHAT_MODE", "bogus");
     assert_eq!(super::chat_mode(&cfg).name, "normal");
 }
+
+/// `--rounds`: every main-chat reply on its own line, as rpctl's bench
+/// harnesses logged them; the capped round's tools held back and its
+/// notice the end of the message that carried it (WP 8.7).
+#[test]
+fn drive_logs_each_round_for_the_benches() {
+    let name = "tool-cap-notice";
+    let file = scenario::dir().join(format!("{name}.json"));
+    let script = scenario::load(name).unwrap();
+    let mock = MockLlm::start(&script).unwrap();
+    let scratch = ScratchDir::new("drive-rounds").unwrap();
+    let base = std::fs::canonicalize(scratch.path()).unwrap();
+    let workspace = base.join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    for (rel, text) in script["workspace"].as_object().into_iter().flatten() {
+        std::fs::write(workspace.join(rel), text.as_str().unwrap()).unwrap();
+    }
+    let rounds = base.join("rounds.jsonl");
+    let (code, _, err) = run_capture(
+        &base.join("home"),
+        &[
+            "dev",
+            "drive",
+            file.to_str().unwrap(),
+            "--url",
+            &mock.uri(),
+            "--dir",
+            workspace.to_str().unwrap(),
+            "--rounds",
+            rounds.to_str().unwrap(),
+        ],
+    );
+    assert_eq!((code, err.as_str()), (0, ""));
+    let recs: Vec<Value> = std::fs::read_to_string(rounds)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let modes: Vec<&str> = recs.iter().map(|r| r["tools"].as_str().unwrap()).collect();
+    assert_eq!(modes, ["auto", "auto", "none"], "{recs:?}");
+    assert!(recs.iter().all(|r| r["turn"] == 0));
+    assert_eq!(recs[0]["notice"], Value::Null);
+    assert!(
+        recs[2]["notice"]
+            .as_str()
+            .unwrap()
+            .ends_with("could not verify.]"),
+        "{}",
+        recs[2]["notice"]
+    );
+    assert_eq!(recs[0]["tool_calls"][0]["function"]["name"], "list_dir");
+    assert!(recs[2]["usage"].is_object() || recs[2]["usage"].is_null());
+}

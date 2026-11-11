@@ -248,6 +248,8 @@ pub struct Chat {
     monitor: Option<TurnMonitor>,
     /// Turns this chat has run, for the trace.
     turn_n: u64,
+    /// `viy dev drive --rounds`: every main-chat reply, for the benches.
+    rounds_log: Option<std::fs::File>,
     /// TOOLBOX_ENABLED (`/toolbox on|off`).
     toolbox_on: bool,
     /// The toolbox as this chat's system prompt shows it (rp's
@@ -428,6 +430,7 @@ impl Chat {
             tracer,
             monitor: None,
             turn_n: 0,
+            rounds_log: None,
             toolbox_on,
             toolbox_snap,
             toolbox_index_max,
@@ -1749,7 +1752,97 @@ impl Chat {
             emit: &emit,
             touch: self.touch.as_ref(),
         };
-        stream_once(&self.endpoint, &body, &sink, &mut self.partial).await
+        let started = std::time::Instant::now();
+        let out = stream_once(&self.endpoint, &body, &sink, &mut self.partial).await;
+        if self.rounds_log.is_some() {
+            let rec = self.round_record(round, msgs, tools, out.as_ref(), started.elapsed());
+            if let Some(f) = self.rounds_log.as_mut() {
+                use std::io::Write;
+                let _ = writeln!(f, "{rec}");
+            }
+        }
+        out
+    }
+
+    /// The system prompt this chat sends (`viy dev payload`, for the
+    /// replay benches).
+    pub fn bench_system(&self) -> Option<String> {
+        self.system_prompt()
+    }
+
+    /// The body this chat sends for `msgs` with its tools offered as
+    /// `tools`, not streamed (`viy dev payload`), as rpctl's benches built
+    /// it with `_payload`.
+    pub fn bench_body(&self, msgs: &[Value], tools: Tools) -> Value {
+        let mut body = self.settings.payload(msgs, &self.tool_specs(), tools, true);
+        body["stream"] = json!(false);
+        if let Some(m) = body.as_object_mut() {
+            m.remove("stream_options");
+        }
+        body
+    }
+
+    /// Appends every main-chat reply to `path` from now on (`viy dev drive
+    /// --rounds`).
+    pub fn log_rounds(&mut self, path: &std::path::Path) -> std::io::Result<()> {
+        let f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
+        self.rounds_log = Some(f);
+        Ok(())
+    }
+
+    /// One reply as rpctl's bench harnesses logged `_stream_once`: the
+    /// turn from 0, the round, the seconds, the messages sent, the tools'
+    /// mode and, when tools were held back, the end of the last message.
+    fn round_record(
+        &self,
+        round: u32,
+        msgs: &[Value],
+        tools: Tools,
+        out: Option<&Round>,
+        took: std::time::Duration,
+    ) -> Value {
+        let mode = match tools {
+            Tools::Auto => "auto",
+            Tools::None => "none",
+            Tools::Omit => "omit",
+        };
+        let notice = (mode != "auto").then(|| {
+            let last = msgs.last().map(|m| match &m["content"] {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            });
+            let last = last.unwrap_or_default();
+            let n = last.chars().count();
+            last.chars().skip(n.saturating_sub(120)).collect::<String>()
+        });
+        let mut rec = json!({
+            "turn": self.turn_n.saturating_sub(1),
+            "round": round,
+            "secs": (took.as_secs_f64() * 10.0).round() / 10.0,
+            "n_msgs": msgs.len(),
+            "tools": mode,
+            "notice": notice,
+        });
+        match out {
+            None => rec["failed"] = json!(true),
+            Some(r) => {
+                rec["finish"] = json!(r.finish);
+                rec["usage"] = r.usage.clone().unwrap_or(Value::Null);
+                rec["text"] = json!(r.text);
+                rec["reasoning"] = json!(r.reasoning);
+                rec["tool_calls"] = json!(
+                    r.tool_calls
+                        .iter()
+                        .map(|c| json!({"id": c.id, "type": "function",
+                                        "function": {"name": c.name, "arguments": c.arguments}}))
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+        rec
     }
 
     /// Commits an unfinished turn as a well-formed exchange: it ends on an

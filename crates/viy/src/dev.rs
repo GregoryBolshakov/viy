@@ -74,7 +74,9 @@ impl DevArgs {
     pub fn live(&self) -> bool {
         match &self.command {
             DevCommand::Drive { live, .. } => *live,
-            DevCommand::Chat { .. } | DevCommand::WithModel { .. } => true,
+            DevCommand::Chat { .. } | DevCommand::WithModel { .. } | DevCommand::Payload { .. } => {
+                true
+            }
         }
     }
 }
@@ -102,12 +104,14 @@ pub fn run(
             result,
             dir,
             live,
+            rounds,
         } => drive_scenario(
             scenario,
             url,
             result.as_deref(),
             dir.as_deref(),
             *live,
+            rounds.as_deref(),
             paths,
             base,
             out,
@@ -117,6 +121,63 @@ pub fn run(
             chat_ui(url, dir.as_deref(), plain, paths, base, out)
         }
         DevCommand::WithModel { command } => with_model(command, paths, &base, out),
+        DevCommand::Payload { dir, set } => payload(dir.as_deref(), set, paths, base, out),
+    }
+}
+
+/// `viy dev payload`: the system prompt and request bodies of a chat in
+/// `dir` under viy's config and `set`, for the replay benches.
+fn payload(
+    dir: Option<&Path>,
+    set: &[String],
+    paths: &Paths,
+    mut cfg: Config,
+    out: &mut (dyn Write + Send),
+) -> Result<(), Failure> {
+    for kv in set {
+        let (k, v) = kv
+            .split_once('=')
+            .ok_or_else(|| Failure::from(format!("--set {kv}: not KEY=VALUE")))?;
+        cfg.set(k, v);
+    }
+    let http: Arc<dyn HttpClient> =
+        Arc::new(ReqwestHttp::new().map_err(|e| Failure::from(e.to_string()))?);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| Failure::from(e.to_string()))?;
+    let _guard = runtime.enter();
+    let start = start_dir(dir)?;
+    let url = std::env::var("VLLM_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:1".into());
+    let chat = chat(&cfg, &url, http, paths, &start, false)?;
+    let io = |e: std::io::Error| Failure::from(e.to_string());
+    for line in std::io::stdin().lines() {
+        let line = line.map_err(io)?;
+        let reply = match serde_json::from_str::<Value>(&line) {
+            Ok(job) => payload_answer(&chat, &job),
+            Err(e) => json!({"error": e.to_string()}),
+        };
+        writeln!(out, "{reply}").map_err(io)?;
+        out.flush().map_err(io)?;
+    }
+    Ok(())
+}
+
+fn payload_answer(chat: &viy_agent::chat::Chat, job: &Value) -> Value {
+    let msgs = job["messages"].as_array().cloned().unwrap_or_default();
+    match job["op"].as_str() {
+        Some("system") => json!({"system": chat.bench_system()}),
+        Some("body") => match job["tools"].as_str().unwrap_or("auto") {
+            "auto" => json!({"body": chat.bench_body(&msgs, viy_agent::payload::Tools::Auto)}),
+            "none" => json!({"body": chat.bench_body(&msgs, viy_agent::payload::Tools::None)}),
+            "omit" => json!({"body": chat.bench_body(&msgs, viy_agent::payload::Tools::Omit)}),
+            other => json!({"error": format!("tools {other:?}: auto, none or omit")}),
+        },
+        Some("notice") => json!({"messages": viy_agent::payload::with_notice(
+            &msgs,
+            viy_agent::payload::TOOL_BUDGET_NOTICE
+        )}),
+        other => json!({"error": format!("unknown op {other:?}")}),
     }
 }
 
@@ -175,6 +236,7 @@ fn drive_scenario(
     result: Option<&Path>,
     dir: Option<&Path>,
     live: bool,
+    rounds: Option<&Path>,
     paths: &Paths,
     base: Config,
     out: &mut (dyn Write + Send),
@@ -198,6 +260,10 @@ fn drive_scenario(
         }
         if !live {
             outside_files(&chat, &start)?;
+        }
+        if let Some(path) = rounds {
+            chat.log_rounds(path)
+                .map_err(|e| Failure::from(format!("{}: {e}", path.display())))?;
         }
         chat.discover_max_model_len().await;
         let today = chat.today().to_string();

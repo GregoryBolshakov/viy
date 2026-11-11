@@ -1,6 +1,6 @@
 # viy
 
-A Rust harness for abliterated models, treats them as hostile, but keeps them
+A Rust harness for untrusted models, treats them as hostile, but keeps them
 useful.
 
 <p align="center">

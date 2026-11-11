@@ -1944,9 +1944,9 @@ FO_CONFIG = {"POD_NAME": "qwen-pod", "NETWORK_VOLUME_NAME": "w", "NETWORK_VOLUME
              "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000"}
 
 
-def _dc(region, free, storage=True, listed=True):
+def _dc(region, free, storage=True, listed=True, gpu=A100):
     return {"id": region, "location": "synthetic", "listed": listed, "storageSupport": storage,
-            "gpuAvailability": [{"gpuTypeId": A100, "stockStatus": "Low" if free else None,
+            "gpuAvailability": [{"gpuTypeId": gpu, "stockStatus": "Low" if free else None,
                                  "available": free}]}
 
 
@@ -2052,6 +2052,23 @@ FAILOVER_CASES = [
                     stock=[_dc("US-MO-1", True), _dc("CA-MTL-3", False)],
                     cuda={"CA-MTL-3": ["Low", None]}),
          answers=[True, True]),
+    # Every type in GPU_TYPE_IDS counts, the cheapest first (rpctl 03ec13a).
+    dict(name="another_of_our_types_free_is_offered",
+         world=dict(free=["EU-RO-1"], volumes=[PRIM, BK],
+                    stock=[_dc("EU-RO-1", True, gpu="NVIDIA RTX PRO 6000 Blackwell Server Edition")]),
+         answers=[True, True]),
+    dict(name="a_type_we_do_not_take_is_not_counted",
+         world=dict(free=["EU-RO-1"], volumes=[PRIM, BK],
+                    stock=[_dc("EU-RO-1", True, gpu="NVIDIA GeForce RTX 4090")]),
+         answers=[True]),
+    dict(name="the_cheapest_type_free_is_offered_first",
+         world=dict(free=["CA-MTL-3", "EU-RO-1"], volumes=[PRIM, BK],
+                    stock=[_dc("EU-RO-1", True, gpu="NVIDIA H200"), _dc("CA-MTL-3", True)]),
+         answers=[True, True]),
+    dict(name="stock_history_reads_old_and_new_rows", world=dict(
+        free=["EU-RO-1"], volumes=[PRIM], stock=TWO), answers=[True],
+         stock_rows=[{"at": "2026-07-07T00:00:00+00:00", "a100_free": {"CA-MTL-3": False}},
+                     {"at": "2026-07-28T00:00:00+00:00", "free": {"EU-RO-1": A100}}]),
     dict(name="stock_history_breaks_ties", world=dict(
         free=["EU-RO-1"], volumes=[PRIM], stock=TWO), answers=[True],
          stock_rows=[{"at": "2026-07-07T00:00:00+00:00", "a100_free": {"EU-RO-1": True}},
@@ -2177,6 +2194,10 @@ FAILOVER_CASES = [
     dict(name="backup_command_never_used_backup_zero_days", call="backup", samples=0,
          config={"BACKUP_IDLE_DAYS": "0"}, backups={"bk": {"name": "w-backup"}},
          world=dict(volumes=[PRIM, BK], stock=[_dc("US-MO-1", False)])),
+    dict(name="backup_command_shows_the_cheapest_type_seen", call="backup", samples=2,
+         world=dict(volumes=[PRIM, BK], stock=[
+             _dc("EU-RO-1", True, gpu="NVIDIA RTX PRO 6000 Blackwell Server Edition"),
+             _dc("US-NE-1", True, gpu="NVIDIA H200"), _dc("CA-MTL-3", False)])),
     dict(name="backup_command_stock_unreadable", call="backup", samples=1,
          world=dict(volumes=[PRIM], stock_error=500)),
     # Pure decisions.
@@ -2189,6 +2210,12 @@ FAILOVER_CASES = [
          past={"C": 0.9, "B": 0.2}),
     dict(name="rank_ties_by_name", call="rank", samples=[{"Z": True, "M": True, "A": False}],
          exclude=[], past={}),
+    dict(name="rank_cheapest_type_first", call="rank",
+         types=["NVIDIA A100 80GB PCIe", A100, "NVIDIA H200"],
+         samples=[{"A": "NVIDIA H200", "B": None, "C": "NVIDIA H200"},
+                  {"A": "NVIDIA H200", "B": A100, "C": None}], exclude=[], past={"C": 1.0}),
+    dict(name="rank_type_outside_the_list_last", call="rank", types=[A100],
+         samples=[{"A": "NVIDIA B300", "B": A100}], exclude=[], past={}),
     dict(name="capacity_errors", call="capacity", texts=[
         FULL, "There are no longer any instances available with the requested specifications",
         "Not enough free GPUs", "not enough GPUs", "No GPU available", "no gpus are available",
@@ -2393,7 +2420,8 @@ for case in json.loads(sys.argv[2]):
                     result = {"error": str(e)}
             result["stdout"] = out.getvalue().replace(HOME, "$HOME")
         elif call == "rank":
-            result = {"ok": regions.rank(case["samples"], set(case["exclude"]), case["past"])}
+            result = {"ok": regions.rank(case["samples"], set(case["exclude"]), case["past"],
+                                         case.get("types", ()))}
         elif call == "capacity":
             result = {"ok": [regions.is_capacity_error(api.RunPodError(t)) for t in case["texts"]]}
     except SystemExit as e:

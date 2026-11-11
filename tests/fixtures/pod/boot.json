@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "e02a5cd840f6d8f89ce338ff0ba1f10e88a3a5a7",
+ "rpctl_commit": "03ec13a57747c7f5a7775d3566eaac6d8c571d26",
  "generator": "tools/fixtures.py pod/boot",
  "about": "rpctl boot.build_vllm_args, build_boot_script and build_pod_body for config keys over DEFAULTS (cfg), the endpoint key, the volume id and the SSH public key: the argument list, the script and the body, or the exception the body raised. In each script the embedded startup.py is written '<startup.py>' (its text is the case 'startup.py'), and the body's dockerStartCmd [script] as ['<boot_script>']. Cases with a host have the argument list only, as the local backend builds it",
  "cases": [

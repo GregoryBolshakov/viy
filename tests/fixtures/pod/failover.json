@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "e02a5cd840f6d8f89ce338ff0ba1f10e88a3a5a7",
+ "rpctl_commit": "03ec13a57747c7f5a7775d3566eaac6d8c571d26",
  "generator": "tools/fixtures.py pod/failover",
  "about": "rpctl's pod creation with region failover (pod._create_pod on volume 'prim' with the user's answers, the default without a terminal), regions.retire_replaced, regions.expire, regions.cmd_backup, regions.rank and regions.is_capacity_error, config keys over DEFAULTS and FO_CONFIG, against a scripted RunPod (`world`, see tools/fixtures.py) played through a transport adapter at a fixed clock (FO_NOW). `sent` are the requests made (a pod's body cut to name, dataCenterIds, networkVolumeId and allowedCudaVersions), `replies` what each got (hang: a Ctrl-C arrived while it was in flight), `presses` the request counts at each Ctrl-C, `asked` the questions with their defaults, `said` the notices with their colour ($HOME for the home directory), then the outcome and the state files after",
  "cases": [
@@ -113,7 +113,7 @@
     ],
     [
      "warn",
-     "\nNo GPU free in EUR-IS-1 (FAILOVER=0: no backup offered). Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo GPU free in EUR-IS-1 (FAILOVER=0: no backup offered). Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -195,7 +195,7 @@
     ],
     [
      "warn",
-     "\nNo GPU free in EUR-IS-1 (FAILOVER=0: no backup offered). Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo GPU free in EUR-IS-1 (FAILOVER=0: no backup offered). Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -610,15 +610,15 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "error",
-     "No other region with network volumes shows an A100 free right now."
+     "No other region with network volumes shows one of our GPU types free right now."
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -628,15 +628,15 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {}
+     "free": {}
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {}
+     "free": {}
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {}
+     "free": {}
     }
    ],
    "failures_after": [
@@ -856,7 +856,7 @@
     ],
     [
      "warn",
-     "\nNo GPU free in EUR-IS-1 (FAILOVER=0: no backup offered). Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo GPU free in EUR-IS-1 (FAILOVER=0: no backup offered). Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -978,7 +978,7 @@
     ],
     [
      "warn",
-     "\nNo GPU free in EUR-IS-1 (FAILOVER=0: no backup offered). Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo GPU free in EUR-IS-1 (FAILOVER=0: no backup offered). Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -1976,15 +1976,15 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "error",
-     "No other region with network volumes shows an A100 free right now."
+     "No other region with network volumes shows one of our GPU types free right now."
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -2001,20 +2001,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": false
+     "free": {
+      "CA-MTL-3": null
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": false
+     "free": {
+      "CA-MTL-3": null
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": false
+     "free": {
+      "CA-MTL-3": null
      }
     }
    ],
@@ -2415,11 +2415,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "ok",
@@ -2453,23 +2453,23 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "US-MO-1": false,
-      "CA-MTL-3": true
+     "free": {
+      "US-MO-1": null,
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "US-MO-1": false,
-      "CA-MTL-3": true
+     "free": {
+      "US-MO-1": null,
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "US-MO-1": false,
-      "CA-MTL-3": true
+     "free": {
+      "US-MO-1": null,
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -2669,11 +2669,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "dim",
@@ -2693,20 +2693,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -2917,11 +2917,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "ok",
@@ -2949,23 +2949,23 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "EUR-IS-1": true,
-      "CA-MTL-3": true
+     "free": {
+      "EUR-IS-1": "NVIDIA A100-SXM4-80GB",
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "EUR-IS-1": true,
-      "CA-MTL-3": true
+     "free": {
+      "EUR-IS-1": "NVIDIA A100-SXM4-80GB",
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "EUR-IS-1": true,
-      "CA-MTL-3": true
+     "free": {
+      "EUR-IS-1": "NVIDIA A100-SXM4-80GB",
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -3149,11 +3149,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "ok",
@@ -3181,20 +3181,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -3453,11 +3453,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3, EU-RO-1 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB), EU-RO-1 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -3495,23 +3495,23 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -3988,11 +3988,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3, EU-RO-1 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB), EU-RO-1 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -4038,23 +4038,23 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -4598,11 +4598,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -4638,20 +4638,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -5039,11 +5039,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -5079,20 +5079,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -5771,11 +5771,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3, EU-RO-1 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB), EU-RO-1 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -5795,7 +5795,7 @@
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -5811,23 +5811,23 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -6977,11 +6977,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -7001,7 +7001,7 @@
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -7017,20 +7017,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -7913,11 +7913,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -7929,7 +7929,7 @@
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -7945,20 +7945,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -8184,11 +8184,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -8200,7 +8200,7 @@
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -8210,20 +8210,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -8415,15 +8415,15 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "error",
-     "No other region with network volumes shows an A100 free right now. The backup in US-MO-1 was kept."
+     "No other region with network volumes shows one of our GPU types free right now. The backup in US-MO-1 was kept."
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -8439,20 +8439,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": false
+     "free": {
+      "CA-MTL-3": null
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": false
+     "free": {
+      "CA-MTL-3": null
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": false
+     "free": {
+      "CA-MTL-3": null
      }
     }
    ],
@@ -8598,15 +8598,15 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "error",
-     "No other region with network volumes shows an A100 free right now."
+     "No other region with network volumes shows one of our GPU types free right now."
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -8616,15 +8616,15 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {}
+     "free": {}
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {}
+     "free": {}
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {}
+     "free": {}
     }
    ],
    "failures_after": [
@@ -8760,7 +8760,7 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "error",
@@ -8768,7 +8768,7 @@
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -8952,7 +8952,7 @@
      "method": "POST",
      "url": "https://api.runpod.io/graphql",
      "body": {
-      "query": "query { s0_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } }"
+      "query": "query { s0_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_2f: gpuTypes(input: {id: \"NVIDIA RTX PRO 6000 Blackwell Server Edition\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_3f: gpuTypes(input: {id: \"NVIDIA H100 NVL\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_4f: gpuTypes(input: {id: \"NVIDIA H100 80GB HBM3\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_5f: gpuTypes(input: {id: \"NVIDIA H200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_6f: gpuTypes(input: {id: \"NVIDIA B200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_2f: gpuTypes(input: {id: \"NVIDIA RTX PRO 6000 Blackwell Server Edition\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_3f: gpuTypes(input: {id: \"NVIDIA H100 NVL\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_4f: gpuTypes(input: {id: \"NVIDIA H100 80GB HBM3\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_5f: gpuTypes(input: {id: \"NVIDIA H200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_6f: gpuTypes(input: {id: \"NVIDIA B200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } }"
      }
     },
     {
@@ -8966,7 +8966,7 @@
      "method": "POST",
      "url": "https://api.runpod.io/graphql",
      "body": {
-      "query": "query { s0_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } }"
+      "query": "query { s0_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_2f: gpuTypes(input: {id: \"NVIDIA RTX PRO 6000 Blackwell Server Edition\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_3f: gpuTypes(input: {id: \"NVIDIA H100 NVL\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_4f: gpuTypes(input: {id: \"NVIDIA H100 80GB HBM3\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_5f: gpuTypes(input: {id: \"NVIDIA H200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_6f: gpuTypes(input: {id: \"NVIDIA B200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_2f: gpuTypes(input: {id: \"NVIDIA RTX PRO 6000 Blackwell Server Edition\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_3f: gpuTypes(input: {id: \"NVIDIA H100 NVL\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_4f: gpuTypes(input: {id: \"NVIDIA H100 80GB HBM3\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_5f: gpuTypes(input: {id: \"NVIDIA H200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_6f: gpuTypes(input: {id: \"NVIDIA B200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } }"
      }
     },
     {
@@ -8980,7 +8980,7 @@
      "method": "POST",
      "url": "https://api.runpod.io/graphql",
      "body": {
-      "query": "query { s0_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } }"
+      "query": "query { s0_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_2f: gpuTypes(input: {id: \"NVIDIA RTX PRO 6000 Blackwell Server Edition\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_3f: gpuTypes(input: {id: \"NVIDIA H100 NVL\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_4f: gpuTypes(input: {id: \"NVIDIA H100 80GB HBM3\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_5f: gpuTypes(input: {id: \"NVIDIA H200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s0_6f: gpuTypes(input: {id: \"NVIDIA B200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"US-MO-1\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_0f: gpuTypes(input: {id: \"NVIDIA A100 80GB PCIe\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_1f: gpuTypes(input: {id: \"NVIDIA A100-SXM4-80GB\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_2f: gpuTypes(input: {id: \"NVIDIA RTX PRO 6000 Blackwell Server Edition\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_3f: gpuTypes(input: {id: \"NVIDIA H100 NVL\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_4f: gpuTypes(input: {id: \"NVIDIA H100 80GB HBM3\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_5f: gpuTypes(input: {id: \"NVIDIA H200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } s1_6f: gpuTypes(input: {id: \"NVIDIA B200\"}) { lowestPrice(input: {gpuCount: 1, secureCloud: true, dataCenterId: \"CA-MTL-3\", minCudaVersion: \"13.0\"}) { stockStatus } } }"
      }
     },
     {
@@ -9034,7 +9034,7 @@
     },
     {
      "status": 200,
-     "body": "{\"data\": {\"s0_0f\": [{\"lowestPrice\": null}], \"s0_1f\": [{\"lowestPrice\": null}], \"s1_0f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_1f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}]}}"
+     "body": "{\"data\": {\"s0_0f\": [{\"lowestPrice\": null}], \"s0_1f\": [{\"lowestPrice\": null}], \"s0_2f\": [{\"lowestPrice\": null}], \"s0_3f\": [{\"lowestPrice\": null}], \"s0_4f\": [{\"lowestPrice\": null}], \"s0_5f\": [{\"lowestPrice\": null}], \"s0_6f\": [{\"lowestPrice\": null}], \"s1_0f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_1f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_2f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_3f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_4f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_5f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_6f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}]}}"
     },
     {
      "status": 200,
@@ -9042,7 +9042,7 @@
     },
     {
      "status": 200,
-     "body": "{\"data\": {\"s0_0f\": [{\"lowestPrice\": null}], \"s0_1f\": [{\"lowestPrice\": null}], \"s1_0f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_1f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}]}}"
+     "body": "{\"data\": {\"s0_0f\": [{\"lowestPrice\": null}], \"s0_1f\": [{\"lowestPrice\": null}], \"s0_2f\": [{\"lowestPrice\": null}], \"s0_3f\": [{\"lowestPrice\": null}], \"s0_4f\": [{\"lowestPrice\": null}], \"s0_5f\": [{\"lowestPrice\": null}], \"s0_6f\": [{\"lowestPrice\": null}], \"s1_0f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_1f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_2f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_3f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_4f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_5f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_6f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}]}}"
     },
     {
      "status": 200,
@@ -9050,7 +9050,7 @@
     },
     {
      "status": 200,
-     "body": "{\"data\": {\"s0_0f\": [{\"lowestPrice\": null}], \"s0_1f\": [{\"lowestPrice\": null}], \"s1_0f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_1f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}]}}"
+     "body": "{\"data\": {\"s0_0f\": [{\"lowestPrice\": null}], \"s0_1f\": [{\"lowestPrice\": null}], \"s0_2f\": [{\"lowestPrice\": null}], \"s0_3f\": [{\"lowestPrice\": null}], \"s0_4f\": [{\"lowestPrice\": null}], \"s0_5f\": [{\"lowestPrice\": null}], \"s0_6f\": [{\"lowestPrice\": null}], \"s1_0f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_1f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_2f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_3f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_4f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_5f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}], \"s1_6f\": [{\"lowestPrice\": {\"stockStatus\": \"Low\"}}]}}"
     },
     {
      "status": 200,
@@ -9091,11 +9091,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100 80GB PCIe)"
     ],
     [
      "ok",
@@ -9129,23 +9129,23 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "US-MO-1": false,
-      "CA-MTL-3": true
+     "free": {
+      "US-MO-1": null,
+      "CA-MTL-3": "NVIDIA A100 80GB PCIe"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "US-MO-1": false,
-      "CA-MTL-3": true
+     "free": {
+      "US-MO-1": null,
+      "CA-MTL-3": "NVIDIA A100 80GB PCIe"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "US-MO-1": false,
-      "CA-MTL-3": true
+     "free": {
+      "US-MO-1": null,
+      "CA-MTL-3": "NVIDIA A100 80GB PCIe"
      }
     }
    ],
@@ -9174,6 +9174,1079 @@
      "region": "US-MO-1",
      "role": "backup",
      "volume_id": "bk",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    }
+   ]
+  },
+  {
+   "name": "another_of_our_types_free_is_offered",
+   "world": {
+    "free": [
+     "EU-RO-1"
+    ],
+    "volumes": [
+     {
+      "id": "prim",
+      "name": "w",
+      "size": 100,
+      "dataCenterId": "EUR-IS-1"
+     },
+     {
+      "id": "bk",
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "US-MO-1"
+     }
+    ],
+    "stock": [
+     {
+      "id": "EU-RO-1",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     }
+    ]
+   },
+   "answers": [
+    true,
+    true
+   ],
+   "cfg": {
+    "NETWORK_VOLUME_NAME": "w",
+    "NETWORK_VOLUME_ID": "prim",
+    "FAILOVER_RETRY_MIN": "1",
+    "POD_NAME": "qwen-pod",
+    "CUDA_VERSIONS": "",
+    "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000",
+    "RUNPOD_API_KEY": "rpa_SYNTHETICKEY0000"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EUR-IS-1"
+      ],
+      "networkVolumeId": "prim"
+     }
+    },
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": null
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "US-MO-1"
+      ],
+      "networkVolumeId": "bk"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": {
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "EU-RO-1"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EU-RO-1"
+      ],
+      "networkVolumeId": "new1"
+     }
+    }
+   ],
+   "replies": [
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "[{\"id\": \"prim\", \"name\": \"w\", \"size\": 100, \"dataCenterId\": \"EUR-IS-1\"}, {\"id\": \"bk\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"US-MO-1\"}]"
+    },
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA RTX PRO 6000 Blackwell Server Edition\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA RTX PRO 6000 Blackwell Server Edition\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA RTX PRO 6000 Blackwell Server Edition\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"new1\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"EU-RO-1\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"pod-EU-RO-1\", \"costPerHr\": 1.89, \"networkVolumeId\": \"new1\"}"
+    }
+   ],
+   "presses": [],
+   "asked": [
+    [
+     "EUR-IS-1 has no GPU free. Try the backup volume in US-MO-1?",
+     true
+    ],
+    [
+     "Switch the backup to EU-RO-1? It makes a new volume in each region it tries and boots cold (~5 min: weights download, first compile), retrying refusals there and in EUR-IS-1 and US-MO-1 for up to 1 min; new volumes left unused are deleted. The old backup bk in US-MO-1 is deleted once rp is up on the new one.",
+     false
+    ]
+   ],
+   "said": [
+    [
+     "dim",
+     "Creating pod in EUR-IS-1 (1x from: NVIDIA A100 80GB PCIe, NVIDIA A100-SXM4-80GB, NVIDIA RTX PRO 6000 Blackwell Server Edition...)"
+    ],
+    [
+     "warn",
+     "  EUR-IS-1 (primary): no GPU free"
+    ],
+    [
+     "warn",
+     "  US-MO-1 (backup): no GPU free"
+    ],
+    [
+     "warn",
+     "The backup region US-MO-1 has no GPU free either."
+    ],
+    [
+     "warn",
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
+    ],
+    [
+     "warn",
+     "GPU free now (of 3 samples): EU-RO-1 3/3 (NVIDIA RTX PRO 6000 Blackwell Server Edition)"
+    ],
+    [
+     "ok",
+     "  pod created in EU-RO-1 on the backup volume new1"
+    ]
+   ],
+   "ok": [
+    {
+     "id": "pod-EU-RO-1",
+     "costPerHr": 1.89,
+     "networkVolumeId": "new1"
+    },
+    "new1",
+    true
+   ],
+   "region_after": "EU-RO-1",
+   "answer_wait": 0.0,
+   "backups_after": {
+    "bk": {
+     "name": "w-backup",
+     "region": "US-MO-1",
+     "last_used": 1784194200.0
+    },
+    "new1": {
+     "name": "w-backup",
+     "region": "EU-RO-1",
+     "last_used": 1784194204.0,
+     "replaces": "bk"
+    }
+   },
+   "stock_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:02+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:04+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+     }
+    }
+   ],
+   "failures_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "EUR-IS-1",
+     "role": "primary",
+     "volume_id": "prim",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    },
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "US-MO-1",
+     "role": "backup",
+     "volume_id": "bk",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    }
+   ]
+  },
+  {
+   "name": "a_type_we_do_not_take_is_not_counted",
+   "world": {
+    "free": [
+     "EU-RO-1"
+    ],
+    "volumes": [
+     {
+      "id": "prim",
+      "name": "w",
+      "size": 100,
+      "dataCenterId": "EUR-IS-1"
+     },
+     {
+      "id": "bk",
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "US-MO-1"
+     }
+    ],
+    "stock": [
+     {
+      "id": "EU-RO-1",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA GeForce RTX 4090",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     }
+    ]
+   },
+   "answers": [
+    true
+   ],
+   "cfg": {
+    "NETWORK_VOLUME_NAME": "w",
+    "NETWORK_VOLUME_ID": "prim",
+    "FAILOVER_RETRY_MIN": "1",
+    "POD_NAME": "qwen-pod",
+    "CUDA_VERSIONS": "",
+    "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000",
+    "RUNPOD_API_KEY": "rpa_SYNTHETICKEY0000"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EUR-IS-1"
+      ],
+      "networkVolumeId": "prim"
+     }
+    },
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": null
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "US-MO-1"
+      ],
+      "networkVolumeId": "bk"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    }
+   ],
+   "replies": [
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "[{\"id\": \"prim\", \"name\": \"w\", \"size\": 100, \"dataCenterId\": \"EUR-IS-1\"}, {\"id\": \"bk\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"US-MO-1\"}]"
+    },
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA GeForce RTX 4090\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA GeForce RTX 4090\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA GeForce RTX 4090\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    }
+   ],
+   "presses": [],
+   "asked": [
+    [
+     "EUR-IS-1 has no GPU free. Try the backup volume in US-MO-1?",
+     true
+    ]
+   ],
+   "said": [
+    [
+     "dim",
+     "Creating pod in EUR-IS-1 (1x from: NVIDIA A100 80GB PCIe, NVIDIA A100-SXM4-80GB, NVIDIA RTX PRO 6000 Blackwell Server Edition...)"
+    ],
+    [
+     "warn",
+     "  EUR-IS-1 (primary): no GPU free"
+    ],
+    [
+     "warn",
+     "  US-MO-1 (backup): no GPU free"
+    ],
+    [
+     "warn",
+     "The backup region US-MO-1 has no GPU free either."
+    ],
+    [
+     "warn",
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
+    ],
+    [
+     "error",
+     "No other region with network volumes shows one of our GPU types free right now. The backup in US-MO-1 was kept."
+    ],
+    [
+     "warn",
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+    ]
+   ],
+   "exit": 1,
+   "region_after": "EUR-IS-1",
+   "answer_wait": 0.0,
+   "backups_after": {
+    "bk": {
+     "name": "w-backup",
+     "region": "US-MO-1",
+     "last_used": 1784194200.0
+    }
+   },
+   "stock_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "free": {
+      "EU-RO-1": null
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:02+00:00",
+     "free": {
+      "EU-RO-1": null
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:04+00:00",
+     "free": {
+      "EU-RO-1": null
+     }
+    }
+   ],
+   "failures_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "EUR-IS-1",
+     "role": "primary",
+     "volume_id": "prim",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    },
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "US-MO-1",
+     "role": "backup",
+     "volume_id": "bk",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    }
+   ]
+  },
+  {
+   "name": "the_cheapest_type_free_is_offered_first",
+   "world": {
+    "free": [
+     "CA-MTL-3",
+     "EU-RO-1"
+    ],
+    "volumes": [
+     {
+      "id": "prim",
+      "name": "w",
+      "size": 100,
+      "dataCenterId": "EUR-IS-1"
+     },
+     {
+      "id": "bk",
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "US-MO-1"
+     }
+    ],
+    "stock": [
+     {
+      "id": "EU-RO-1",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA H200",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     },
+     {
+      "id": "CA-MTL-3",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA A100-SXM4-80GB",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     }
+    ]
+   },
+   "answers": [
+    true,
+    true
+   ],
+   "cfg": {
+    "NETWORK_VOLUME_NAME": "w",
+    "NETWORK_VOLUME_ID": "prim",
+    "FAILOVER_RETRY_MIN": "1",
+    "POD_NAME": "qwen-pod",
+    "CUDA_VERSIONS": "",
+    "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000",
+    "RUNPOD_API_KEY": "rpa_SYNTHETICKEY0000"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EUR-IS-1"
+      ],
+      "networkVolumeId": "prim"
+     }
+    },
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": null
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "US-MO-1"
+      ],
+      "networkVolumeId": "bk"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": {
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "CA-MTL-3"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "CA-MTL-3"
+      ],
+      "networkVolumeId": "new1"
+     }
+    }
+   ],
+   "replies": [
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "[{\"id\": \"prim\", \"name\": \"w\", \"size\": 100, \"dataCenterId\": \"EUR-IS-1\"}, {\"id\": \"bk\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"US-MO-1\"}]"
+    },
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA H200\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"CA-MTL-3\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA H200\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"CA-MTL-3\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA H200\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"CA-MTL-3\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"new1\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"CA-MTL-3\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"pod-CA-MTL-3\", \"costPerHr\": 1.89, \"networkVolumeId\": \"new1\"}"
+    }
+   ],
+   "presses": [],
+   "asked": [
+    [
+     "EUR-IS-1 has no GPU free. Try the backup volume in US-MO-1?",
+     true
+    ],
+    [
+     "Switch the backup to the first of CA-MTL-3, EU-RO-1 that takes the pod? It makes a new volume in each region it tries and boots cold (~5 min: weights download, first compile), retrying refusals there and in EUR-IS-1 and US-MO-1 for up to 1 min; new volumes left unused are deleted. The old backup bk in US-MO-1 is deleted once rp is up on the new one.",
+     false
+    ]
+   ],
+   "said": [
+    [
+     "dim",
+     "Creating pod in EUR-IS-1 (1x from: NVIDIA A100 80GB PCIe, NVIDIA A100-SXM4-80GB, NVIDIA RTX PRO 6000 Blackwell Server Edition...)"
+    ],
+    [
+     "warn",
+     "  EUR-IS-1 (primary): no GPU free"
+    ],
+    [
+     "warn",
+     "  US-MO-1 (backup): no GPU free"
+    ],
+    [
+     "warn",
+     "The backup region US-MO-1 has no GPU free either."
+    ],
+    [
+     "warn",
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
+    ],
+    [
+     "warn",
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB), EU-RO-1 3/3 (NVIDIA H200)"
+    ],
+    [
+     "ok",
+     "  pod created in CA-MTL-3 on the backup volume new1"
+    ]
+   ],
+   "ok": [
+    {
+     "id": "pod-CA-MTL-3",
+     "costPerHr": 1.89,
+     "networkVolumeId": "new1"
+    },
+    "new1",
+    true
+   ],
+   "region_after": "CA-MTL-3",
+   "answer_wait": 0.0,
+   "backups_after": {
+    "bk": {
+     "name": "w-backup",
+     "region": "US-MO-1",
+     "last_used": 1784194200.0
+    },
+    "new1": {
+     "name": "w-backup",
+     "region": "CA-MTL-3",
+     "last_used": 1784194204.0,
+     "replaces": "bk"
+    }
+   },
+   "stock_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA H200",
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:02+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA H200",
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:04+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA H200",
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
+     }
+    }
+   ],
+   "failures_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "EUR-IS-1",
+     "role": "primary",
+     "volume_id": "prim",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    },
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "US-MO-1",
+     "role": "backup",
+     "volume_id": "bk",
+     "pod_name": "qwen-pod",
+     "gpu_types": [
+      "NVIDIA A100 80GB PCIe",
+      "NVIDIA A100-SXM4-80GB",
+      "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "NVIDIA H100 NVL",
+      "NVIDIA H100 80GB HBM3",
+      "NVIDIA H200",
+      "NVIDIA B200"
+     ],
+     "status_code": 500,
+     "capacity": true,
+     "error": "POST /pods -> HTTP 500\n{\n  \"error\": \"create pod: There are no instances currently available\"\n}"
+    }
+   ]
+  },
+  {
+   "name": "stock_history_reads_old_and_new_rows",
+   "world": {
+    "free": [
+     "EU-RO-1"
+    ],
+    "volumes": [
+     {
+      "id": "prim",
+      "name": "w",
+      "size": 100,
+      "dataCenterId": "EUR-IS-1"
+     }
+    ],
+    "stock": [
+     {
+      "id": "CA-MTL-3",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA A100-SXM4-80GB",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     },
+     {
+      "id": "EU-RO-1",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA A100-SXM4-80GB",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     }
+    ]
+   },
+   "answers": [
+    true
+   ],
+   "stock_rows": [
+    {
+     "at": "2026-07-07T00:00:00+00:00",
+     "a100_free": {
+      "CA-MTL-3": false
+     }
+    },
+    {
+     "at": "2026-07-28T00:00:00+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
+     }
+    }
+   ],
+   "cfg": {
+    "NETWORK_VOLUME_NAME": "w",
+    "NETWORK_VOLUME_ID": "prim",
+    "FAILOVER_RETRY_MIN": "1",
+    "POD_NAME": "qwen-pod",
+    "CUDA_VERSIONS": "",
+    "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000",
+    "RUNPOD_API_KEY": "rpa_SYNTHETICKEY0000"
+   },
+   "sent": [
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EUR-IS-1"
+      ],
+      "networkVolumeId": "prim"
+     }
+    },
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": null
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": {
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "EU-RO-1"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://rest.runpod.io/v1/pods",
+     "body": {
+      "name": "qwen-pod",
+      "dataCenterIds": [
+       "EU-RO-1"
+      ],
+      "networkVolumeId": "new1"
+     }
+    }
+   ],
+   "replies": [
+    {
+     "status": 500,
+     "body": "{\"error\": \"create pod: There are no instances currently available\"}"
+    },
+    {
+     "status": 200,
+     "body": "[{\"id\": \"prim\", \"name\": \"w\", \"size\": 100, \"dataCenterId\": \"EUR-IS-1\"}]"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"CA-MTL-3\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"CA-MTL-3\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"CA-MTL-3\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": \"Low\", \"available\": true}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"new1\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"EU-RO-1\"}"
+    },
+    {
+     "status": 200,
+     "body": "{\"id\": \"pod-EU-RO-1\", \"costPerHr\": 1.89, \"networkVolumeId\": \"new1\"}"
+    }
+   ],
+   "presses": [],
+   "asked": [
+    [
+     "Make a backup volume in the first of EU-RO-1, CA-MTL-3 that takes the pod? It makes a new volume in each region it tries and boots cold (~5 min: weights download, first compile), retrying refusals there and in EUR-IS-1 for up to 1 min; new volumes left unused are deleted. ~$7/month, deleted after 30 days unused.",
+     false
+    ]
+   ],
+   "said": [
+    [
+     "dim",
+     "Creating pod in EUR-IS-1 (1x from: NVIDIA A100 80GB PCIe, NVIDIA A100-SXM4-80GB, NVIDIA RTX PRO 6000 Blackwell Server Edition...)"
+    ],
+    [
+     "warn",
+     "  EUR-IS-1 (primary): no GPU free"
+    ],
+    [
+     "warn",
+     "EUR-IS-1 has no GPU free, and there is no backup volume yet."
+    ],
+    [
+     "warn",
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
+    ],
+    [
+     "warn",
+     "GPU free now (of 3 samples): EU-RO-1 3/3 (NVIDIA A100-SXM4-80GB), CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
+    ],
+    [
+     "ok",
+     "  pod created in EU-RO-1 on the backup volume new1"
+    ]
+   ],
+   "ok": [
+    {
+     "id": "pod-EU-RO-1",
+     "costPerHr": 1.89,
+     "networkVolumeId": "new1"
+    },
+    "new1",
+    true
+   ],
+   "region_after": "EU-RO-1",
+   "answer_wait": 0.0,
+   "backups_after": {
+    "new1": {
+     "name": "w-backup",
+     "region": "EU-RO-1",
+     "last_used": 1784194204.0
+    }
+   },
+   "stock_after": [
+    {
+     "at": "2026-07-07T00:00:00+00:00",
+     "a100_free": {
+      "CA-MTL-3": false
+     }
+    },
+    {
+     "at": "2026-07-28T00:00:00+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:02+00:00",
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:04+00:00",
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
+     }
+    }
+   ],
+   "failures_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "region": "EUR-IS-1",
+     "role": "primary",
+     "volume_id": "prim",
      "pod_name": "qwen-pod",
      "gpu_types": [
       "NVIDIA A100 80GB PCIe",
@@ -9370,11 +10443,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): EU-RO-1 3/3, CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): EU-RO-1 3/3 (NVIDIA A100-SXM4-80GB), CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "ok",
@@ -9414,23 +10487,23 @@
     },
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -9635,11 +10708,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3, EU-RO-1 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB), EU-RO-1 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "error",
@@ -9663,23 +10736,23 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -9919,11 +10992,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -9939,7 +11012,7 @@
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -9961,20 +11034,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -10233,11 +11306,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -10249,7 +11322,7 @@
     ],
     [
      "warn",
-     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's A100 stock.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
+     "\nNo region took the pod. Retry in a minute (stock flickers); rp backup shows RunPod's stock of our GPU types.\nEvery refused pod creation is logged in $HOME/.local/state/rpctl/up_failures.jsonl"
     ]
    ],
    "exit": 1,
@@ -10265,20 +11338,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -10586,11 +11659,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3, EU-RO-1 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB), EU-RO-1 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -10618,23 +11691,23 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -11024,11 +12097,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3, EU-RO-1 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB), EU-RO-1 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -11062,23 +12135,23 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true,
-      "EU-RO-1": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -11384,11 +12457,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "dim",
@@ -11412,20 +12485,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -11588,11 +12661,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "dim",
@@ -11610,20 +12683,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -11902,11 +12975,11 @@
     ],
     [
      "warn",
-     "Checking RunPod's A100 stock in every region with network volumes..."
+     "Checking RunPod's stock of our GPU types in every region with network volumes..."
     ],
     [
      "warn",
-     "A100 free now (of 3 samples): CA-MTL-3 3/3"
+     "GPU free now (of 3 samples): CA-MTL-3 3/3 (NVIDIA A100-SXM4-80GB)"
     ],
     [
      "warn",
@@ -11942,20 +13015,20 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:02+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:04+00:00",
-     "a100_free": {
-      "CA-MTL-3": true
+     "free": {
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -13809,7 +14882,7 @@
    "presses": [],
    "asked": [],
    "said": [],
-   "stdout": "  primary:   EUR-IS-1  volume prim (w)\n  backup:    US-MO-1  volume bk (w-backup), last used 3 days ago; deleted after 2026-08-12 unless used\n\n  A100 free, regions with network volumes (1 sample; past 30 days in brackets):\n    CA-MTL-3   1/1   [50%] <- next backup\n    EU-RO-1    0/1     [-]\n    EUR-IS-1   0/1  [100%] primary\n    US-MO-1    1/1     [-] backup\n\n  pod creations refused in 30 days: 4 (EUR-IS-1 2, US-MO-1 1)  $HOME/.local/state/rpctl/up_failures.jsonl\n",
+   "stdout": "  primary:   EUR-IS-1  volume prim (w)\n  backup:    US-MO-1  volume bk (w-backup), last used 3 days ago; deleted after 2026-08-12 unless used\n\n  Our GPU types free, regions with network volumes (1 sample; past 30 days in brackets; the cheapest type seen):\n    CA-MTL-3   1/1   [50%] <- next backup  NVIDIA A100-SXM4-80GB\n    EU-RO-1    0/1     [-]\n    EUR-IS-1   0/1  [100%] primary\n    US-MO-1    1/1     [-] backup  NVIDIA A100-SXM4-80GB\n\n  pod creations refused in 30 days: 4 (EUR-IS-1 2, US-MO-1 1)  $HOME/.local/state/rpctl/up_failures.jsonl\n",
    "region_after": "EUR-IS-1",
    "answer_wait": 0.0,
    "backups_after": {
@@ -13836,11 +14909,11 @@
     },
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "EUR-IS-1": false,
-      "US-MO-1": true,
-      "CA-MTL-3": true,
-      "EU-RO-1": false
+     "free": {
+      "EUR-IS-1": null,
+      "US-MO-1": "NVIDIA A100-SXM4-80GB",
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB",
+      "EU-RO-1": null
      }
     }
    ],
@@ -13972,23 +15045,23 @@
    "presses": [],
    "asked": [],
    "said": [],
-   "stdout": "  primary:   EUR-IS-1  volume ? (w)\n  backup:    none; rp up makes one when EUR-IS-1 has no GPU free\n  failover:  off (FAILOVER=0)\n\n  A100 free, regions with network volumes (2 samples; past 30 days in brackets):\n    CA-MTL-3   2/2     [-] <- next backup\n    EUR-IS-1   2/2     [-] primary\n\n  pod creations refused in 30 days: 1 (none for capacity)  $HOME/.local/state/rpctl/up_failures.jsonl\n",
+   "stdout": "  primary:   EUR-IS-1  volume ? (w)\n  backup:    none; rp up makes one when EUR-IS-1 has no GPU free\n  failover:  off (FAILOVER=0)\n\n  Our GPU types free, regions with network volumes (2 samples; past 30 days in brackets; the cheapest type seen):\n    CA-MTL-3   2/2     [-] <- next backup  NVIDIA A100-SXM4-80GB\n    EUR-IS-1   2/2     [-] primary  NVIDIA A100-SXM4-80GB\n\n  pod creations refused in 30 days: 1 (none for capacity)  $HOME/.local/state/rpctl/up_failures.jsonl\n",
    "region_after": "EUR-IS-1",
    "answer_wait": 0.0,
    "backups_after": null,
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "EUR-IS-1": true,
-      "CA-MTL-3": true
+     "free": {
+      "EUR-IS-1": "NVIDIA A100-SXM4-80GB",
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     },
     {
      "at": "2026-07-16T09:30:05+00:00",
-     "a100_free": {
-      "EUR-IS-1": true,
-      "CA-MTL-3": true
+     "free": {
+      "EUR-IS-1": "NVIDIA A100-SXM4-80GB",
+      "CA-MTL-3": "NVIDIA A100-SXM4-80GB"
      }
     }
    ],
@@ -14080,7 +15153,7 @@
    "presses": [],
    "asked": [],
    "said": [],
-   "stdout": "  primary:   EUR-IS-1  volume prim (w)\n  backup:    US-MO-1  volume bk (w-backup)\n\n  A100 free, regions with network volumes (1 sample; past 30 days in brackets):\n    US-MO-1    0/1     [-] backup\n",
+   "stdout": "  primary:   EUR-IS-1  volume prim (w)\n  backup:    US-MO-1  volume bk (w-backup)\n\n  Our GPU types free, regions with network volumes (1 sample; past 30 days in brackets; the cheapest type seen):\n    US-MO-1    0/1     [-] backup\n",
    "region_after": "EUR-IS-1",
    "answer_wait": 0.0,
    "backups_after": {
@@ -14091,8 +15164,146 @@
    "stock_after": [
     {
      "at": "2026-07-16T09:30:00+00:00",
-     "a100_free": {
-      "US-MO-1": false
+     "free": {
+      "US-MO-1": null
+     }
+    }
+   ],
+   "failures_after": null
+  },
+  {
+   "name": "backup_command_shows_the_cheapest_type_seen",
+   "call": "backup",
+   "samples": 2,
+   "world": {
+    "volumes": [
+     {
+      "id": "prim",
+      "name": "w",
+      "size": 100,
+      "dataCenterId": "EUR-IS-1"
+     },
+     {
+      "id": "bk",
+      "name": "w-backup",
+      "size": 100,
+      "dataCenterId": "US-MO-1"
+     }
+    ],
+    "stock": [
+     {
+      "id": "EU-RO-1",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     },
+     {
+      "id": "US-NE-1",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA H200",
+        "stockStatus": "Low",
+        "available": true
+       }
+      ]
+     },
+     {
+      "id": "CA-MTL-3",
+      "location": "synthetic",
+      "listed": true,
+      "storageSupport": true,
+      "gpuAvailability": [
+       {
+        "gpuTypeId": "NVIDIA A100-SXM4-80GB",
+        "stockStatus": null,
+        "available": false
+       }
+      ]
+     }
+    ]
+   },
+   "cfg": {
+    "NETWORK_VOLUME_NAME": "w",
+    "NETWORK_VOLUME_ID": "prim",
+    "FAILOVER_RETRY_MIN": "1",
+    "POD_NAME": "qwen-pod",
+    "CUDA_VERSIONS": "",
+    "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000",
+    "RUNPOD_API_KEY": "rpa_SYNTHETICKEY0000"
+   },
+   "sent": [
+    {
+     "method": "GET",
+     "url": "https://rest.runpod.io/v1/networkvolumes",
+     "body": null
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    },
+    {
+     "method": "POST",
+     "url": "https://api.runpod.io/graphql",
+     "body": {
+      "query": "query { dataCenters { id location listed storageSupport gpuAvailability { gpuTypeId stockStatus available } } }"
+     }
+    }
+   ],
+   "replies": [
+    {
+     "status": 200,
+     "body": "[{\"id\": \"prim\", \"name\": \"w\", \"size\": 100, \"dataCenterId\": \"EUR-IS-1\"}, {\"id\": \"bk\", \"name\": \"w-backup\", \"size\": 100, \"dataCenterId\": \"US-MO-1\"}]"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA RTX PRO 6000 Blackwell Server Edition\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"US-NE-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA H200\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"CA-MTL-3\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": null, \"available\": false}]}]}}"
+    },
+    {
+     "status": 200,
+     "body": "{\"data\": {\"dataCenters\": [{\"id\": \"EU-RO-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA RTX PRO 6000 Blackwell Server Edition\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"US-NE-1\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA H200\", \"stockStatus\": \"Low\", \"available\": true}]}, {\"id\": \"CA-MTL-3\", \"location\": \"synthetic\", \"listed\": true, \"storageSupport\": true, \"gpuAvailability\": [{\"gpuTypeId\": \"NVIDIA A100-SXM4-80GB\", \"stockStatus\": null, \"available\": false}]}]}}"
+    }
+   ],
+   "presses": [],
+   "asked": [],
+   "said": [],
+   "stdout": "  primary:   EUR-IS-1  volume prim (w)\n  backup:    US-MO-1  volume bk (w-backup), last used today; deleted after 2026-08-15 unless used\n\n  Our GPU types free, regions with network volumes (2 samples; past 30 days in brackets; the cheapest type seen):\n    CA-MTL-3   0/2     [-]\n    EU-RO-1    2/2     [-] <- next backup  NVIDIA RTX PRO 6000 Blackwell Server Edition\n    US-NE-1    2/2     [-]  NVIDIA H200\n",
+   "region_after": "EUR-IS-1",
+   "answer_wait": 0.0,
+   "backups_after": {
+    "bk": {
+     "name": "w-backup",
+     "region": "US-MO-1",
+     "last_used": 1784194200.0
+    }
+   },
+   "stock_after": [
+    {
+     "at": "2026-07-16T09:30:00+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "US-NE-1": "NVIDIA H200",
+      "CA-MTL-3": null
+     }
+    },
+    {
+     "at": "2026-07-16T09:30:05+00:00",
+     "free": {
+      "EU-RO-1": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "US-NE-1": "NVIDIA H200",
+      "CA-MTL-3": null
      }
     }
    ],
@@ -14275,6 +15486,93 @@
    "ok": [
     "M",
     "Z"
+   ],
+   "region_after": "EUR-IS-1",
+   "answer_wait": 0.0,
+   "backups_after": null,
+   "stock_after": null,
+   "failures_after": null
+  },
+  {
+   "name": "rank_cheapest_type_first",
+   "call": "rank",
+   "types": [
+    "NVIDIA A100 80GB PCIe",
+    "NVIDIA A100-SXM4-80GB",
+    "NVIDIA H200"
+   ],
+   "samples": [
+    {
+     "A": "NVIDIA H200",
+     "B": null,
+     "C": "NVIDIA H200"
+    },
+    {
+     "A": "NVIDIA H200",
+     "B": "NVIDIA A100-SXM4-80GB",
+     "C": null
+    }
+   ],
+   "exclude": [],
+   "past": {
+    "C": 1.0
+   },
+   "cfg": {
+    "NETWORK_VOLUME_NAME": "w",
+    "NETWORK_VOLUME_ID": "prim",
+    "FAILOVER_RETRY_MIN": "1",
+    "POD_NAME": "qwen-pod",
+    "CUDA_VERSIONS": "",
+    "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000",
+    "RUNPOD_API_KEY": "rpa_SYNTHETICKEY0000"
+   },
+   "sent": [],
+   "replies": [],
+   "presses": [],
+   "asked": [],
+   "said": [],
+   "ok": [
+    "B",
+    "A",
+    "C"
+   ],
+   "region_after": "EUR-IS-1",
+   "answer_wait": 0.0,
+   "backups_after": null,
+   "stock_after": null,
+   "failures_after": null
+  },
+  {
+   "name": "rank_type_outside_the_list_last",
+   "call": "rank",
+   "types": [
+    "NVIDIA A100-SXM4-80GB"
+   ],
+   "samples": [
+    {
+     "A": "NVIDIA B300",
+     "B": "NVIDIA A100-SXM4-80GB"
+    }
+   ],
+   "exclude": [],
+   "past": {},
+   "cfg": {
+    "NETWORK_VOLUME_NAME": "w",
+    "NETWORK_VOLUME_ID": "prim",
+    "FAILOVER_RETRY_MIN": "1",
+    "POD_NAME": "qwen-pod",
+    "CUDA_VERSIONS": "",
+    "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000",
+    "RUNPOD_API_KEY": "rpa_SYNTHETICKEY0000"
+   },
+   "sent": [],
+   "replies": [],
+   "presses": [],
+   "asked": [],
+   "said": [],
+   "ok": [
+    "B",
+    "A"
    ],
    "region_after": "EUR-IS-1",
    "answer_wait": 0.0,

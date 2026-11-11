@@ -114,7 +114,7 @@ pub enum Command {
     #[command(about = "manage model profiles (for a model swap)")]
     Model(ModelArgs),
     #[command(
-        about = "primary and backup region, the backup's idle countdown, and RunPod's A100 stock per region"
+        about = "primary and backup region, the backup's idle countdown, and RunPod's stock of our GPU types per region"
     )]
     Backup {
         #[arg(

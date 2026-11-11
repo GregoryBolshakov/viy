@@ -4,8 +4,9 @@
 //! The success path is the single create request it always was. When
 //! DATA_CENTER_ID has no GPU free, the user is asked whether to try the
 //! backup volume; when that region is full too, or there is no backup
-//! yet, RunPod's A100 stock is sampled and the user asked once whether to
-//! move the backup to the regions that showed one free. On yes each of
+//! yet, RunPod's stock of our GPU types is sampled and the user asked once
+//! whether to move the backup to the regions that showed one free, the
+//! cheapest type first. On yes each of
 //! them gets a new volume and a pod request, refusals are retried for
 //! FAILOVER_RETRY_MIN (the primary and the old backup too), and the first
 //! region to take the pod wins. Volumes no pod used are deleted at once,
@@ -228,7 +229,7 @@ impl<'a> Creation<'a> {
                 format!("No GPU free in {primary} (FAILOVER=0: no backup offered)")
             };
             format!(
-                "{first}. Retry in a minute (stock flickers); viy backup shows RunPod's A100 stock."
+                "{first}. Retry in a minute (stock flickers); viy backup shows RunPod's stock of our GPU types."
             )
         } else {
             "Common causes: insufficient RunPod credit, or a request RunPod rejects (see the \
@@ -417,7 +418,7 @@ impl<'a> Creation<'a> {
         let past = regions::history(paths, regions::now(time), regions::HISTORY_DAYS);
         self.say(
             Tone::Warn,
-            "Checking RunPod's A100 stock in every region with network volumes...",
+            "Checking RunPod's stock of our GPU types in every region with network volumes...",
         );
         let samples = regions::sample_stock(
             self.rp,
@@ -434,30 +435,33 @@ impl<'a> Creation<'a> {
         })?;
         let mut exclude = HashSet::from([primary.as_str()]);
         exclude.extend(backup_region.as_deref());
-        let candidates = regions::rank(&samples, &exclude, &past);
+        let types = regions::stock_types(self.cfg);
+        let candidates = regions::rank(&samples, &exclude, &past, &types);
         if candidates.is_empty() {
             let kept = backup_region
                 .as_ref()
                 .map(|r| format!(" The backup in {r} was kept."))
                 .unwrap_or_default();
             return Err(Stop::NoCapacity(format!(
-                "No other region with network volumes shows an A100 free right now.{kept}"
+                "No other region with network volumes shows one of our GPU types free right \
+                 now.{kept}"
             )));
         }
         let shown: Vec<String> = candidates
             .iter()
             .map(|r| {
-                let free = samples
-                    .iter()
-                    .filter(|s| s.get(r).copied().unwrap_or(false))
-                    .count();
-                format!("{r} {free}/{}", samples.len())
+                format!(
+                    "{r} {}/{} ({})",
+                    regions::free_in(&samples, r),
+                    samples.len(),
+                    regions::cheapest_seen(&samples, r, &types).unwrap_or("None")
+                )
             })
             .collect();
         self.say(
             Tone::Warn,
             format!(
-                "A100 free now (of {} samples): {}",
+                "GPU free now (of {} samples): {}",
                 samples.len(),
                 shown.join(", ")
             ),

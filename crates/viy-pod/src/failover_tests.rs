@@ -342,10 +342,21 @@ async fn replay(case: &Value) -> Replayed {
                     s.as_object()
                         .into_iter()
                         .flatten()
-                        .map(|(r, free)| (r.clone(), free == true))
+                        .map(|(r, free)| {
+                            let free = match free {
+                                Value::String(gpu) => Some(gpu.clone()),
+                                // rpctl's older cases: a bare true, a type
+                                // outside `types`
+                                Value::Bool(true) => Some(String::new()),
+                                _ => None,
+                            };
+                            (r.clone(), free)
+                        })
                         .collect()
                 })
                 .collect();
+            let types: Vec<String> =
+                serde_json::from_value(case["types"].clone()).unwrap_or_default();
             let exclude: HashSet<&str> = case["exclude"]
                 .as_array()
                 .into_iter()
@@ -353,7 +364,7 @@ async fn replay(case: &Value) -> Replayed {
                 .filter_map(Value::as_str)
                 .collect();
             let past: HashMap<String, f64> = serde_json::from_value(case["past"].clone()).unwrap();
-            json!({"ok": regions::rank(&samples, &exclude, &past)})
+            json!({"ok": regions::rank(&samples, &exclude, &past, &types)})
         }
         "capacity" => {
             let texts = case["texts"].as_array().cloned().unwrap_or_default();
@@ -737,8 +748,8 @@ async fn stock_counts_only_hosts_at_or_above_the_floor() {
     let r = replay_named("stock_counts_hosts_at_or_above_the_cuda_floor").await;
     let stock = rows(&r.paths.stock_file());
     assert_eq!(
-        stock[0]["a100_free"],
-        json!({"US-MO-1": false, "CA-MTL-3": true})
+        stock[0]["free"],
+        json!({"US-MO-1": null, "CA-MTL-3": "NVIDIA A100 80GB PCIe"})
     );
 }
 
@@ -780,4 +791,59 @@ async fn without_a_terminal_the_backup_is_tried_but_nothing_is_moved() {
     assert!(r.creates().contains(&("US-MO-1".into(), "bk".into())));
     assert!(r.volume_calls().is_empty());
     assert_eq!(r.outcome["exit"], 1);
+}
+
+// rpctl 03ec13a: every type in GPU_TYPE_IDS counts in the stock search, the
+// cheapest first (2026-07-29: no A100 free anywhere, RTX PRO 6000s free in
+// EU-RO-1 and US-NE-1, and no region was offered).
+#[tokio::test(start_paused = true)]
+async fn a_region_with_only_another_of_our_types_free_is_offered() {
+    let r = replay_named("another_of_our_types_free_is_offered").await;
+    assert!(
+        r.asked[1][0]
+            .as_str()
+            .unwrap()
+            .starts_with("Switch the backup to EU-RO-1?")
+    );
+    let said: Vec<&str> = r.said.iter().filter_map(|s| s[1].as_str()).collect();
+    assert!(
+        said.contains(
+            &"GPU free now (of 3 samples): EU-RO-1 3/3 (NVIDIA RTX PRO 6000 Blackwell Server Edition)"
+        ),
+        "{said:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_type_we_do_not_take_is_not_counted() {
+    let r = replay_named("a_type_we_do_not_take_is_not_counted").await;
+    assert_eq!(r.asked.len(), 1);
+    assert!(r.said.iter().filter_map(|s| s[1].as_str()).any(|s| {
+        s.starts_with("No other region with network volumes shows one of our GPU types free")
+    }));
+    assert!(r.volume_calls().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_cheapest_type_free_comes_first() {
+    let r = replay_named("rank_cheapest_type_first").await;
+    assert_eq!(r.outcome["ok"], json!(["B", "A", "C"]));
+    let r = replay_named("the_cheapest_type_free_is_offered_first").await;
+    assert!(
+        r.asked[1][0]
+            .as_str()
+            .unwrap()
+            .contains("the first of CA-MTL-3, EU-RO-1")
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn history_reads_the_old_a100_rows_too() {
+    let r = replay_named("stock_history_reads_old_and_new_rows").await;
+    assert!(
+        r.asked[0][0]
+            .as_str()
+            .unwrap()
+            .contains("the first of EU-RO-1, CA-MTL-3")
+    );
 }

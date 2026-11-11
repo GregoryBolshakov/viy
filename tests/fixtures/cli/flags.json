@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "e02a5cd840f6d8f89ce338ff0ba1f10e88a3a5a7",
+ "rpctl_commit": "03ec13a57747c7f5a7775d3566eaac6d8c571d26",
  "generator": "tools/fixtures.py cli/flags",
  "about": "rpctl __main__.build_parser(): the program (name \"\") and each subcommand in order, with its help, description and arguments (option strings, nargs, whether a store_true flag, const, default, type, choices, required, hidden, help; values as strings). Help and usage layout are argparse's and not recorded (flags.md F31)",
  "cases": [
@@ -631,7 +631,7 @@
   },
   {
    "name": "backup",
-   "help": "primary and backup region, the backup's idle countdown, and RunPod's A100 stock per region",
+   "help": "primary and backup region, the backup's idle countdown, and RunPod's stock of our GPU types per region",
    "description": null,
    "args": [
     {

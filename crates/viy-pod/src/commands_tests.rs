@@ -536,7 +536,8 @@ async fn failover_off_exits_after_the_primary() {
         notices[3].1,
         format!(
             "\nNo GPU free in EUR-IS-1 (FAILOVER=0: no backup offered). Retry in a minute \
-             (stock flickers); viy backup shows RunPod's A100 stock.\nEvery refused pod creation \
+             (stock flickers); viy backup shows RunPod's stock of our GPU types.\nEvery refused pod \
+             creation \
              is logged in {}",
             home.paths.up_failures_file().display()
         )

@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "e02a5cd840f6d8f89ce338ff0ba1f10e88a3a5a7",
+ "rpctl_commit": "03ec13a57747c7f5a7775d3566eaac6d8c571d26",
  "generator": "tools/fixtures.py sandbox/seccomp",
  "about": "rp's seccomp program (sandbox._seccomp_program), as hex: 8 bytes per classic BPF instruction, little endian; and the proxy launcher (LAUNCHER_ARGV, _LAUNCHER, HANDOVER_TIMEOUT in seconds)",
  "cases": [

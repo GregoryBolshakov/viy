@@ -1,11 +1,12 @@
 //! Regions: rpctl's `regions.py`. DATA_CENTER_ID stays the primary; when
 //! RunPod refuses a pod there for lack of capacity, `viy up` offers the
 //! backup volume `<NETWORK_VOLUME_NAME>-backup` in a second region, and
-//! failing that moves the backup to a region where RunPod shows an A100
-//! free (`crate::failover`). This module keeps what that needs and what
-//! follows it: the record of backup volumes (`backups.json`) and of every
-//! refused creation (`up_failures.jsonl`), RunPod's A100 stock
-//! (`stock.jsonl`) and the regions ranked by it, the deletion of the old
+//! failing that moves the backup to a region where RunPod shows one of our
+//! GPU types free, the cheapest first (`crate::failover`). This module
+//! keeps what that needs and what follows it: the record of backup volumes
+//! (`backups.json`) and of every refused creation (`up_failures.jsonl`),
+//! RunPod's stock of our GPU types (`stock.jsonl`) and the regions ranked
+//! by it, the deletion of the old
 //! backup once its replacement serves, `viy reap`'s expiry of backups no
 //! pod has used for BACKUP_IDLE_DAYS, and `viy backup`.
 //!
@@ -311,15 +312,16 @@ pub async fn find_backup(
 
 // -------------------------------------------------------------------- stock
 
-/// Whether RunPod shows one of our A100 types free, per region.
-pub type Snapshot = IndexMap<String, bool>;
+/// Per region, the first of our GPU types RunPod shows free there, or
+/// `None`.
+pub type Snapshot = IndexMap<String, Option<String>>;
 
-pub fn a100_types(cfg: &Config) -> Vec<String> {
-    gpu_type_list(cfg)
-        .into_iter()
-        .filter(|g| g.contains("A100"))
-        .map(str::to_string)
-        .collect()
+/// Our GPU types, in GPU_TYPE_IDS order: the cost policy, cheapest first
+/// (rpctl's `stock_types`). Until rpctl 03ec13a only the A100s among them
+/// counted, so a region with only an RTX PRO 6000 or an H100 free was
+/// never offered.
+pub fn stock_types(cfg: &Config) -> Vec<String> {
+    gpu_type_list(cfg).into_iter().map(str::to_string).collect()
 }
 
 fn version(v: &str) -> Vec<u64> {
@@ -344,8 +346,8 @@ fn secure(cfg: &Config) -> bool {
     cloud.unwrap_or("SECURE").to_uppercase() != "COMMUNITY"
 }
 
-/// Whether RunPod shows one of our A100 types free, for every listed
-/// region that supports network volumes; each one kept in `stock.jsonl`.
+/// The first of our GPU types RunPod shows free, for every listed region
+/// that supports network volumes; each snapshot kept in `stock.jsonl`.
 ///
 /// dataCenters.gpuAvailability ignores the host's CUDA version: on
 /// 2026-07-08 it listed A100s free in four regions that all refused the
@@ -357,7 +359,7 @@ pub async fn stock_snapshot(
     time: &dyn TimeProvider,
     cfg: &Config,
 ) -> Result<Snapshot, RunPodError> {
-    let wanted = a100_types(cfg);
+    let wanted = stock_types(cfg);
     let mut snap = Snapshot::new();
     for dc in rp.data_centers().await? {
         let usable =
@@ -365,16 +367,16 @@ pub async fn stock_snapshot(
         let Some(region) = text(&dc, "id").filter(|_| usable) else {
             continue;
         };
-        let free = dc
+        let free: Vec<&str> = dc
             .get("gpuAvailability")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
-            .any(|g| {
-                g.get("available").is_some_and(truthy)
-                    && text(g, "gpuTypeId").is_some_and(|t| wanted.iter().any(|w| w == t))
-            });
-        snap.insert(region.to_string(), free);
+            .filter(|g| g.get("available").is_some_and(truthy))
+            .filter_map(|g| text(g, "gpuTypeId"))
+            .collect();
+        let first = wanted.iter().find(|w| free.contains(&w.as_str())).cloned();
+        snap.insert(region.to_string(), first);
     }
     if let Some(floor) = cuda_floor(cfg)
         && !snap.is_empty()
@@ -385,18 +387,21 @@ pub async fn stock_snapshot(
             .cuda_stock(&regions, &wanted, &floor, &[], secure(cfg))
             .await?;
         for (region, free) in &mut snap {
-            *free = wanted.iter().any(|g| {
-                stock
-                    .get(&(region.clone(), g.clone()))
-                    .and_then(|s| s.fit.as_deref())
-                    .is_some_and(|s| !s.is_empty())
-            });
+            *free = wanted
+                .iter()
+                .find(|g| {
+                    stock
+                        .get(&(region.clone(), (*g).clone()))
+                        .and_then(|s| s.fit.as_deref())
+                        .is_some_and(|s| !s.is_empty())
+                })
+                .cloned();
         }
     }
     append(
         paths,
         &paths.stock_file(),
-        &json!({"at": iso(now(time)), "a100_free": Map::from_iter(
+        &json!({"at": iso(now(time)), "free": Map::from_iter(
             snap.iter().map(|(region, free)| (region.clone(), json!(free)))
         )}),
     );
@@ -430,8 +435,9 @@ pub async fn any_cuda_is_safe(rp: &RunPod, cfg: &Config, region: &str) -> bool {
     fit && !old
 }
 
-/// Share of the stored samples in which each region had an A100 free,
-/// over the `days` before `now`.
+/// Share of the stored samples in which each region had one of our GPU
+/// types free (an A100, in rows written before rpctl 03ec13a), over the
+/// `days` before `now`.
 pub fn history(paths: &Paths, now: f64, days: u32) -> HashMap<String, f64> {
     let cutoff = iso(now - f64::from(days) * DAY_S);
     let mut seen: HashMap<String, (u32, u32)> = HashMap::new();
@@ -439,12 +445,13 @@ pub fn history(paths: &Paths, now: f64, days: u32) -> HashMap<String, f64> {
         if text(&row, "at").unwrap_or("") < cutoff.as_str() {
             continue;
         }
-        for (region, free) in row
-            .get("a100_free")
-            .and_then(Value::as_object)
-            .into_iter()
-            .flatten()
-        {
+        // rp's `row.get("free") or row.get("a100_free")`: an empty map
+        // falls through too.
+        let snap = ["free", "a100_free"]
+            .iter()
+            .filter_map(|k| row.get(*k).and_then(Value::as_object))
+            .find(|m| !m.is_empty());
+        for (region, free) in snap.into_iter().flatten() {
             let counts = seen.entry(region.clone()).or_default();
             counts.0 += 1;
             counts.1 += u32::from(truthy(free));
@@ -455,31 +462,64 @@ pub fn history(paths: &Paths, now: f64, days: u32) -> HashMap<String, f64> {
         .collect()
 }
 
-/// Regions to move the backup to, best first. Only a region that showed an
-/// A100 free in these samples qualifies, ordered by how often it did; the
-/// past only breaks ties, then the name.
+/// Regions to move the backup to, best first. Only a region that showed one
+/// of our GPU types free in these samples qualifies, ordered by the
+/// cheapest type it showed (its place in `types`, GPU_TYPE_IDS), then by
+/// how often it showed one; the past only breaks ties, then the name.
 pub fn rank(
     samples: &[Snapshot],
     exclude: &HashSet<&str>,
     past: &HashMap<String, f64>,
+    types: &[String],
 ) -> Vec<String> {
-    let mut counts: IndexMap<&str, u32> = IndexMap::new();
+    let mut counts: IndexMap<&str, (u32, usize)> = IndexMap::new();
     for snap in samples {
         for (region, free) in snap {
-            *counts.entry(region).or_default() += u32::from(*free);
+            let entry = counts.entry(region).or_insert((0, usize::MAX));
+            if let Some(gpu) = free {
+                entry.0 += 1;
+                entry.1 = entry.1.min(place(gpu, types));
+            }
         }
     }
-    let mut live: Vec<(&str, u32)> = counts
+    let mut live: Vec<(&str, (u32, usize))> = counts
         .into_iter()
-        .filter(|(region, n)| *n > 0 && !exclude.contains(region))
+        .filter(|(region, (n, _))| *n > 0 && !exclude.contains(region))
         .collect();
     let past = |r: &str| past.get(r).copied().unwrap_or(0.0);
-    live.sort_by(|(ra, na), (rb, nb)| {
-        nb.cmp(na)
+    live.sort_by(|(ra, (na, ca)), (rb, (nb, cb))| {
+        ca.cmp(cb)
+            .then(nb.cmp(na))
             .then(past(rb).total_cmp(&past(ra)))
             .then(ra.cmp(rb))
     });
     live.into_iter().map(|(r, _)| r.to_string()).collect()
+}
+
+/// `gpu`'s place in `types`; one past the end when it is not there.
+fn place(gpu: &str, types: &[String]) -> usize {
+    types.iter().position(|t| t == gpu).unwrap_or(types.len())
+}
+
+/// The cheapest of our GPU types `region` showed free in `samples`
+/// (rpctl's `cheapest_seen`).
+pub fn cheapest_seen<'a>(
+    samples: &'a [Snapshot],
+    region: &str,
+    types: &[String],
+) -> Option<&'a str> {
+    samples
+        .iter()
+        .filter_map(|s| s.get(region).and_then(Option::as_deref))
+        .min_by_key(|g| place(g, types))
+}
+
+/// How many of `samples` showed one of our types free in `region`.
+pub fn free_in(samples: &[Snapshot], region: &str) -> usize {
+    samples
+        .iter()
+        .filter(|s| s.get(region).is_some_and(Option::is_some))
+        .count()
 }
 
 /// `n` stock snapshots [`SAMPLE_GAP`] apart: stock flickers.
@@ -698,7 +738,7 @@ fn ago(at: f64, now: f64) -> String {
 }
 
 /// `viy backup`: this model's regions, the backup's idle countdown, and
-/// RunPod's A100 stock now, `samples` queries 5 s apart.
+/// RunPod's stock of our GPU types now, `samples` queries 5 s apart.
 pub async fn backup(
     env: &Env<'_>,
     cfg: &Config,
@@ -750,19 +790,17 @@ pub async fn backup(
     let taken = sample_stock(&rp, env.paths, env.time, cfg, n, Duration::from_secs(5)).await?;
     let mut exclude = HashSet::from([primary]);
     exclude.extend(backup_region.as_deref());
-    let best = rank(&taken, &exclude, &past);
+    let types = stock_types(cfg);
+    let best = rank(&taken, &exclude, &past, &types);
     print(format!(
-        "\n  A100 free, regions with network volumes ({n} sample{}; past {HISTORY_DAYS} days in \
-         brackets):",
+        "\n  Our GPU types free, regions with network volumes ({n} sample{}; past {HISTORY_DAYS} \
+         days in brackets; the cheapest type seen):",
         if n > 1 { "s" } else { "" }
     ));
     let mut regions: Vec<&String> = taken.last().map(|s| s.keys().collect()).unwrap_or_default();
     regions.sort();
     for region in regions {
-        let free = taken
-            .iter()
-            .filter(|s| s.get(region).copied().unwrap_or(false))
-            .count();
+        let free = free_in(&taken, region);
         let tag = if region == primary {
             " primary"
         } else if backup_region.as_ref() == Some(region) {
@@ -775,7 +813,10 @@ pub async fn backup(
         let old = past
             .get(region.as_str())
             .map_or("[-]".to_string(), |p| format!("[{:.0}%]", p * 100.0));
-        print(format!("    {region:<10} {free}/{n}  {old:>6}{tag}"));
+        let gpu = cheapest_seen(&taken, region, &types)
+            .map(|g| format!("  {g}"))
+            .unwrap_or_default();
+        print(format!("    {region:<10} {free}/{n}  {old:>6}{tag}{gpu}"));
     }
 
     let month = iso(now - f64::from(HISTORY_DAYS) * DAY_S);

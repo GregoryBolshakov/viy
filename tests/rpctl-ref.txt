@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: e02a5cd840f6d8f89ce338ff0ba1f10e88a3a5a7
+commit: 03ec13a57747c7f5a7775d3566eaac6d8c571d26
 branch: leak-protection
-pinned: 2026-07-28
-subject: Keep secret file names out of the server box's hidden folders
+pinned: 2026-07-29
+subject: Offer a backup region with any of our GPU types free, cheapest first

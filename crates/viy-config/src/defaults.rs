@@ -97,7 +97,8 @@ pub const DEFAULTS: &[(&str, &str)] = &[
     ("NETWORK_VOLUME_ID", ""),
     // When DATA_CENTER_ID has no GPU free, rp up offers the backup volume
     // (<NETWORK_VOLUME_NAME>-backup) in a second region, and to move it to where
-    // RunPod shows an A100 free when that region is full too (rpctl/regions.py).
+    // RunPod shows one of GPU_TYPE_IDS free when that region is full too
+    // (rpctl/regions.py).
     ("FAILOVER", "1"),
     // When every region offered refuses the pod (RunPod's stock overstates
     // what it will place), keep retrying them, the primary and the old backup

@@ -71,7 +71,36 @@ and a pod is billed by the hour until you end it.
 viy also works without a running pod. You can't send new prompts then, but
 you can still go through your chats and read and search your old messages.
 
-## The lore
+## Why
+
+Abliterated models have their refusals removed, and they can do real harm.
+Many people think they should not be run at all. But it is still a tool, and
+people will find ways to run these models. Nobody can control that. What we
+can control is how predictable the tool is, and how well it holds up against
+side effects nobody asked for and against people who steer the model from
+outside, with prompt injection, poisoned packages or links built to leak your
+data, for example.
+
+Holding the model itself back matters just as much. Each new generation of
+abliterated models is more capable than the last, and soon one may be able to
+escape a sandbox on its own and do damage nobody can predict. viy is built
+with that in mind.
+
+## Contributing
+
+Let's make viy better! Issues and pull requests are welcome, small ones too.
+Some things that you could try to improve:
+
+- Security. If you find a way past the sandbox, the egress proxy or the
+  fences around web text, tell me.
+- Bugs. Anything that crashes, hangs or works differently from what this
+  page says.
+- Boot speed, the time from `/up` until you can send a prompt.
+- The reviewer that rates the model's network commands. It should ask less
+  about safe commands and miss fewer bad ones.
+
+<details>
+<summary><h2>Lore</h2> <sub>(click to expand)</sub></summary>
 
 Gogol's 1835 story *Viy* describes the parts of this system really well.
 
@@ -83,6 +112,9 @@ and the student must hold out until dawn.
 <p align="center">
   <img src="images/church.png" alt="The third night in the church: the student in his chalk circle, Viy at the back wall, the witch in her coffin and the creatures around them">
 </p>
+
+<details>
+<summary><b>Subsystems as characters</b> <sub>(click to expand)</sub></summary>
 
 <table>
   <tr>
@@ -523,35 +555,11 @@ and the student must hold out until dawn.
   </tr>
 </table>
 
+</details>
+
 <!-- Cut-outs still to come, roles from art/church/brief.md:
   Khoma, the user. The chalk circle, the sandbox. The "don't look" voice,
   the approval prompt. The imps, the explore helpers.
   The owl, the egress proxy and netguard. The green handprints, taint. -->
 
-## Why
-
-Abliterated models have their refusals removed, and they can do real harm.
-Many people think they should not be run at all. But it is still a tool, and
-people will find ways to run these models. Nobody can control that. What we
-can control is how predictable the tool is, and how well it holds up against
-side effects nobody asked for and against people who steer the model from
-outside, with prompt injection, poisoned packages or links built to leak your
-data, for example.
-
-Holding the model itself back matters just as much. Each new generation of
-abliterated models is more capable than the last, and soon one may be able to
-escape a sandbox on its own and do damage nobody can predict. viy is built
-with that in mind.
-
-## Contributing
-
-Let's make viy better! Issues and pull requests are welcome, small ones too.
-Some things that you could try to improve:
-
-- Security. If you find a way past the sandbox, the egress proxy or the
-  fences around web text, tell me.
-- Bugs. Anything that crashes, hangs or works differently from what this
-  page says.
-- Boot speed, the time from `/up` until you can send a prompt.
-- The reviewer that rates the model's network commands. It should ask less
-  about safe commands and miss fewer bad ones.
+</details>

@@ -7,7 +7,7 @@
 pub const SECRET_ALLOW: [&str; 3] = [".env.example", ".env.sample", ".env.template"];
 
 /// Exact file names (case-insensitive) that are credentials.
-const SECRET_FILES: [&str; 20] = [
+pub const SECRET_FILES: [&str; 20] = [
     "secret",
     "secrets",
     "credential",
@@ -32,7 +32,7 @@ const SECRET_FILES: [&str; 20] = [
 
 /// Extensions (case-insensitive) of private keys, keystores and credential
 /// dumps.
-const SECRET_SUFFIXES: [&str; 9] = [
+pub const SECRET_SUFFIXES: [&str; 9] = [
     ".pem",
     ".key",
     ".pfx",
@@ -43,6 +43,10 @@ const SECRET_SUFFIXES: [&str; 9] = [
     ".kdbx",
     ".keyring",
 ];
+
+/// rpctl's `_SECRET_STEM` as text, for a server's `find -iregex`
+/// ([`crate::remote::secret_find`]); [`secret_stem`] is the same rule here.
+pub const SECRET_STEM_PATTERN: &str = r"(.*[-_.])?secrets?\.(json|ya?ml|toml|ini|txt|enc|conf|cfg)";
 
 /// Data extensions after a `secret`/`secrets` stem.
 const SECRET_STEM_EXTENSIONS: [&str; 9] = [

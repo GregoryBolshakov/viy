@@ -166,6 +166,12 @@ impl TurnContext {
             .ask_secret(&self.events, &self.sub_id, prompt)
     }
 
+    /// Whether a person answers the questions (the terminal UI, not
+    /// `viy exec` or a script): rp's `sys.stdin.isatty()` for `/ssh`.
+    pub fn attended(&self) -> bool {
+        self.questions.lock().attended
+    }
+
     /// The chat mode in force.
     pub fn mode(&self) -> &'static Mode {
         self.questions.lock().mode
@@ -228,12 +234,26 @@ impl TurnContext {
 
     /// [`TurnContext::detached`] with someone there to ask, so secrets are
     /// asked.
-    pub(crate) fn attended() -> (Self, mpsc::UnboundedReceiver<Event>) {
+    pub(crate) fn attended_detached() -> (Self, mpsc::UnboundedReceiver<Event>) {
         let (events, rx) = mpsc::unbounded_channel();
         let ctx = Self {
             sub_id: "test".into(),
             events,
             questions: Questions::new(modes::DEFAULT, true),
+        };
+        (ctx, rx)
+    }
+
+    /// [`TurnContext::detached`] in chat `mode`, `attended` or not.
+    pub(crate) fn detached_in(
+        mode: &'static Mode,
+        attended: bool,
+    ) -> (Self, mpsc::UnboundedReceiver<Event>) {
+        let (events, rx) = mpsc::unbounded_channel();
+        let ctx = Self {
+            sub_id: "test".into(),
+            events,
+            questions: Questions::new(mode, attended),
         };
         (ctx, rx)
     }

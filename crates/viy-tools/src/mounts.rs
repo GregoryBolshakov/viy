@@ -66,7 +66,7 @@ pub const WALK_SKIP: [&str; 9] = [
 /// The first words of a note from the client to the model (rpctl
 /// sessions.py `CLIENT_NOTE_PREFIX`, viy-agent's sessions).
 pub const NOTE_PREFIX: &str = "[rp chat: ";
-const SSH_NOTE_PREFIX: &str = "[rp chat: ssh: ";
+use crate::remote::NOTE_PREFIX as SSH_NOTE_PREFIX;
 
 /// One lent folder.
 #[derive(Debug, Clone, PartialEq, Eq)]

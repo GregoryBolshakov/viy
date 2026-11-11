@@ -83,3 +83,27 @@ fn pub_key_is_never_secret() {
 fn a_final_newline_keeps_a_secret_name_secret() {
     assert!(is_secret_name("secrets.json\n"));
 }
+
+// From the WP 8.2 review: the stem rule is written twice, as `secret_stem`
+// here and as `SECRET_STEM_PATTERN` for a lent server's `find -iregex`
+// (remote.rs); they must agree on every name.
+#[test]
+fn the_servers_stem_pattern_is_the_local_rule() {
+    let pattern = regex::Regex::new(&format!(r"(?i)\A{SECRET_STEM_PATTERN}\z")).unwrap();
+    let mut names = Vec::new();
+    for prefix in ["", "app-", "db_", "x.", "my", "-", "a.b-"] {
+        for stem in ["secret", "secrets", "secretz", "Secrets", "secre"] {
+            for ext in SECRET_STEM_EXTENSIONS
+                .iter()
+                .copied()
+                .chain(["json5", "jsn", "", "yamll", "y"])
+            {
+                names.push(format!("{prefix}{stem}.{ext}"));
+            }
+        }
+    }
+    for name in names {
+        let low = name.to_lowercase();
+        assert_eq!(pattern.is_match(&name), secret_stem(&low), "{name}");
+    }
+}

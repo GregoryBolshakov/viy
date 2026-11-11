@@ -249,7 +249,7 @@ async fn the_pin_is_asked_as_a_secret_and_goes_to_tok_unseen() {
     let Some(mut f) = chat(false, &[]).await else {
         return;
     };
-    let (ctx, mut rx) = TurnContext::attended();
+    let (ctx, mut rx) = TurnContext::attended_detached();
     let answering = {
         let ctx = ctx.clone();
         tokio::spawn(async move {

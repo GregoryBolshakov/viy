@@ -226,14 +226,7 @@ impl Hearing for ChatHearing<'_> {
     /// command reaches the reviewer, off the engine's thread.
     fn review(&mut self) -> Pending<'_, Verdict> {
         let sources = self.doctrines.clone();
-        Box::pin(async move {
-            let policy = tokio::task::spawn_blocking(move || {
-                doctrines::policy(&doctrines::load(&sources).doctrines)
-            })
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()));
-            approve::review_with_doctrines(&self.review, policy, self.http).await
-        })
+        Box::pin(reviewed(&self.review, sources, self.http))
     }
 
     fn rules(&mut self) -> Vec<Vec<String>> {
@@ -243,6 +236,22 @@ impl Hearing for ChatHearing<'_> {
     fn save_rule(&mut self, prefix: &[String]) -> Result<(), String> {
         approve::add_rule(self.rules_path, prefix).map_err(|e| e.to_string())
     }
+}
+
+/// `review`, and a second time with the user's doctrines from `sources`
+/// when there are any; the stricter holds. The doctrines are read off the
+/// engine's thread, when a command reaches the reviewer.
+pub(crate) async fn reviewed(
+    review: &Review<'_>,
+    sources: Vec<doctrines::Source>,
+    http: &dyn viy_http::HttpClient,
+) -> Verdict {
+    let policy = tokio::task::spawn_blocking(move || {
+        doctrines::policy(&doctrines::load(&sources).doctrines)
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()));
+    approve::review_with_doctrines(review, policy, http).await
 }
 
 impl Chat {
@@ -275,7 +284,7 @@ impl Chat {
 
     /// The last three things the user asked, for the reviewer (rp's
     /// `_recent_user_requests`).
-    fn recent_user_requests(&self) -> Vec<String> {
+    pub(crate) fn recent_user_requests(&self) -> Vec<String> {
         let text = |c: &Value| match c {
             Value::String(s) => s.clone(),
             Value::Array(parts) => parts
@@ -593,7 +602,7 @@ impl Chat {
         }
     }
 
-    /// rp's `_tool_run_shell`, without /ssh servers.
+    /// rp's `_tool_run_shell`.
     pub(crate) async fn run_shell(
         &mut self,
         ctx: &TurnContext,
@@ -609,9 +618,30 @@ impl Chat {
         if cmd.is_empty() {
             return (json!({"error": "no command given"}), Card::default());
         }
-        let need_net = wants_network(args.get("needs_network"));
         let ws = self.places.workspace.clone();
+        // before the lent-host branch too: ssh runs in the workspace (rp mkdirs first)
         let _ = std::fs::create_dir_all(&ws);
+        // A command for a server lent with /ssh runs there, by the client's
+        // own ssh; another use of a lent host does not run at all.
+        let lent = match viy_tools::remote::match_command(&cmd, &self.ssh_hosts) {
+            Ok(lent) => lent.map(|(h, r)| (h.clone(), r)),
+            Err(refused) => {
+                notice(
+                    ctx,
+                    NoticeLevel::Warn,
+                    "run_shell",
+                    format!("  [not run] {refused}"),
+                );
+                return (
+                    json!({"command": cmd, "error": format!("not run: {refused}")}),
+                    Card::default(),
+                );
+            }
+        };
+        if let Some((host, rcmd)) = lent {
+            return self.run_remote(ctx, call_id, &cmd, host, &rcmd).await;
+        }
+        let need_net = wants_network(args.get("needs_network"));
         let ready = self.auto_ready().await;
         let boxed = ready.is_ok();
         let mut reason: Vec<NoticeEvent> = Vec::new();

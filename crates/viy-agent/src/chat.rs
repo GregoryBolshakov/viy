@@ -274,6 +274,14 @@ pub struct Chat {
     sbgit_used: bool,
     /// tok, which keeps the repositories' key.
     tok: viy_config::vault::Tok,
+    /// Servers the user lent with `/ssh` ([`viy_tools::remote`]); only
+    /// `/ssh` adds one, and nothing in config or the chat can.
+    pub(crate) ssh_hosts: Vec<viy_tools::remote::Host>,
+    /// The note the next user message carries about them.
+    pub(crate) ssh_note: Option<String>,
+    /// This machine's ssh tools at grant time, and ssh itself.
+    pub(crate) ssh_machine: Arc<dyn viy_tools::remote::Machine>,
+    pub(crate) ssh_runner: Arc<dyn viy_tools::remote::Ssh>,
     /// The name last sent as [`EventMsg::TitleChanged`]; empty at first,
     /// as the frontend starts with no name. Shared with the background
     /// title request, which sends the title it gets.
@@ -328,6 +336,7 @@ impl Chat {
             cfg.get("TOOL_ELIDE_KEEP_TURNS"),
         );
         let consult = consult::ConsultSettings::from_config(cfg, &places.home);
+        let ssh_home = places.home.clone();
         let toolbox_on = on("TOOLBOX_ENABLED", "1");
         let toolbox_snap = if toolbox_on {
             places.toolbox.scan()
@@ -428,6 +437,10 @@ impl Chat {
             sbgit_failed: None,
             sbgit_used: false,
             tok: viy_config::vault::Tok::from_env(),
+            ssh_hosts: Vec::new(),
+            ssh_note: None,
+            ssh_machine: Arc::new(viy_tools::remote::SshTools { home: ssh_home }),
+            ssh_runner: Arc::new(viy_tools::remote::SystemSsh),
             label_sent: Arc::default(),
         })
     }
@@ -640,6 +653,8 @@ impl Chat {
         self.mem_files = FileHistory::in_memory();
         self.reset_web(&[]);
         self.mount_note = self.mounts_note();
+        // a lent server stays lent in a new chat, and it is told again
+        self.ssh_note = self.ssh_hosts_note();
         let fresh = match (&old, &self.sessions) {
             (Some(_), Some(store)) => {
                 Some(store.create(self.project.as_deref(), Some(&self.settings.model)))
@@ -724,6 +739,7 @@ impl Chat {
         self.reset_web(&history);
         self.messages = history;
         self.mount_note = self.mounts_note();
+        self.ssh_note = self.ssh_hosts_note();
     }
 
     /// Runs `f` on this chat's record of what write_file overwrote (rp's
@@ -2159,6 +2175,13 @@ fn key_then_quoted(text: &str, key: &str, then: impl Fn(&str) -> bool) -> bool {
 
 #[path = "sandbox_git.rs"]
 pub mod sandbox_git;
+
+#[path = "ssh.rs"]
+mod ssh;
+
+#[cfg(test)]
+#[path = "ssh_tests.rs"]
+mod ssh_tests;
 
 #[cfg(test)]
 #[path = "sandbox_git_tests.rs"]

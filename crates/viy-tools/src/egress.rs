@@ -105,7 +105,9 @@ fn rx(pattern: &str) -> Regex {
 
 /// Python's `\s` (`str.isspace`), written out: Rust's `\s` lacks the
 /// information separators `\x1c`-`\x1f` (flags F41).
-const PY_SPACE: &str = r"\t\n\x0B\x0C\r\x1C-\x1F \x{85}\x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}";
+/// Python's `\s` on str as a regex class's inside (shared with
+/// [`crate::remote`]).
+pub(crate) const PY_SPACE: &str = r"\t\n\x0B\x0C\r\x1C-\x1F \x{85}\x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}";
 
 /// rpctl's `_URL_AUTH` without its leading `\b`, which [`url_hosts`]
 /// decides itself.
@@ -470,7 +472,7 @@ pub fn hosts_in_command(cmd: &str) -> CommandHosts {
 /// the line, inside a word too; quotes and `\` as POSIX shlex. `None` where
 /// shlex raises (an unclosed quote, a trailing `\`), and rpctl falls back
 /// to splitting at whitespace.
-fn shlex_words(cmd: &str) -> Option<Vec<String>> {
+pub(crate) fn shlex_words(cmd: &str) -> Option<Vec<String>> {
     const PUNCT: &str = "();<>|&";
     #[derive(Clone, Copy, PartialEq)]
     enum State {

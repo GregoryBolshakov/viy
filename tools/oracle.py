@@ -206,6 +206,58 @@ def egress_policy(command, user_hosts, allow, probes):
             "why_not": [p.why_not(h, port) for h, port in probes]}
 
 
+def _remote_host(h):
+    """A remote.Host from {alias, hostname, user, port, key, known_hosts,
+    agent, boxed}."""
+    from rpctl import remote
+    return remote.Host(h["alias"], h["hostname"], h["user"], h["port"], pathlib.Path(h["key"]),
+                       pathlib.Path(h["known_hosts"]), h.get("agent", ""), h.get("boxed", True))
+
+
+def remote_match(cmd, hosts):
+    """remote.match(cmd, hosts) as None, [alias, remote command], or a raised Refused."""
+    from rpctl import remote
+    got = remote.match(cmd, [_remote_host(h) for h in hosts])
+    return None if got is None else [got[0].alias, got[1]]
+
+
+def remote_argv(host, cmd):
+    from rpctl import remote
+    return remote.argv(_remote_host(host), cmd)
+
+
+def remote_env(host):
+    """remote.env(host) without HOME and LANG, which are the oracle's own."""
+    from rpctl import remote
+    return {k: v for k, v in remote.env(_remote_host(host)).items() if k not in ("HOME", "LANG")}
+
+
+def remote_note(hosts, gone):
+    from rpctl import remote
+    return remote.note([_remote_host(h) for h in hosts], gone)
+
+
+def remote_box_command(cmd, timeout):
+    """remote.box_command with the seccomp program's octal taken out (viy's
+    filter also refuses AF_VSOCK, kb d025): [before, after] the printf."""
+    from rpctl import remote, sandbox
+    box = remote.box_command(cmd, timeout)
+    octal = remote._octal(sandbox._seccomp_program())
+    before, _, after = box.partition(octal)
+    return [before, after]
+
+
+def remote_config_hosts(text):
+    """remote.config_hosts on a file holding `text`."""
+    from rpctl import remote
+    with tempfile.NamedTemporaryFile("w", suffix=".ssh-config", delete=False) as f:
+        f.write(text)
+    try:
+        return remote.config_hosts(f.name)
+    finally:
+        os.unlink(f.name)
+
+
 def _toolbox_tools(manifests):
     """Tools from [[name, scope, TOOL.md text], ...] as toolbox.load reads
     them, without a filesystem: each at /tb/<scope>/<name>, problems not
@@ -387,6 +439,16 @@ FUNCTIONS = {
     "shutdown.parse_when": shutdown_parse_when,
     "trace.monitor": trace_monitor,
     "trace.repeated_sentence": ("rpctl.trace", "repeated_sentence"),
+    "remote.argv": remote_argv,
+    "remote.box_command": remote_box_command,
+    "remote.config_hosts": remote_config_hosts,
+    "remote.env": remote_env,
+    "remote.match": remote_match,
+    "remote.note": remote_note,
+    "remote.parse_arg": ("rpctl.remote", "parse_arg"),
+    "remote.root_word": ("rpctl.remote", "root_word"),
+    "remote.secret_find": ("rpctl.remote", "_secret_find"),
+    "remote.shown": ("rpctl.remote", "shown"),
     "toolbox.describe": toolbox_describe,
     "toolbox.index": toolbox_index,
     "toolbox.parse_manifest": ("rpctl.toolbox", "parse_manifest"),

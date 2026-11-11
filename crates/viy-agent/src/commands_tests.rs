@@ -691,7 +691,11 @@ async fn settings_commands_say_what_they_set() {
             "/image /nonexistent/x.png",
             "no such file: /nonexistent/x.png",
         ),
-        ("/ssh host", "/ssh comes with phase 4"),
+        // nobody at a terminal to answer for each command (rp's no TTY)
+        (
+            "/ssh host",
+            "not lent: /ssh needs you at a terminal to answer for each command",
+        ),
         // No pod in a chat on a given address (viy dev chat).
         (
             "/up",

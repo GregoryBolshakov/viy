@@ -120,14 +120,6 @@ const HELP: &str = "  /help              show this
 
   End a line with \\ to continue it on the next line.";
 
-/// The commands a later work package brings, and which.
-fn later(cmd: &str) -> Option<&'static str> {
-    Some(match cmd {
-        "ssh" | "unssh" => "phase 4",
-        _ => return None,
-    })
-}
-
 /// The pod's commands (kb d041, d068), which the chat's server runs.
 pub const POD_COMMANDS: [&str; 11] = [
     "up", "stop", "down", "status", "logs", "tunnel", "boots", "backup", "volume", "reap",
@@ -430,6 +422,8 @@ impl Chat {
             "consult" => self.consult_command(ctx, arg),
             "toolbox" => self.toolbox_command(ctx, arg),
             "git" => self.git_command(ctx, arg).await,
+            "ssh" => self.ssh_command(ctx, arg).await,
+            "unssh" => self.unssh_command(ctx, arg),
             "autocompact" => self.autocompact_command(ctx, arg),
             "sources" => self.sources_command(ctx),
             "new" | "reset" => {
@@ -599,13 +593,10 @@ impl Chat {
                     "/{cmd}: this chat talks to the address it was given; viy chat runs the pod commands"
                 ),
             ),
-            _ => match later(cmd) {
-                Some(when) => warn("not_ported", format!("/{cmd} comes with {when}")),
-                None => warn(
-                    "unknown_command",
-                    format!("unknown command: /{cmd}  (try /help)"),
-                ),
-            },
+            _ => warn(
+                "unknown_command",
+                format!("unknown command: /{cmd}  (try /help)"),
+            ),
         }
     }
 
@@ -902,16 +893,15 @@ impl Chat {
         );
     }
 
-    /// The next user message: the pending `/mount` note, the line, then the
-    /// pending images (rp's `_user_content`; the `/ssh` note comes with
-    /// remote.py).
+    /// The next user message: the pending `/mount` and `/ssh` notes, the
+    /// line, then the pending images (rp's `_user_content`).
     pub fn user_content(&mut self, line: String) -> Value {
-        let note = self.mount_note.take();
-        if self.pending_images.is_empty() && note.is_none() {
+        let notes = [self.mount_note.take(), self.ssh_note.take()];
+        if self.pending_images.is_empty() && notes.iter().all(Option::is_none) {
             return Value::String(line);
         }
         let mut parts = Vec::new();
-        for text in note.into_iter().chain(Some(line.clone())) {
+        for text in notes.into_iter().flatten().chain(Some(line.clone())) {
             if !text.is_empty() {
                 parts.push(json!({"type": "text", "text": text}));
             }
@@ -1312,15 +1302,18 @@ impl Chat {
         let mut pending = images;
         pending.append(&mut self.pending_images);
         self.pending_images = pending;
-        // A /mount note the dropped turns carried goes out again, up to date.
-        let carried_note = dropped
+        // A /mount or /ssh note the dropped turns carried goes out again, up to date.
+        let notes: Vec<&str> = dropped
             .iter()
             .filter(|m| m["role"] == "user")
             .flat_map(|m| m["content"].as_array().into_iter().flatten())
             .filter_map(|p| p["text"].as_str())
-            .any(mounts::is_note);
-        if carried_note {
+            .collect();
+        if notes.iter().any(|t| mounts::is_note(t)) {
             self.mount_note = Some(mounts::note(&self.files.mounts, &[]));
+        }
+        if notes.iter().any(|t| viy_tools::remote::is_note(t)) {
+            self.ssh_note = Some(viy_tools::remote::note(&self.ssh_hosts, &[]));
         }
         self.checkpoint(ctx);
         self.redraw(ctx, RewriteReason::Rewind);

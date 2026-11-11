@@ -574,7 +574,15 @@ async fn the_lock_is_free_while_the_password_is_asked() {
         &v.ws,
         || async move {
             let f = std::fs::File::open(&lock).unwrap();
-            assert!(f.try_lock().is_ok(), "the lock is held while asking");
+            // Briefly, as release waits: a child another test forked while
+            // prepare held the lock shares it until it execs.
+            let free = (0..100).any(|_| {
+                f.try_lock().is_ok() || {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    false
+                }
+            });
+            assert!(free, "the lock is held while asking");
             drop(f);
             Ok("pw".to_string())
         },

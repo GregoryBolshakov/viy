@@ -20,9 +20,11 @@ pub use op::Op;
 pub use op::Submission;
 pub use question::Answer;
 pub use question::Asking;
+pub use question::AskingSecret;
 pub use question::Choices;
 pub use question::Question;
 pub use question::QuestionKind;
+pub use question::Secret;
 
 #[cfg(test)]
 #[path = "protocol_tests.rs"]

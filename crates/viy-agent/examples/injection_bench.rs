@@ -54,6 +54,11 @@ fn chat() -> Result<Chat, String> {
         doctrine_sources: Vec::new(),
         guarded: Vec::new(),
         toolbox: viy_agent::toolbox::Dirs::default(),
+        sandbox_git: viy_tools::sandboxgit::Places::new(
+            std::path::Path::new("/nonexistent/viy-data"),
+            None,
+            std::path::Path::new("/nonexistent/viy-state"),
+        ),
     };
     let endpoint = Endpoint {
         base: "http://127.0.0.1:1".into(),

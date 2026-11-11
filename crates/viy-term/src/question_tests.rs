@@ -438,6 +438,7 @@ fn the_transcript_keeps_the_reason_question_and_answer() {
         question: reasoned(),
         shown: None,
         chosen: 0,
+        secret: None,
     };
     let Cell::Lines { lines, .. } = b.cell(Some(Answer::Always)) else {
         panic!()
@@ -490,4 +491,26 @@ fn a_question_that_can_be_called_off_takes_q_esc_and_ctrl_c_as_cancel() {
     // Not one of the others: q there is nobody's.
     let mut q = shown(Question::yes_no(None, "go?"), t0);
     assert_eq!(q.key(press(KeyCode::Char('q')), t0 + AFTER, false), None);
+}
+
+#[test]
+fn a_paste_at_a_secret_goes_into_it_and_nowhere_else() {
+    let mut q = Questions::default();
+    let t0 = Instant::now();
+    q.push_secret("q1".into(), "PIN?".into());
+    q.drawn(t0, true);
+    // in its guard: taken (so not the input box's) but dropped
+    assert!(q.paste("12", t0));
+    let later = t0 + GUARD + Duration::from_millis(1);
+    assert!(q.paste("34\n", later));
+    let Some(Taken::Secret { secret, .. }) = q.key(
+        KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+        later,
+        false,
+    ) else {
+        panic!("not sent");
+    };
+    assert_eq!(secret.map(|s| s.expose().to_string()), Some("34".into()));
+    // with no secret in front, the paste is the input box's
+    assert!(!q.paste("x", later));
 }

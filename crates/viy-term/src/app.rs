@@ -428,11 +428,13 @@ impl App {
                 }
             }
             EventMsg::QuestionRequest(e) => self.questions.push(e.question_id, e.question),
+            EventMsg::SecretRequest(e) => self.questions.push_secret(e.question_id, e.prompt),
             EventMsg::QuestionResolved(e) => {
                 if let Some(question) = self.questions.resolve(&e.question_id) {
                     // Answered by the mode (Shift+Tab at the box): rp's
                     // "y (auto-yes)" where the user's answer would be.
                     let cell = match &e.by {
+                        _ if question.is_secret() => question.secret_cell(false),
                         Some(mode) => question.cell_by(viy_protocol::Answer::Yes, mode),
                         None => question.cell(None),
                     };
@@ -486,8 +488,11 @@ impl App {
             }
             Input::Key(_) => {}
             Input::Paste(text) => {
-                self.questions.typed(Instant::now());
-                self.composer.paste(&text);
+                // A secret takes the paste; no character of it reaches the input box.
+                if !self.questions.paste(&text, Instant::now()) {
+                    self.questions.typed(Instant::now());
+                    self.composer.paste(&text);
+                }
             }
             Input::Mouse(mouse) => match mouse.kind {
                 MouseEventKind::ScrollUp => self.view.scroll_up(WHEEL_ROWS),
@@ -512,8 +517,13 @@ impl App {
             self.pick_key(key);
             return None;
         }
+        // A secret in front takes every key, Esc and Ctrl-C included.
+        let secret_front = self
+            .questions
+            .front()
+            .is_some_and(crate::question::QuestionBox::is_secret);
         let primed = std::mem::take(&mut self.esc_primed);
-        if key.code == KeyCode::Esc && self.idle() && self.composer.is_empty() {
+        if !secret_front && key.code == KeyCode::Esc && self.idle() && self.composer.is_empty() {
             if primed {
                 self.open_pick();
             } else {
@@ -521,7 +531,7 @@ impl App {
             }
             return None;
         }
-        if self.closing && key.code == KeyCode::Char('c') && ctrl {
+        if !secret_front && self.closing && key.code == KeyCode::Char('c') && ctrl {
             // A second Ctrl-C while closing: leave now.
             return Some(Flow::Exit);
         }
@@ -540,7 +550,16 @@ impl App {
                 });
                 return None;
             }
-            Some(Taken::Chose) => return None,
+            Some(Taken::Chose | Taken::Typed) => return None,
+            Some(Taken::Secret { question, secret }) => {
+                let given = secret.is_some();
+                let _ = self.ops.send(Op::SecretAnswer {
+                    id: question.id.clone(),
+                    secret,
+                });
+                self.push(question.secret_cell(given));
+                return None;
+            }
             None => {}
         }
         let page = self.view.page().saturating_sub(1).max(1);

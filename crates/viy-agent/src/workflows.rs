@@ -102,6 +102,9 @@ struct Shared {
     settings: Settings,
     files: FileTools,
     host: sandbox::Host,
+    /// The model's own repository once the chat has it, read-only like
+    /// the rest (rp's `getattr(c, "_sbgit", None)`).
+    git_dir: Option<std::path::PathBuf>,
     shell_ok: bool,
     touch: crate::chat::Touch,
     ctx: TurnContext,
@@ -245,6 +248,7 @@ impl Helper<'_> {
         let jail = Jail {
             readonly: true,
             mounts: &s.files.mounts,
+            git_dir: s.git_dir.as_deref(),
             ..Jail::new(&s.files.workspace, &s.files.project_dir)
         };
         let argv: Vec<OsString> = ["bash", "-c", cmd.as_str()]
@@ -610,6 +614,7 @@ impl Chat {
             settings: self.settings.clone(),
             files: self.files.clone(),
             host: self.sandbox_host(),
+            git_dir: self.prepared_git(),
             shell_ok,
             touch: Arc::clone(&self.touch),
             ctx: ctx.clone(),

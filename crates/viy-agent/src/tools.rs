@@ -65,6 +65,9 @@ use crate::engine::TurnContext;
 use crate::files;
 use crate::stream::ToolCall;
 
+/// A command that runs git, for run_shell's `git_note` (rp's `\bgit\b`).
+static GIT_WORD: LazyLock<Regex> = LazyLock::new(|| rx(r"\bgit\b"));
+
 /// A shell command's errors that say it had no network.
 static NET_ERROR: LazyLock<Regex> = LazyLock::new(|| {
     rx(
@@ -691,6 +694,7 @@ impl Chat {
                 doctrines: self.places.doctrine_sources.clone(),
                 review: Review {
                     network: reach.as_deref(),
+                    private_git: self.private_git(),
                     ..Review::new(
                         &endpoint.base,
                         &endpoint.key,
@@ -716,6 +720,12 @@ impl Chat {
             self.denials = 0;
         }
 
+        // The model's own repository, prepared on the chat's first command.
+        let git_dir = if boxed {
+            self.sandbox_git(ctx).await
+        } else {
+            None
+        };
         let timeout = Duration::from_secs(self.shell_timeout);
         let proxy = policy.map(|p| Arc::new(Proxy::new(p)));
         let argv: [OsString; 3] = ["bash".into(), "-c".into(), cmd.clone().into()];
@@ -756,6 +766,7 @@ impl Chat {
                 ro_paths: &ro,
                 path_extra: &path_extra,
                 mounts: &mounts,
+                git_dir: git_dir.as_deref(),
                 ..Jail::new(&ws, &project)
             };
             let egress = proxy.clone().map(|p| p as Arc<dyn sandbox::Egress>);
@@ -873,6 +884,15 @@ impl Chat {
             result["error"] = json!(format!(
                 "could not move {} out of the workspace: {e}",
                 self.files.ws_rel(&path)
+            ));
+        }
+        if boxed
+            && git_dir.is_none()
+            && let Some(why) = self.sandbox_git_failed()
+            && GIT_WORD.is_match(&cmd)
+        {
+            result["git_note"] = json!(format!(
+                ".git was read-only for this command: your own repository is unavailable ({why})"
             ));
         }
         let failed = !matches!(ran.exit_code, Some(0) | None);

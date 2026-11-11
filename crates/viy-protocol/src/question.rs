@@ -154,3 +154,35 @@ pub enum Answer {
     /// The option at this index (only with [`Choices::Pick`]).
     Pick(u32),
 }
+
+/// Text the user typed that must never be shown, logged or traced: a PIN.
+/// Its `Debug` prints no character of it; [`Secret::expose`] is the one
+/// way to read it.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Secret(String);
+
+impl Secret {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self(text.into())
+    }
+
+    /// The text, for the one place that needs it (tok's environment).
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(..)")
+    }
+}
+
+/// A secret on its way from the user: resolves to it, or to `None` when
+/// the user gave none (Enter alone, Esc, Ctrl-C, nobody to ask).
+pub type AskingSecret = Pin<Box<dyn Future<Output = Option<Secret>> + Send>>;

@@ -123,7 +123,7 @@ const HELP: &str = "  /help              show this
 /// The commands a later work package brings, and which.
 fn later(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
-        "ssh" | "unssh" | "git" => "phase 4",
+        "ssh" | "unssh" => "phase 4",
         _ => return None,
     })
 }
@@ -429,6 +429,7 @@ impl Chat {
             "compact" => self.compact_command(ctx, arg).await,
             "consult" => self.consult_command(ctx, arg),
             "toolbox" => self.toolbox_command(ctx, arg),
+            "git" => self.git_command(ctx, arg).await,
             "autocompact" => self.autocompact_command(ctx, arg),
             "sources" => self.sources_command(ctx),
             "new" | "reset" => {

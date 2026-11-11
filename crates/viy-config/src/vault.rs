@@ -2,9 +2,12 @@
 //! `vault.py`).
 //!
 //! The vault has two tiers: PIN-gated tokens and open ones, which `tok`
-//! reads without a PIN. viy only ever asks for open tokens, so it never
-//! needs or handles the PIN, and it checks `tok list` first so a PIN-gated
-//! name does not leave a DENIED line in the vault's audit log on every chat.
+//! reads without a PIN. viy asks for open tokens only, checking `tok list`
+//! first so a PIN-gated name does not leave a DENIED line in the vault's
+//! audit log on every chat. The one exception is the model's own git
+//! repository (`viy_tools::sandboxgit`), which may take a PIN the user types:
+//! [`Tok::get`] and [`Tok::add`] hand it to tok in `TOK_PIN`, never in argv,
+//! where other users could read it.
 
 use std::ffi::OsStr;
 use std::ffi::OsString;
@@ -71,33 +74,149 @@ impl Tok {
         Ok(value)
     }
 
+    /// `name`'s tier in `tok list`: `Some(true)` open, `Some(false)`
+    /// PIN-gated, `None` when there is no such token (or no tok).
+    pub fn state(&self, name: &str) -> Option<bool> {
+        let list = self.run(&["list"]).ok()?;
+        list.lines()
+            .find(|line| line.split_whitespace().next() == Some(name))
+            .map(|line| line.contains(OPEN_MARK))
+    }
+
+    /// `name`'s value, with `pin` for a PIN-gated token; never printed.
+    /// An error is tok's last stderr line, as rpctl's sandboxgit reports it.
+    pub fn get(&self, name: &str, pin: Option<&str>) -> Result<String, String> {
+        let value = self
+            .run_with(&["get", name], pin, None)
+            .map_err(TokFailure::last_line)?
+            .trim()
+            .to_string();
+        if value.is_empty() {
+            return Err(format!("{name} is empty in the vault"));
+        }
+        Ok(value)
+    }
+
+    /// Adds `name` with `value` on tok's stdin; `open`: readable without
+    /// the PIN. Adding always needs the PIN.
+    pub fn add(&self, name: &str, value: &str, open: bool, pin: &str) -> Result<(), String> {
+        let mut args = vec!["add", name];
+        if open {
+            args.push("--open");
+        }
+        self.run_with(&args, Some(pin), Some(value))
+            .map(|_| ())
+            .map_err(TokFailure::last_line)
+    }
+
+    /// The same tok with `timeout` per call (rpctl's sandboxgit gives
+    /// `tok get` and `tok add` 60 s, `tok list` 30 s).
+    pub fn timed(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
     /// `tok <args>`'s stdout, else why it failed.
     fn run(&self, args: &[&str]) -> Result<String, String> {
+        self.run_with(args, None, None)
+            .map_err(TokFailure::first_line)
+    }
+
+    /// `tok <args>` with `pin` in `TOK_PIN` and `input` on stdin.
+    fn run_with(
+        &self,
+        args: &[&str],
+        pin: Option<&str>,
+        input: Option<&str>,
+    ) -> Result<String, TokFailure> {
         let path = self.env.iter().find(|(name, _)| name == "PATH");
         let Some(exe) = find_executable(path.map(|(_, value)| value.as_os_str()), "tok") else {
-            return Err("tok is not installed".to_string());
+            return Err(TokFailure::Plain("tok is not installed".to_string()));
         };
-        let child = Command::new(exe)
-            .args(args)
+        let mut cmd = Command::new(exe);
+        cmd.args(args)
             .env_clear()
             .envs(self.env.iter().map(|(name, value)| (name, value)))
-            .stdin(Stdio::null())
+            .stdin(if input.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        if let Some(pin) = pin {
+            cmd.env("TOK_PIN", pin);
+        }
+        let mut child = cmd
             .spawn()
-            .map_err(|e| format!("tok failed: {e}"))?;
-        let out = wait_with_timeout(child, self.timeout).map_err(|e| format!("tok failed: {e}"))?;
+            .map_err(|e| TokFailure::Plain(format!("tok failed: {e}")))?;
+        if let (Some(text), Some(mut stdin)) = (input, child.stdin.take()) {
+            use std::io::Write;
+            // tok reads all of it before it answers; a short value fits the pipe
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        let out = wait_with_timeout(child, self.timeout)
+            .map_err(|e| TokFailure::Plain(format!("tok failed: {e}")))?;
         if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            return Err(match stderr.trim().lines().next() {
-                Some(first) => format!("tok: {first}"),
-                None => match out.status.code() {
-                    Some(code) => format!("tok: exit {code}"),
-                    None => format!("tok: {}", out.status),
-                },
+            return Err(TokFailure::Exited {
+                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+                code: out.status.code(),
+                status: out.status.to_string(),
             });
         }
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+}
+
+/// Why a tok call failed, before it is put into words.
+enum TokFailure {
+    /// It did not run, or ran over.
+    Plain(String),
+    Exited {
+        stderr: String,
+        code: Option<i32>,
+        status: String,
+    },
+}
+
+impl TokFailure {
+    /// `tok: <first stderr line>` (the open tokens' reading).
+    fn first_line(self) -> String {
+        match self {
+            Self::Plain(s) => s,
+            Self::Exited {
+                stderr,
+                code,
+                status,
+            } => match stderr.trim().lines().next() {
+                Some(first) => format!("tok: {first}"),
+                None => match code {
+                    Some(code) => format!("tok: exit {code}"),
+                    None => format!("tok: {status}"),
+                },
+            },
+        }
+    }
+
+    /// The last non-empty stderr line, else `exit <code>` (rpctl
+    /// sandboxgit's `_last`).
+    fn last_line(self) -> String {
+        match self {
+            Self::Plain(s) => s,
+            Self::Exited {
+                stderr,
+                code,
+                status,
+            } => stderr
+                .lines()
+                .rev()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .map_or_else(
+                    || code.map_or(status, |c| format!("exit {c}")),
+                    str::to_string,
+                ),
+        }
     }
 }
 

@@ -139,3 +139,30 @@ fn an_approval_answers_no_by_default_and_unattended() {
     assert_eq!((q.kind, q.choices), (None, Choices::YesNo));
     assert_eq!((q.default, q.unattended), (Answer::No, Answer::No));
 }
+
+#[test]
+fn a_secret_is_a_request_answered_by_its_own_op_and_never_shown() {
+    round_trip(
+        &EventMsg::SecretRequest(SecretRequestEvent {
+            question_id: "q2".into(),
+            prompt: "  tok PIN:".into(),
+        }),
+        json!({"type": "secret_request", "question_id": "q2", "prompt": "  tok PIN:"}),
+    );
+    let op = Op::SecretAnswer {
+        id: "q2".into(),
+        secret: Some(Secret::new("1357")),
+    };
+    round_trip(
+        &op,
+        json!({"type": "secret_answer", "id": "q2", "secret": "1357"}),
+    );
+    assert!(!format!("{op:?}").contains("1357"));
+    round_trip(
+        &Op::SecretAnswer {
+            id: "q2".into(),
+            secret: None,
+        },
+        json!({"type": "secret_answer", "id": "q2", "secret": null}),
+    );
+}

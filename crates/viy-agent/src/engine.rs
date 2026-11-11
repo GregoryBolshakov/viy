@@ -46,6 +46,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use viy_protocol::Answer;
 use viy_protocol::Asking;
+use viy_protocol::AskingSecret;
 use viy_protocol::CommandCompleteEvent;
 use viy_protocol::Event;
 use viy_protocol::EventMsg;
@@ -57,6 +58,8 @@ use viy_protocol::Question;
 use viy_protocol::QuestionKind;
 use viy_protocol::QuestionRequestEvent;
 use viy_protocol::QuestionResolvedEvent;
+use viy_protocol::Secret;
+use viy_protocol::SecretRequestEvent;
 use viy_protocol::Submission;
 use viy_protocol::TurnAbortReason;
 use viy_protocol::TurnAbortedEvent;
@@ -155,6 +158,14 @@ impl TurnContext {
         self.questions.ask(&self.events, &self.sub_id, question)
     }
 
+    /// Asks the user for hidden text (`prompt`: what for): resolves to it,
+    /// or to `None` when they give none or nobody is there to ask. No chat
+    /// mode answers it.
+    pub fn ask_secret(&self, prompt: &str) -> AskingSecret {
+        self.questions
+            .ask_secret(&self.events, &self.sub_id, prompt)
+    }
+
     /// The chat mode in force.
     pub fn mode(&self) -> &'static Mode {
         self.questions.lock().mode
@@ -210,6 +221,22 @@ impl TurnContext {
     pub(crate) fn answer(&self, id: &str, answer: Answer) {
         self.questions.answer(id, answer);
     }
+
+    pub(crate) fn answer_secret(&self, id: &str, secret: Option<Secret>) {
+        self.questions.answer_secret(id, secret);
+    }
+
+    /// [`TurnContext::detached`] with someone there to ask, so secrets are
+    /// asked.
+    pub(crate) fn attended() -> (Self, mpsc::UnboundedReceiver<Event>) {
+        let (events, rx) = mpsc::unbounded_channel();
+        let ctx = Self {
+            sub_id: "test".into(),
+            events,
+            questions: Questions::new(modes::DEFAULT, true),
+        };
+        (ctx, rx)
+    }
 }
 
 fn emit(events: &mpsc::UnboundedSender<Event>, id: &str, msg: EventMsg) {
@@ -246,8 +273,16 @@ struct QuestionsState {
 
 struct Open {
     asker: String,
-    answer: oneshot::Sender<Answer>,
+    answer: Reply,
+    /// For a secret, a yes-or-no question with its prompt and no kind, so
+    /// no mode answers it.
     question: Question,
+}
+
+/// Where an open question's answer goes.
+enum Reply {
+    Answer(oneshot::Sender<Answer>),
+    Secret(oneshot::Sender<Option<Secret>>),
 }
 
 /// A question the mode answered before it went out: its asker, the
@@ -311,7 +346,9 @@ impl Questions {
         emit(events, sub_id, mode_changed(mode));
         if let Some((id, open)) = answered {
             trace_yes(tracer.as_ref(), mode.name, &open.question);
-            let _ = open.answer.send(Answer::Yes);
+            if let Reply::Answer(tx) = open.answer {
+                let _ = tx.send(Answer::Yes);
+            }
             emit(
                 events,
                 &open.asker,
@@ -375,7 +412,7 @@ impl Questions {
                 id.clone(),
                 Open {
                     asker: sub_id.to_string(),
-                    answer: tx,
+                    answer: Reply::Answer(tx),
                     question: question.clone(),
                 },
             );
@@ -403,10 +440,82 @@ impl Questions {
         })
     }
 
-    /// Resolves question `id`; an id that is not open is ignored.
+    /// Asks for a secret; `None` at once with nobody to ask.
+    fn ask_secret(
+        &self,
+        events: &mpsc::UnboundedSender<Event>,
+        sub_id: &str,
+        prompt: &str,
+    ) -> AskingSecret {
+        let (tx, rx) = oneshot::channel();
+        let question_id = {
+            let mut state = self.lock();
+            if !state.attended {
+                return Box::pin(async { None });
+            }
+            state.asked += 1;
+            let id = format!("q{}", state.asked);
+            state.open.insert(
+                id.clone(),
+                Open {
+                    asker: sub_id.to_string(),
+                    answer: Reply::Secret(tx),
+                    question: Question::yes_no(None, prompt),
+                },
+            );
+            id
+        };
+        emit(
+            events,
+            sub_id,
+            EventMsg::SecretRequest(SecretRequestEvent {
+                question_id: question_id.clone(),
+                prompt: prompt.to_string(),
+            }),
+        );
+        let waiting = Waiting {
+            questions: self.clone(),
+            events: events.clone(),
+            sub_id: sub_id.to_string(),
+            question_id,
+        };
+        Box::pin(async move {
+            let _waiting = waiting;
+            // trimmed, as rp's getpass().strip(); blank is none
+            rx.await.ok().flatten().and_then(|s| {
+                let text = s.expose().trim();
+                (!text.is_empty()).then(|| Secret::new(text))
+            })
+        })
+    }
+
+    /// Resolves question `id`; an id that is not open is ignored, and a
+    /// yes or no to a secret's request gives no secret.
     fn answer(&self, id: &str, answer: Answer) {
         if let Some(open) = self.lock().open.remove(id) {
-            let _ = open.answer.send(answer);
+            match open.answer {
+                Reply::Answer(tx) => {
+                    let _ = tx.send(answer);
+                }
+                Reply::Secret(tx) => {
+                    let _ = tx.send(None);
+                }
+            }
+        }
+    }
+
+    /// Resolves secret request `id`; a secret for a yes-or-no question
+    /// answers it no.
+    fn answer_secret(&self, id: &str, secret: Option<Secret>) {
+        if let Some(open) = self.lock().open.remove(id) {
+            match open.answer {
+                Reply::Secret(tx) => {
+                    let _ = tx.send(secret);
+                }
+                Reply::Answer(tx) => {
+                    let _ = tx.send(Answer::No);
+                }
+            }
         }
     }
 
@@ -662,6 +771,7 @@ async fn submission_loop(
                         queued.push_back(sub);
                     }
                     Op::QuestionAnswer { id, answer } => questions.answer(&id, answer),
+                    Op::SecretAnswer { id, secret } => questions.answer_secret(&id, secret),
                     Op::CycleMode { question } => {
                         questions.cycle(question.as_deref(), &events, &sub.id);
                     }

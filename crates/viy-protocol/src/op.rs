@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::Answer;
+use crate::Secret;
 
 /// One request from the UI, with the id its events will carry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +28,9 @@ pub enum Op {
     /// The user's answer to the [`crate::EventMsg::QuestionRequest`] with
     /// this `id`.
     QuestionAnswer { id: String, answer: Answer },
+    /// The user's answer to the [`crate::EventMsg::SecretRequest`] with
+    /// this `id`; `None`: they gave none.
+    SecretAnswer { id: String, secret: Option<Secret> },
     /// Shift+Tab: the next chat mode (rpctl `modes.after`); the engine
     /// answers with [`crate::EventMsg::ModeChanged`]. `question` is the
     /// question Shift+Tab was pressed at, which the new mode answers if it

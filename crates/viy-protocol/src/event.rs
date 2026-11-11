@@ -51,6 +51,11 @@ pub enum EventMsg {
     /// A question for the user, answered by [`crate::Op::QuestionAnswer`]
     /// with its `question_id` (kb d036).
     QuestionRequest(QuestionRequestEvent),
+    /// Hidden text for the user to type (the tok PIN for the model's git
+    /// repository), answered by [`crate::Op::SecretAnswer`] with its
+    /// `question_id`; closed by [`EventMsg::QuestionResolved`] as a
+    /// question is. The UI shows no character of what is typed.
+    SecretRequest(SecretRequestEvent),
     /// The engine no longer waits for the answer to a question it asked:
     /// the work that asked it stopped (Codex's `ServerRequestResolved`).
     /// Not sent for a question answered by [`crate::Op::QuestionAnswer`].
@@ -65,6 +70,12 @@ pub enum EventMsg {
 pub struct QuestionRequestEvent {
     pub question_id: String,
     pub question: Question,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SecretRequestEvent {
+    pub question_id: String,
+    pub prompt: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -519,6 +519,14 @@ pub(crate) fn chat(
             paths.rpctl_data_dir(),
         ],
         toolbox: viy_agent::toolbox::Dirs::new(paths, &project),
+        sandbox_git: viy_tools::sandboxgit::Places::new(
+            &paths.data_dir(),
+            std::env::var_os("XDG_RUNTIME_DIR")
+                .filter(|v| !v.is_empty())
+                .map(std::path::PathBuf::from)
+                .as_deref(),
+            &paths.state_dir(),
+        ),
     };
     let sessions = Sessions::new(paths.sessions_dir(), Arc::new(SystemTimeProvider));
     let paths = paths.clone();

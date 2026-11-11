@@ -197,6 +197,17 @@ async fn follow<'a>(
                     .push("the engine stopped before an answer".into());
             }
         }
+        if let EventMsg::SecretRequest(request) = &event.msg {
+            // A script has no secrets to give: the asker goes on without.
+            let op = Op::SecretAnswer {
+                id: request.question_id.clone(),
+                secret: None,
+            };
+            if engine.submit(op).is_err() {
+                run.problems
+                    .push("the engine stopped before an answer".into());
+            }
+        }
         run.events.push(event);
         if ended && !naming {
             return true;

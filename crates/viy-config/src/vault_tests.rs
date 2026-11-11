@@ -157,3 +157,33 @@ fn output_held_open_after_exit_times_out() {
     );
     assert!(started.elapsed() < Duration::from_secs(10));
 }
+
+// WP 8.1: the model's git key, with the PIN in TOK_PIN and never in argv,
+// and errors as rpctl's sandboxgit gives them (the last stderr line).
+#[test]
+fn get_and_add_take_the_pin_in_the_environment() {
+    let script = r#"#!/bin/sh
+case "$*" in *1234*) echo "pin in argv" >&2; exit 9 ;; esac
+case "$1" in
+list) echo "rpctl-sandbox-git      " ;;
+get) [ "$TOK_PIN" = 1234 ] && echo pw || { printf 'checking\nDENIED: wrong PIN\n' >&2; exit 2; } ;;
+add) read v; [ "$TOK_PIN" = 1234 ] && [ "$v" = secret-value ] && [ "$3" = --open ] || exit 3 ;;
+esac
+"#;
+    let (_dir, tok) = fake_tok(script);
+    assert_eq!(tok.state("rpctl-sandbox-git"), Some(false));
+    assert_eq!(tok.state("absent"), None);
+    assert_eq!(tok.get("rpctl-sandbox-git", Some("1234")), Ok("pw".into()));
+    assert_eq!(
+        tok.get("rpctl-sandbox-git", Some("0000")),
+        Err("DENIED: wrong PIN".into())
+    );
+    assert_eq!(
+        tok.add("rpctl-sandbox-git", "secret-value", true, "1234"),
+        Ok(())
+    );
+    assert_eq!(
+        tok.add("rpctl-sandbox-git", "secret-value", false, "1234"),
+        Err("exit 3".into())
+    );
+}

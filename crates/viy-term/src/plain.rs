@@ -116,6 +116,16 @@ impl<W: Write> Plain<W> {
                     answer,
                 }));
             }
+            // The plain chat runs unattended, so the engine asks it no
+            // secrets; if one came, nobody here can type it.
+            EventMsg::SecretRequest(e) => {
+                self.line(&format!("{} (no terminal to ask)", e.prompt))?;
+                self.out.flush()?;
+                return Ok(Some(Op::SecretAnswer {
+                    id: e.question_id.clone(),
+                    secret: None,
+                }));
+            }
             _ => return Ok(None),
         }
         self.out.flush()?;

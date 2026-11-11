@@ -21,6 +21,14 @@
 //! with one chosen, the default at first: Up, Down, Home, End and a digit
 //! choose, Enter picks the one chosen, `q` or Esc picks none, with the
 //! same guard.
+//!
+//! A secret (the tok PIN for the model's git repository) takes hidden
+//! text: nothing typed is shown, not even how much. While it is the front
+//! box it takes every key and paste, so no character of it can reach the
+//! input box, and a message being sent cannot carry it to the model; keys
+//! in its guard are dropped rather than given to the input box, so text
+//! typed before it appeared does not become the secret. Enter sends what
+//! was typed, Esc or Ctrl-C gives none.
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -37,6 +45,7 @@ use viy_protocol::Answer;
 use viy_protocol::Choices;
 use viy_protocol::Question;
 use viy_protocol::QuestionKind;
+use viy_protocol::Secret;
 
 use crate::cells::notice_style;
 use crate::transcript::Cell;
@@ -60,6 +69,14 @@ pub struct QuestionBox {
     shown: Option<Instant>,
     /// The option chosen, for a pick.
     chosen: usize,
+    /// What has been typed, for a secret; `None` for a question.
+    secret: Option<String>,
+}
+
+impl QuestionBox {
+    pub fn is_secret(&self) -> bool {
+        self.secret.is_some()
+    }
 }
 
 /// What a box made of a key.
@@ -74,6 +91,14 @@ pub enum Taken {
     CycleMode { question_id: String },
     /// Another option of the front pick was chosen.
     Chose,
+    /// The front secret is sent (`None`: the user gave none); it has left
+    /// the queue.
+    Secret {
+        question: QuestionBox,
+        secret: Option<Secret>,
+    },
+    /// The front secret took the key (or dropped it, in its guard).
+    Typed,
 }
 
 /// The questions asked and not yet answered, oldest first.
@@ -95,7 +120,32 @@ impl Questions {
             question,
             shown: None,
             chosen,
+            secret: None,
         });
+    }
+
+    /// A request for hidden text, with `prompt`.
+    pub fn push_secret(&mut self, id: String, prompt: String) {
+        self.queue.push_back(QuestionBox {
+            id,
+            question: Question::yes_no(None, prompt),
+            shown: None,
+            chosen: 0,
+            secret: Some(String::new()),
+        });
+    }
+
+    /// A paste while the front box is a secret goes into it; `false` when
+    /// it is not one and the paste is the input box's.
+    pub fn paste(&mut self, text: &str, now: Instant) -> bool {
+        let armed = self.armed(now);
+        let Some(typed) = self.queue.front_mut().and_then(|b| b.secret.as_mut()) else {
+            return false;
+        };
+        if armed {
+            typed.extend(text.chars().filter(|c| !c.is_control()));
+        }
+        true
     }
 
     /// Takes question `id` away: the engine no longer waits for it.
@@ -143,6 +193,9 @@ impl Questions {
     /// to the rest of the app. `draft`: the input box holds text, which
     /// Enter sends rather than answering.
     pub fn key(&mut self, key: KeyEvent, now: Instant, draft: bool) -> Option<Taken> {
+        if self.queue.front().is_some_and(QuestionBox::is_secret) {
+            return self.secret_key(key, now);
+        }
         if !self.armed(now) {
             return None;
         }
@@ -201,6 +254,36 @@ impl Questions {
         Some(Taken::Chose)
     }
 
+    /// A key at the front secret: every one is taken.
+    fn secret_key(&mut self, key: KeyEvent, now: Instant) -> Option<Taken> {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let give = |q: &mut Self, sent: bool| {
+            let mut question = q.queue.pop_front()?;
+            let typed = question.secret.take().unwrap_or_default();
+            question.secret = Some(String::new());
+            let secret = (sent && !typed.is_empty()).then(|| Secret::new(typed));
+            Some(Taken::Secret { question, secret })
+        };
+        if key.code == KeyCode::Esc || key.code == KeyCode::Char('c') && ctrl {
+            return give(self, false);
+        }
+        if !self.armed(now) {
+            return Some(Taken::Typed);
+        }
+        let typed = self.queue.front_mut()?.secret.as_mut()?;
+        match key.code {
+            KeyCode::Enter if !ctrl => return give(self, true),
+            KeyCode::Backspace => {
+                typed.pop();
+            }
+            KeyCode::Char(c) if !ctrl && !key.modifiers.contains(KeyModifiers::ALT) => {
+                typed.push(c);
+            }
+            _ => {}
+        }
+        Some(Taken::Typed)
+    }
+
     fn answer(&mut self, answer: Answer) -> Option<Taken> {
         let question = self.queue.pop_front()?;
         Some(Taken::Answered { question, answer })
@@ -223,6 +306,11 @@ impl Questions {
                 for line in notice.message.split('\n') {
                     rows.extend(wrapped(&[Span::styled(line.to_string(), style)], inner));
                 }
+            }
+            if front.is_secret() {
+                rows.extend(wrapped(&secret_prompt(&front.question), inner));
+                rows.extend(wrapped(&secret_keys(self.armed(now)), inner));
+                return rows;
             }
             rows.extend(wrapped(&prompt_spans(&front.question), inner));
             if front.question.choices == Choices::Pick {
@@ -258,7 +346,12 @@ impl Questions {
         }
         let border = Style::new().yellow();
         let inner = inner(true);
-        let mut out = vec![top_border(kind_label(front.question.kind), width, border)];
+        let title = if front.is_secret() {
+            "hidden input"
+        } else {
+            kind_label(front.question.kind)
+        };
+        let mut out = vec![top_border(title, width, border)];
         for (line, used) in rows {
             let mut spans = vec![Span::styled("│ ", border)];
             spans.extend(line.spans);
@@ -312,6 +405,17 @@ impl QuestionBox {
 
     pub fn cell(&self, answer: Option<Answer>) -> Cell {
         self.cell_with(answer, None)
+    }
+
+    /// A secret's line in the transcript: its prompt and whether one was
+    /// given, never any of it.
+    pub fn secret_cell(&self, given: bool) -> Cell {
+        let mut spans = secret_prompt(&self.question);
+        spans.push(Span::styled(
+            if given { " (given)" } else { " (none given)" },
+            Style::new().dim(),
+        ));
+        Cell::lines(vec![Line::from(spans)])
     }
 
     fn cell_with(&self, answer: Option<Answer>, mode: Option<&str>) -> Cell {
@@ -370,6 +474,28 @@ fn prompt_spans(question: &Question) -> Vec<Span<'static>> {
         format!("{} {}", question.prompt, question.hint()),
         Style::new().yellow(),
     )]
+}
+
+/// A secret's prompt, in yellow, without a yes-or-no hint.
+fn secret_prompt(question: &Question) -> Vec<Span<'static>> {
+    vec![Span::styled(question.prompt.clone(), Style::new().yellow())]
+}
+
+/// What a secret's box takes, dim until it takes keys.
+fn secret_keys(armed: bool) -> Vec<Span<'static>> {
+    let mut spans = vec![
+        Span::raw("type it (nothing is shown)   "),
+        Span::raw("[Enter]").cyan(),
+        Span::raw(" send   "),
+        Span::raw("[Esc]").cyan(),
+        Span::raw(" give none"),
+    ];
+    if !armed {
+        for span in &mut spans {
+            span.style = Style::new().dim();
+        }
+    }
+    spans
 }
 
 /// The keys the box takes, dim until it takes them.

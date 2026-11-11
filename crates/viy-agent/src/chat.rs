@@ -124,6 +124,9 @@ pub struct Places {
     pub guarded: Vec<PathBuf>,
     /// The global and project toolbox folders ([`crate::toolbox`]).
     pub toolbox: crate::toolbox::Dirs,
+    /// Where the model's own git repositories live, encrypted, and are
+    /// mounted ([`viy_tools::sandboxgit`]).
+    pub sandbox_git: viy_tools::sandboxgit::Places,
 }
 
 /// One conversation with the model.
@@ -256,6 +259,21 @@ pub struct Chat {
     toolbox_snap: Vec<crate::toolbox::Tool>,
     /// TOOLBOX_INDEX_MAX: the index's lines.
     toolbox_index_max: usize,
+    /// SANDBOX_GIT: the model's own .git in the sandbox
+    /// ([`viy_tools::sandboxgit`]).
+    sandbox_git_on: bool,
+    /// Whether this chat offers it, decided once before the first request
+    /// with tools (run_shell's description says so, and a change re-prefills
+    /// the history); `/git init` decides again.
+    sbgit_offer: Option<bool>,
+    /// The repository once prepared, for the sandbox's `git_dir`.
+    sbgit: Option<PathBuf>,
+    /// Why preparing it failed: .git stays read-only until `/git` retries.
+    sbgit_failed: Option<String>,
+    /// This process counts as a user of the mount.
+    sbgit_used: bool,
+    /// tok, which keeps the repositories' key.
+    tok: viy_config::vault::Tok,
     /// The name last sent as [`EventMsg::TitleChanged`]; empty at first,
     /// as the frontend starts with no name. Shared with the background
     /// title request, which sends the title it gets.
@@ -404,6 +422,12 @@ impl Chat {
             toolbox_on,
             toolbox_snap,
             toolbox_index_max,
+            sandbox_git_on: on("SANDBOX_GIT", "1"),
+            sbgit_offer: None,
+            sbgit: None,
+            sbgit_failed: None,
+            sbgit_used: false,
+            tok: viy_config::vault::Tok::from_env(),
             label_sent: Arc::default(),
         })
     }
@@ -1147,7 +1171,10 @@ impl Chat {
             }
         }
         if self.tools_on {
-            specs.extend(viy_tools::build::tools(self.sandbox_net == "host"));
+            specs.extend(viy_tools::build::tools_for(
+                self.sandbox_net == "host",
+                self.sbgit_offer == Some(true),
+            ));
             if self.explore_on {
                 specs.push(viy_tools::explore::explore_tool());
             }
@@ -1257,6 +1284,11 @@ impl Chat {
                     ),
                 );
             }
+        }
+        // Before the first request with tools: run_shell's description
+        // says whether .git is the model's own (rp's `_private_git`).
+        if self.tools_on {
+            self.decide_private_git().await;
         }
         self.announce_label(ctx, content.as_str());
         let outcome = self.turn(ctx, content).await;
@@ -1809,6 +1841,11 @@ impl Drop for Chat {
         if let Some(job) = self.title_job.take() {
             job.abort();
         }
+        // rp's `_release_sandbox_git` at the chat's end: unmounted unless
+        // another viy chat still uses it.
+        if self.sbgit_used {
+            viy_tools::sandboxgit::release(&self.places.sandbox_git);
+        }
     }
 }
 
@@ -2119,6 +2156,13 @@ fn key_then_quoted(text: &str, key: &str, then: impl Fn(&str) -> bool) -> bool {
             .is_some_and(&then)
     })
 }
+
+#[path = "sandbox_git.rs"]
+pub mod sandbox_git;
+
+#[cfg(test)]
+#[path = "sandbox_git_tests.rs"]
+mod sandbox_git_tests;
 
 #[cfg(test)]
 #[path = "toolbox_chat_tests.rs"]

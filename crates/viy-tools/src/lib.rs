@@ -28,6 +28,7 @@ pub mod netguard;
 pub mod quarantine;
 pub mod resolve;
 pub mod sandbox;
+pub mod sandboxgit;
 pub mod search;
 pub mod secrets;
 pub mod untrusted;

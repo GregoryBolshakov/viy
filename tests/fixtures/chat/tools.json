@@ -1,7 +1,7 @@
 {
  "rpctl_commit": "5533dd248775ad6d0ee03be9226038a940e480af",
  "generator": "tools/fixtures.py chat/tools",
- "about": "rp's Chat._tool_specs() per config over DEFAULTS (consult, explore (but in with_explore), toolbox and instructions off, the sandbox taken as working, a workspace without .git), keys in order; and the tool loop's notices, PARALLEL_SAFE and BUILD_TOOL_NAMES",
+ "about": "rp's Chat._tool_specs() per config over DEFAULTS (consult, explore (but in with_explore), toolbox and instructions off, the sandbox taken as working, a workspace without .git), keys in order; and the tool loop's notices, PARALLEL_SAFE and BUILD_TOOL_NAMES; build_tools_git and build_tools_host_net_git are rpctl's BUILD_TOOLS_SANDBOXED_GIT and _HOST_NET_GIT",
  "cases": [
   {
    "name": "build_tools",
@@ -706,6 +706,196 @@
        },
        "required": [
         "tasks"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "build_tools_git",
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Create or overwrite a file in the workspace with the given text. Use this to lay down code, configs, Dockerfiles, scripts -- the setup you are building. Parent directories are created as needed.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace, e.g. app/main.py."
+        },
+        "content": {
+         "type": "string",
+         "description": "The full file contents to write."
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "read_file",
+      "description": "Read a text file from the workspace and return its contents. Use this to inspect what already exists before changing it. Large files are cut in the middle; pass start_line/end_line (1-based) to read a part, which comes back with line numbers.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace."
+        },
+        "start_line": {
+         "type": "integer",
+         "description": "Optional first line to return (1-based)."
+        },
+        "end_line": {
+         "type": "integer",
+         "description": "Optional last line to return (inclusive)."
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "list_dir",
+      "description": "List the files and folders in a workspace directory.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Directory relative to the workspace; defaults to the root."
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "run_shell",
+      "description": "Run a shell command in the workspace and return its exit code, stdout and stderr. Use this to install dependencies, build, run tests, or start the setup. Commands run in a sandbox: the workspace is writable, the home directory is empty, secret files (.env*, private keys, credentials) are hidden, the tool's own code is read-only, .git is your own private repository on this machine (commit and branch freely: it is not the user's repository, which is the read-only remote 'host', and the user imports your branches from it; read_file and write_file see the user's .git, not yours), and there is NO network unless you set needs_network. With it, the command reaches the internet only by HTTP(S) through a proxy that is already set in HTTPS_PROXY/HTTP_PROXY, and only package registries (PyPI, npm, crates.io, Go, GitHub, Hugging Face), hosts written in the command and hosts the user allowed; other hosts are blocked and listed in the result. No ssh, ping or UDP. Background processes end when the command ends; /tmp is kept for the rest of this chat. To read a web page use fetch_url if you have it, not curl. Destructive or risky commands are shown to the user, who may decline.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "The command line to run, e.g. 'python -m pytest'."
+        },
+        "needs_network": {
+         "type": "boolean",
+         "description": "Set true only when the command must reach the internet (pip/npm install, git clone, curl). It is then reviewed before it runs. Leave false for everything else."
+        }
+       },
+       "required": [
+        "command"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "build_tools_host_net_git",
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Create or overwrite a file in the workspace with the given text. Use this to lay down code, configs, Dockerfiles, scripts -- the setup you are building. Parent directories are created as needed.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace, e.g. app/main.py."
+        },
+        "content": {
+         "type": "string",
+         "description": "The full file contents to write."
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "read_file",
+      "description": "Read a text file from the workspace and return its contents. Use this to inspect what already exists before changing it. Large files are cut in the middle; pass start_line/end_line (1-based) to read a part, which comes back with line numbers.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path relative to the workspace."
+        },
+        "start_line": {
+         "type": "integer",
+         "description": "Optional first line to return (1-based)."
+        },
+        "end_line": {
+         "type": "integer",
+         "description": "Optional last line to return (inclusive)."
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "list_dir",
+      "description": "List the files and folders in a workspace directory.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Directory relative to the workspace; defaults to the root."
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "run_shell",
+      "description": "Run a shell command in the workspace and return its exit code, stdout and stderr. Use this to install dependencies, build, run tests, or start the setup. Commands run in a sandbox: the workspace is writable, the home directory is empty, secret files (.env*, private keys, credentials) are hidden, the tool's own code is read-only, .git is your own private repository on this machine (commit and branch freely: it is not the user's repository, which is the read-only remote 'host', and the user imports your branches from it; read_file and write_file see the user's .git, not yours), and there is NO network unless you set needs_network. Background processes end when the command ends; /tmp is kept for the rest of this chat. To read a web page use fetch_url if you have it, not curl. Destructive or risky commands are shown to the user, who may decline.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "The command line to run, e.g. 'python -m pytest'."
+        },
+        "needs_network": {
+         "type": "boolean",
+         "description": "Set true only when the command must reach the internet (pip/npm install, git clone, curl). It is then reviewed before it runs. Leave false for everything else."
+        }
+       },
+       "required": [
+        "command"
        ]
       }
      }

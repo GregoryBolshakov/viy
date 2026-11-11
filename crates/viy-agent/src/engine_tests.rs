@@ -57,6 +57,14 @@ impl Turns for StandIn {
                     ctx.emit(delta(format!("pod answered {:?}", asking.await)));
                 }
             }
+            if text.contains("secret") {
+                // only its length, never the secret, reaches the events
+                let got = ctx.ask_secret("  PIN?").await;
+                ctx.emit(delta(format!(
+                    "secret of {}",
+                    got.map_or(0, |s| s.expose().len())
+                )));
+            }
             if text.contains("drop") {
                 drop(ctx.ask(&Question::yes_no(None, "  still there?")));
             }
@@ -795,4 +803,106 @@ async fn an_unattended_chat_does_not_announce_its_mode() {
             .iter()
             .any(|m| matches!(m, EventMsg::ModeChanged(_)))
     );
+}
+
+// ---- secrets (WP 8.1) ---------------------------------------------------------------
+
+async fn secret_turn(engine: &mut Engine, answer: impl Fn(&str) -> Op) -> Vec<Event> {
+    let id = engine
+        .submit(Op::UserTurn {
+            text: "secret".into(),
+        })
+        .unwrap();
+    let mut seen = Vec::new();
+    while let Some(event) = engine.next_event().await {
+        if let EventMsg::SecretRequest(r) = &event.msg {
+            engine.submit(answer(&r.question_id)).unwrap();
+        }
+        let done = turn_done(&id)(&event);
+        seen.push(event);
+        if done {
+            break;
+        }
+    }
+    seen
+}
+
+#[tokio::test]
+async fn a_secret_is_a_request_answered_by_its_op() {
+    let mut engine = Engine::spawn_with(Arc::new(StandIn), modes::DEFAULT, true);
+    let events = secret_turn(&mut engine, |id| Op::SecretAnswer {
+        id: id.into(),
+        secret: Some(viy_protocol::Secret::new(" 2468 ")),
+    })
+    .await;
+    let m = msgs(&events);
+    // trimmed, as rp's getpass().strip()
+    assert!(
+        m.iter()
+            .any(|m| matches!(m, EventMsg::SecretRequest(r) if r.prompt == "  PIN?"))
+    );
+    assert!(m.contains(&delta("secret of 4")));
+    assert!(!format!("{m:?}").contains("2468"));
+}
+
+#[tokio::test]
+async fn nobody_to_ask_means_no_secret_and_no_request() {
+    let mut engine = engine(); // unattended
+    let events = secret_turn(&mut engine, |id| Op::SecretAnswer {
+        id: id.into(),
+        secret: Some(viy_protocol::Secret::new("x")),
+    })
+    .await;
+    let m = msgs(&events);
+    assert!(!m.iter().any(|m| matches!(m, EventMsg::SecretRequest(_))));
+    assert!(m.contains(&delta("secret of 0")));
+}
+
+#[tokio::test]
+async fn a_yes_or_an_empty_secret_gives_none() {
+    for op in [
+        |id: &str| Op::QuestionAnswer {
+            id: id.into(),
+            answer: Answer::Yes,
+        },
+        |id: &str| Op::SecretAnswer {
+            id: id.into(),
+            secret: Some(viy_protocol::Secret::new("")),
+        },
+        |id: &str| Op::SecretAnswer {
+            id: id.into(),
+            secret: Some(viy_protocol::Secret::new("  \t ")),
+        },
+    ] {
+        let mut engine = Engine::spawn_with(Arc::new(StandIn), modes::DEFAULT, true);
+        let events = secret_turn(&mut engine, op).await;
+        assert!(msgs(&events).contains(&delta("secret of 0")));
+    }
+}
+
+#[tokio::test]
+async fn no_mode_answers_a_secret() {
+    let mut engine = Engine::spawn_with(Arc::new(StandIn), auto(), true);
+    let id = engine
+        .submit(Op::UserTurn {
+            text: "secret".into(),
+        })
+        .unwrap();
+    let events = until(&mut engine, |e| matches!(e.msg, EventMsg::SecretRequest(_))).await;
+    let EventMsg::SecretRequest(r) = &events.last().unwrap().msg else {
+        unreachable!()
+    };
+    // Shift+Tab at it changes the mode and answers nothing
+    engine
+        .submit(Op::CycleMode {
+            question: Some(r.question_id.clone()),
+        })
+        .unwrap();
+    engine.submit(Op::Interrupt).unwrap();
+    let rest = until(&mut engine, turn_done(&id)).await;
+    assert!(!msgs(&rest).contains(&delta("secret of 0")));
+    assert!(msgs(&rest).iter().any(|m| matches!(
+        m,
+        EventMsg::QuestionResolved(QuestionResolvedEvent { by: None, .. })
+    )));
 }

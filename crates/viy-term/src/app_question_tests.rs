@@ -423,3 +423,118 @@ fn the_keys_light_up_when_the_guard_ends() {
     f.app.dirty = false;
     assert_eq!(f.app.next_frame(), f.app.questions.armed_at());
 }
+
+// ---- secrets (the tok PIN, WP 8.1) ------------------------------------------------
+
+fn ask_secret(f: &mut Fixture, id: &str) {
+    f.app
+        .event(EventMsg::SecretRequest(viy_protocol::SecretRequestEvent {
+            question_id: id.into(),
+            prompt: "  tok PIN to open the model's git repository (Enter skips):".into(),
+        }));
+}
+
+fn secrets(ops: &[Op]) -> Vec<(String, Option<String>)> {
+    ops.iter()
+        .filter_map(|op| match op {
+            Op::SecretAnswer { id, secret } => {
+                Some((id.clone(), secret.as_ref().map(|s| s.expose().to_string())))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_secret_is_typed_unseen_and_sent_on_enter() {
+    let mut f = fixture(60, 12);
+    f.app.event(started("work"));
+    ask_secret(&mut f, "q1");
+    let screen = f.screen().join("\n");
+    assert!(screen.contains("hidden input"), "{screen}");
+    assert!(screen.contains("tok PIN to open"), "{screen}");
+    f.wait();
+    for c in "4321".chars() {
+        f.key(KeyCode::Char(c));
+    }
+    f.key(KeyCode::Backspace);
+    f.key(KeyCode::Char('9'));
+    let screen = f.screen();
+    let joined = screen.join("\n");
+    assert!(!joined.contains("432"), "{joined}");
+    assert!(!joined.contains('9'), "{joined}");
+    assert!(screen.iter().any(|r| r.starts_with("› ▮")), "{screen:?}"); // the input box is empty
+    f.key(KeyCode::Enter);
+    assert_eq!(secrets(&f.ops()), [("q1".into(), Some("4329".into()))]);
+    let screen = f.screen().join("\n");
+    assert!(screen.contains("(given)"), "{screen}");
+    assert!(!screen.contains("4329"), "{screen}");
+}
+
+#[test]
+fn keys_before_the_guard_are_dropped_not_typed_into_the_draft() {
+    let mut f = fixture(60, 12);
+    f.app.event(started("work"));
+    ask_secret(&mut f, "q1");
+    f.screen();
+    // straight away, before the guard: none of it lands anywhere
+    f.key(KeyCode::Char('1'));
+    f.key(KeyCode::Char('2'));
+    f.key(KeyCode::Enter);
+    assert_eq!(f.ops(), []);
+    let screen = f.screen();
+    assert!(screen.iter().any(|r| r.starts_with("› ▮")), "{screen:?}");
+    f.wait();
+    f.key(KeyCode::Char('7'));
+    f.key(KeyCode::Enter);
+    assert_eq!(secrets(&f.ops()), [("q1".into(), Some("7".into()))]);
+}
+
+#[test]
+fn esc_ctrl_c_and_an_empty_enter_give_none() {
+    for how in ["esc", "ctrl-c", "enter"] {
+        let mut f = fixture(60, 12);
+        f.app.event(started("work"));
+        ask_secret(&mut f, "q1");
+        f.screen();
+        f.wait();
+        match how {
+            "esc" => {
+                f.key(KeyCode::Char('5'));
+                f.key(KeyCode::Esc);
+            }
+            "ctrl-c" => {
+                f.key(KeyCode::Char('5'));
+                f.ctrl('c');
+            }
+            _ => {
+                f.key(KeyCode::Enter);
+            }
+        }
+        let ops = f.ops();
+        assert_eq!(secrets(&ops), [("q1".into(), None)], "{how}");
+        // Ctrl-C at the secret does not stop the turn
+        assert!(!ops.contains(&Op::Interrupt), "{how}");
+        let screen = f.screen().join("\n");
+        assert!(screen.contains("(none given)"), "{how}: {screen}");
+    }
+}
+
+#[test]
+fn a_secret_the_engine_stopped_waiting_for_goes_unanswered() {
+    let mut f = fixture(60, 12);
+    f.app.event(started("work"));
+    ask_secret(&mut f, "q1");
+    f.screen();
+    f.app
+        .event(EventMsg::QuestionResolved(QuestionResolvedEvent {
+            question_id: "q1".into(),
+            by: None,
+        }));
+    let screen = f.screen().join("\n");
+    assert!(!screen.contains("hidden input"), "{screen}");
+    assert!(screen.contains("(none given)"), "{screen}");
+    f.wait();
+    f.key(KeyCode::Char('3'));
+    assert_eq!(f.ops(), []);
+}

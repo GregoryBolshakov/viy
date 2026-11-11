@@ -3831,6 +3831,9 @@ for name, over in json.loads(sys.argv[2]):
     c = chat.Chat(cfg, "http://127.0.0.1:1")
     c._auto_ready = lambda: (True, "")
     out.append({"name": name, "config": over, "tools": c._tool_specs()})
+# The wording when .git is the model's own repository (sandboxgit.py).
+out.append({"name": "build_tools_git", "tools": chat.BUILD_TOOLS_SANDBOXED_GIT})
+out.append({"name": "build_tools_host_net_git", "tools": chat.BUILD_TOOLS_SANDBOXED_HOST_NET_GIT})
 out.append({"name": "notices", "tool_budget": chat.TOOL_BUDGET_NOTICE,
             "no_answer": chat.NO_ANSWER_NOTICE,
             "parallel_safe": list(chat.Chat.PARALLEL_SAFE),
@@ -3865,7 +3868,8 @@ def gen_chat_tools(snap):
         "about": "rp's Chat._tool_specs() per config over DEFAULTS (consult, explore (but in with_explore), toolbox "
                  "and instructions off, the sandbox taken as working, a workspace without "
                  ".git), keys in order; and the tool loop's notices, PARALLEL_SAFE and "
-                 "BUILD_TOOL_NAMES",
+                 "BUILD_TOOL_NAMES; build_tools_git and build_tools_host_net_git are rpctl's "
+                 "BUILD_TOOLS_SANDBOXED_GIT and _HOST_NET_GIT",
         "cases": json.loads(out.stdout),
     }
 

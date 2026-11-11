@@ -3,9 +3,9 @@
 //! `BUILD_TOOLS_SANDBOXED_HOST_NET` offer them (chat.py 126-238). Key order
 //! is kept: the chat template renders them with `tojson`.
 //!
-//! rpctl offers a third wording when `.git` is the model's own repository
-//! (sandboxgit.py, SANDBOX_GIT); viy has no private repository yet, so it
-//! offers what rpctl does in a workspace where that does not apply.
+//! When `.git` is the model's own repository ([`crate::sandboxgit`],
+//! SANDBOX_GIT), run_shell says so ([`tools_for`]), as rpctl's
+//! `BUILD_TOOLS_SANDBOXED_GIT` and `_HOST_NET_GIT` do.
 
 use serde_json::Value;
 use serde_json::json;
@@ -134,6 +134,34 @@ fn run_shell(host_net: bool) -> Value {
 /// whose run_shell does not describe the proxy.
 pub fn tools(host_net: bool) -> Vec<Value> {
     vec![write_file(), read_file(), list_dir(), run_shell(host_net)]
+}
+
+/// What run_shell says about .git when it is read-only, and what it says
+/// instead when it is the model's own repository (rp's `_with_private_git`).
+const GIT_READ_ONLY: &str = ".git and the tool's own code are read-only, ";
+const GIT_PRIVATE: &str = "the tool's own code is read-only, .git is your own private \
+    repository on this machine (commit and branch freely: it is not the user's repository, \
+    which is the read-only remote 'host', and the user imports your branches from it; \
+    read_file and write_file see the user's .git, not yours), ";
+
+/// [`tools`], with run_shell telling the model `.git` is its own
+/// repository when `private_git`.
+pub fn tools_for(host_net: bool, private_git: bool) -> Vec<Value> {
+    let mut out = tools(host_net);
+    if private_git
+        && let Some(desc) = out
+            .last_mut()
+            .and_then(|t| t.pointer_mut("/function/description"))
+        && let Some(text) = desc.as_str()
+    {
+        // rp asserts it: a wording without it would hide the repository
+        debug_assert!(
+            text.contains(GIT_READ_ONLY),
+            "run_shell's .git wording moved"
+        );
+        *desc = Value::String(text.replacen(GIT_READ_ONLY, GIT_PRIVATE, 1));
+    }
+    out
 }
 
 #[cfg(test)]

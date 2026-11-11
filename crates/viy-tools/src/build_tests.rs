@@ -27,6 +27,18 @@ fn build_tools_are_rpctls() {
 }
 
 #[test]
+fn the_private_git_wording_is_rpctls() {
+    for (case, host_net) in [
+        ("build_tools_git", false),
+        ("build_tools_host_net_git", true),
+    ] {
+        let theirs = rpctl(case)["tools"].as_array().unwrap().clone();
+        assert_eq!(text(&tools_for(host_net, true)), text(&theirs), "{case}");
+        assert_eq!(text(&tools_for(host_net, false)), text(&tools(host_net)));
+    }
+}
+
+#[test]
 fn web_tools_come_first_as_rpctl_orders_them() {
     let theirs = rpctl("build_and_web_tools")["tools"]
         .as_array()

@@ -805,7 +805,14 @@ pub fn secret_find() -> String {
     skip.push(".cache");
     skip.sort_unstable();
     skip.dedup();
-    let skip: Vec<String> = skip.iter().map(|n| format!("-name {}", q(n))).collect();
+    let mut skip: Vec<String> = skip.iter().map(|n| format!("-name {}", q(n))).collect();
+    // The hidden folders are empty in the box: a file masked inside one
+    // would show there by name, and count against the limit.
+    skip.extend(
+        BOX_HIDE_DIRS
+            .iter()
+            .map(|d| format!("-path \"$HOME\"/{}", q(d))),
+    );
     format!(
         "find {} -maxdepth {BOX_SCAN_DEPTH} -regextype posix-extended \\( {} \\) -prune -o \\( \
          -type f -o -type l \\) ! -iname '*.pub' \\( -name .env -o \\( -name '.env.*' {} \\) -o \
@@ -840,10 +847,6 @@ pub fn box_command(remote_cmd: &str, timeout: u64) -> String {
         format!("mkdir -p {work} || exit 125"),
         format!("set -- \"$@\" --bind {work} {work}"),
         format!(
-            "for p in {}; do [ -d \"$p\" ] && set -- \"$@\" --tmpfs \"$p\"; done",
-            hide_dirs.join(" ")
-        ),
-        format!(
             "for p in {}; do [ -e \"$p\" ] && set -- \"$@\" --ro-bind /dev/null \"$p\"; done",
             hide_files.join(" ")
         ),
@@ -855,6 +858,12 @@ pub fn box_command(remote_cmd: &str, timeout: u64) -> String {
         "done <<RPCTL_EOF".into(),
         format!("$({})", secret_find()),
         "RPCTL_EOF".into(),
+        // After the masks, so a tmpfs covers any made inside a hidden folder
+        // (a $HOME the find's -path cannot match): bwrap mounts in order.
+        format!(
+            "for p in {}; do [ -d \"$p\" ] && set -- \"$@\" --tmpfs \"$p\"; done",
+            hide_dirs.join(" ")
+        ),
         // The filter goes in on fd 3 through a pipe, as here; nothing is
         // stored on the server for the model to change.
         format!(

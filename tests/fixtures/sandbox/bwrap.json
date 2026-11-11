@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "5533dd248775ad6d0ee03be9226038a940e480af",
+ "rpctl_commit": "e02a5cd840f6d8f89ce338ff0ba1f10e88a3a5a7",
  "generator": "tools/fixtures.py sandbox/bwrap",
  "about": "rp's sandbox.bwrap_argv for trees under $T (HOME $T/home, USER tester, LANG C.UTF-8, seccomp fd 3): `dirs`, `files`, `links` and `git` repositories with their core.hooksPath lay the tree out, `args` are bwrap_argv's (the workspace is $T/ws). Each run of protected self-binds and of /dev/null masks is sorted by (depth, path): rp takes them from a set and a walk. `autorun` is approve.autorun_paths of the workspace, sorted",
  "cases": [

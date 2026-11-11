@@ -1,6 +1,6 @@
 # The rpctl commit viy ports from. Change it only together with regenerated
 # fixtures (docs/implementation-plan.md 3.1); tools/refsnap.sh extracts it.
-commit: 5533dd248775ad6d0ee03be9226038a940e480af
+commit: e02a5cd840f6d8f89ce338ff0ba1f10e88a3a5a7
 branch: leak-protection
-pinned: 2026-07-27
-subject: Check a chat's first search and fetch against the vault's Tavily key
+pinned: 2026-07-28
+subject: Keep secret file names out of the server box's hidden folders

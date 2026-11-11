@@ -273,6 +273,83 @@ fn secret_names_match_this_machines() {
     assert!(!found.contains(&".env.example".to_string()));
 }
 
+/// Their tmpfs hides everything in them; a mask made inside one would show
+/// the file's name there and use up the limit.
+#[test]
+fn hidden_folders_are_not_searched() {
+    let d = ScratchDir::new("remote-find-hidden").unwrap();
+    for rel in [
+        ".ssh/id_ed25519",
+        ".local/share/app/credentials.json",
+        ".config/app/.env",
+        "app/.env",
+    ] {
+        let path = d.path().join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "x").unwrap();
+    }
+    let out = std::process::Command::new("sh")
+        .args(["-c", &secret_find()])
+        .env_clear()
+        .env("HOME", d.path())
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .unwrap();
+    let found: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|p| p.starts_with(&d.path().display().to_string()))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        found,
+        [d.path().join("app").join(".env").display().to_string()]
+    );
+}
+
+/// bwrap usable here, else the box tests skip.
+fn bwrap_runs() -> bool {
+    let ok = std::process::Command::new("bwrap")
+        .args(["--ro-bind", "/", "/", "--unshare-all", "true"])
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if !ok {
+        eprintln!("skipped: bwrap cannot run here");
+    }
+    ok
+}
+
+/// A home whose name the find's -path reads as a pattern still gets empty
+/// hidden folders: their tmpfs goes on after the masks.
+#[test]
+fn hidden_folders_stay_empty_under_any_home() {
+    let Some(cache) = std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")) else {
+        return;
+    };
+    if !bwrap_runs() {
+        return;
+    }
+    let home = cache.join(format!("viy-remote-test-{}[h]", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    std::fs::write(home.join(".ssh").join("id_ed25519"), "LEAKME-KEY").unwrap();
+    let r = std::process::Command::new("sh")
+        .args(["-c", &box_command("ls -A ~/.ssh; echo end", 20)])
+        .current_dir(&home)
+        .env_clear()
+        .env("HOME", &home)
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(
+        r.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&r.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&r.stdout), "end\n");
+}
+
 /// The wrapper itself, run with this machine's bwrap against a fake home
 /// (outside /tmp, which the sandbox replaces).
 #[test]
@@ -280,12 +357,7 @@ fn runs_sandboxed_here() {
     let Some(cache) = std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")) else {
         return;
     };
-    if std::process::Command::new("bwrap")
-        .args(["--ro-bind", "/", "/", "--unshare-all", "true"])
-        .output()
-        .map_or(true, |o| !o.status.success())
-    {
-        eprintln!("skipped: bwrap cannot run here");
+    if !bwrap_runs() {
         return;
     }
     std::fs::create_dir_all(&cache).unwrap();
@@ -293,6 +365,13 @@ fn runs_sandboxed_here() {
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(home.join(".ssh")).unwrap();
     std::fs::write(home.join(".ssh").join("id_x"), "LEAKME-KEY").unwrap();
+    std::fs::write(home.join(".ssh").join("id_ed25519"), "LEAKME-KEY").unwrap();
+    std::fs::create_dir_all(home.join(".config").join("app")).unwrap();
+    std::fs::write(
+        home.join(".config").join("app").join("credentials.json"),
+        "LEAKME-CONF",
+    )
+    .unwrap();
     std::fs::create_dir_all(home.join("app")).unwrap();
     std::fs::write(home.join("app").join(".env"), "TOKEN=LEAKME-ENV").unwrap();
     std::fs::write(
@@ -302,7 +381,7 @@ fn runs_sandboxed_here() {
     .unwrap();
     std::fs::write(home.join("app").join("id_x.pub"), "public").unwrap();
     std::fs::write(home.join("app").join("notes"), "readable").unwrap();
-    let script = "cat ~/.ssh/id_x ~/app/.env ~/app/prod-secrets.json 2>/dev/null; \
+    let script = "ls -A ~/.ssh ~/.config; cat ~/.ssh/id_x ~/app/.env ~/app/prod-secrets.json 2>/dev/null; \
         cat ~/app/id_x.pub ~/app/notes; echo; touch ~/app/new 2>/dev/null || echo ro; \
         echo kept > made; pwd; \
         python3 -c 'import socket; socket.socket(socket.AF_UNIX)' 2>/dev/null || echo nounix; \
@@ -326,9 +405,12 @@ fn runs_sandboxed_here() {
         String::from_utf8_lossy(&r.stderr)
     );
     assert!(!stdout.contains("LEAKME"), "{stdout}");
+    // the hidden folders list nothing, not even the masked names
     assert_eq!(
         stdout.split_whitespace().collect::<Vec<_>>(),
         [
+            &format!("{}/.config:", home.display()),
+            &format!("{}/.ssh:", home.display()),
             "publicreadable",
             "ro",
             &home.join(BOX_DIR).display().to_string(),

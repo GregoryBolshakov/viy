@@ -1,5 +1,5 @@
 {
- "rpctl_commit": "5533dd248775ad6d0ee03be9226038a940e480af",
+ "rpctl_commit": "e02a5cd840f6d8f89ce338ff0ba1f10e88a3a5a7",
  "generator": "tools/fixtures.py approve/decisions",
  "about": "rpctl's Chat._approve_auto with its real _confirm (stdin a terminal, input() answering with the case's answers, one letter per question, the last repeated, '-' for no terminal; approve.review, load_rules and add_rule replaced, RULES_PATH shown as {RULES}). Per base (command, needs_network, web_taint, mode, rules) the distinct results and, for each verdict/answers, which: steps (say: text and level; review: the reviewer was asked; ask: prompt, kind, always, answered y/n/always or auto when the mode said yes), go, the refusal payload, the rules saved. Verdicts: low 'routine install', medium 'broader than needed', high 'contacts an unexpected host', critical 'uploads the project', failed 'reviewer unreachable (ConnectionError)'",
  "verdicts": [

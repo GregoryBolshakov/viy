@@ -1,13 +1,14 @@
 //! rp's names in what the model sees, read as viy's (flags F21, kb d131).
 //! rpctl's fixtures, oracle answers and scenario recordings name rpctl
 //! where viy names itself; [`to_viy`] puts viy's names in, from
-//! `tests/rp-names.json`, which `tools/drive_rp.py` reads too.
+//! `crates/viy-testkit/rp-names.json` (inside the crate, so its package
+//! carries it), which `tools/drive_rp.py` reads too.
 
 use std::sync::OnceLock;
 
 use serde_json::Value;
 
-const MAP: &str = include_str!("../../../tests/rp-names.json");
+const MAP: &str = include_str!("../rp-names.json");
 
 /// The map's pairs; empty when the file is broken, which
 /// `the_map_is_read` catches.

@@ -61,9 +61,10 @@ def _compare_module():
 
 def viy_names(value):
     """`value` with rp's model-visible names read as viy's, from
-    tests/rp-names.json (flags F21, kb d131): what --check compares viy's
-    run with."""
-    pairs = json.loads((ROOT / "tests" / "rp-names.json").read_text(encoding="utf-8"))["map"]
+    crates/viy-testkit/rp-names.json (flags F21, kb d131): what --check
+    compares viy's run with."""
+    pairs = json.loads((ROOT / "crates" / "viy-testkit" / "rp-names.json")
+                       .read_text(encoding="utf-8"))["map"]
     def walk(v):
         if isinstance(v, str):
             for rp, viy in pairs:

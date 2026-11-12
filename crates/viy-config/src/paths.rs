@@ -18,10 +18,15 @@ pub struct Paths {
     pub data_home: PathBuf,
     /// `$XDG_STATE_HOME`, else `~/.local/state`.
     pub state_home: PathBuf,
+    /// `viy migrate --finish` has moved the pod state from rp's state
+    /// directory to viy's ([`crate::cutover::Record`], kb d135).
+    pub pod_state_moved: bool,
 }
 
 impl Paths {
-    /// From this process's environment.
+    /// From this process's environment, and the cutover record in viy's
+    /// state directory: a damaged record is an error, so viy never guesses
+    /// where the pod state is.
     pub fn from_env() -> io::Result<Self> {
         // The one place viy asks for the home directory (clippy.toml).
         #[allow(clippy::disallowed_methods)]
@@ -31,11 +36,14 @@ impl Paths {
                 "could not determine the home directory",
             )
         })?;
-        Ok(Self::from_vars(home, |name| std::env::var_os(name)))
+        let mut paths = Self::from_vars(home, |name| std::env::var_os(name));
+        paths.pod_state_moved = crate::cutover::Record::load(&paths.state_dir())?.pod_state_moved;
+        Ok(paths)
     }
 
     /// From `home` and the variables `var` returns. An unset or empty
-    /// variable falls back to its default under `home`.
+    /// variable falls back to its default under `home`. The pod state is
+    /// rp's, as before the cutover.
     pub fn from_vars(home: PathBuf, var: impl Fn(&str) -> Option<OsString>) -> Self {
         let xdg = |name: &str, default: &str| match var(name) {
             Some(v) if !v.is_empty() => PathBuf::from(v),
@@ -46,6 +54,7 @@ impl Paths {
             data_home: xdg("XDG_DATA_HOME", ".local/share"),
             state_home: xdg("XDG_STATE_HOME", ".local/state"),
             home,
+            pod_state_moved: false,
         }
     }
 
@@ -86,10 +95,20 @@ impl Paths {
         self.state_home.join(TOOL)
     }
 
-    /// rp's state directory: the pod state viy shares with rp until cutover
-    /// (`pod.json`, `pod.lock`, `last_activity`, `known_hosts`, the boot
-    /// records; kb d006).
+    /// Where the pod state is (`pod.json`, `pod.lock`, `last_activity`,
+    /// `known_hosts`, the boot records): rp's state directory, shared with
+    /// rp until cutover (kb d006), then viy's own, once `viy migrate
+    /// --finish` has moved it there (kb d135).
     pub fn pod_state_dir(&self) -> PathBuf {
+        if self.pod_state_moved {
+            self.state_dir()
+        } else {
+            self.rpctl_state_dir()
+        }
+    }
+
+    /// rp's state directory, `~/.local/state/rpctl`.
+    pub fn rpctl_state_dir(&self) -> PathBuf {
         self.state_home.join(RPCTL)
     }
 

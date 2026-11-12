@@ -37,3 +37,20 @@ fn under_cargo_the_environment_is_the_test_home() {
         );
     }
 }
+
+#[test]
+fn the_pod_state_is_rps_until_the_cutover_moves_it() {
+    let mut p = Paths::under("/h");
+    assert_eq!(p.pod_state_dir(), Path::new("/h/.local/state/rpctl"));
+    assert_eq!(
+        p.pod_state_file(),
+        Path::new("/h/.local/state/rpctl/pod.json")
+    );
+    p.pod_state_moved = true;
+    assert_eq!(p.pod_state_dir(), Path::new("/h/.local/state/viy"));
+    assert_eq!(
+        p.activity_file(),
+        Path::new("/h/.local/state/viy/last_activity")
+    );
+    assert_eq!(p.rpctl_state_dir(), Path::new("/h/.local/state/rpctl"));
+}

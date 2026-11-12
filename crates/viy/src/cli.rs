@@ -39,7 +39,7 @@ pub enum Command {
     #[command(about = "mark the current folder as a project (.viy/)")]
     Init(InitArgs),
     #[command(about = "copy rp's config and model profiles to viy's (rp's stay in place)")]
-    Migrate,
+    Migrate(MigrateArgs),
     #[command(about = "create/resume the pod and wait for vLLM")]
     Up {
         #[arg(long, default_value_t = 2700, help = "seconds to wait for readiness")]
@@ -140,7 +140,7 @@ impl Command {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Init(_) => "init",
-            Self::Migrate => "migrate",
+            Self::Migrate(_) => "migrate",
             Self::Up { .. } => "up",
             Self::Status => "status",
             Self::Boots(_) => "boots",
@@ -246,6 +246,22 @@ pub enum DevCommand {
 pub enum BootsAction {
     List,
     Show,
+}
+
+/// `viy migrate`'s flags, viy's own: the cutover from rp (kb d135).
+#[derive(Debug, Args)]
+pub struct MigrateArgs {
+    #[arg(
+        long,
+        help = "the cutover: copy rp's chats, toolbox and input history, move the pod state to viy's, and swap the reap timers"
+    )]
+    pub finish: bool,
+    #[arg(
+        long,
+        requires = "finish",
+        help = "say what --finish would do, and change nothing"
+    )]
+    pub dry_run: bool,
 }
 
 /// `viy init`'s flags: rp's `init` has none; `--kb` and the three that

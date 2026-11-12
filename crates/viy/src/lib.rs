@@ -8,6 +8,7 @@ pub mod chat;
 pub mod cli;
 pub mod dev;
 pub mod exec;
+pub mod finish;
 pub mod hardening;
 pub mod init;
 pub mod migrate;
@@ -156,7 +157,11 @@ fn dispatch(
             }
             Ok(())
         }
-        Command::Migrate => Ok(migrate::cmd_migrate(&paths()?, out)?),
+        Command::Migrate(args) if args.finish => {
+            let paths = paths()?;
+            Ok(migrate::cmd_finish(&paths, &cwd()?, args.dry_run, out)?)
+        }
+        Command::Migrate(_) => Ok(migrate::cmd_migrate(&paths()?, out)?),
         Command::Model(args) => {
             let paths = paths()?;
             let cfg = config(&paths)?;

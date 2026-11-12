@@ -138,3 +138,62 @@ fn no_temporary_file_is_left_behind() {
         }
     }
 }
+
+/// A tool folder: an executable, a nested file, a symlink to a binary.
+#[test]
+fn a_tree_is_copied_with_modes_and_links_and_never_over_a_target() {
+    let dir = ScratchDir::new("migrate-tree").unwrap();
+    let src = dir.path().join("src/tool");
+    fs::create_dir_all(src.join("lib")).unwrap();
+    fs::write(src.join("TOOL.md"), "---\nname: tool\n---\n").unwrap();
+    fs::write(src.join("run"), "#!/bin/sh\necho hi\n").unwrap();
+    fs::set_permissions(src.join("run"), fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(src.join("lib/data"), "x").unwrap();
+    std::os::unix::fs::symlink("/usr/bin/true", src.join("bin")).unwrap();
+
+    let dst = dir.path().join("dst/tool");
+    assert!(copy_tree_new(&src, &dst).unwrap());
+    assert_eq!(fs::read_to_string(dst.join("lib/data")).unwrap(), "x");
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&dst.join("run")), 0o755);
+    assert_eq!(
+        fs::read_link(dst.join("bin")).unwrap(),
+        Path::new("/usr/bin/true")
+    );
+    assert_eq!(
+        fs::metadata(dst.join("run")).unwrap().modified().unwrap(),
+        fs::metadata(src.join("run")).unwrap().modified().unwrap()
+    );
+
+    // There already: kept as it is, even an empty directory.
+    fs::write(src.join("lib/data"), "changed").unwrap();
+    assert!(!copy_tree_new(&src, &dst).unwrap());
+    assert_eq!(fs::read_to_string(dst.join("lib/data")).unwrap(), "x");
+    let empty = dir.path().join("dst/empty");
+    fs::create_dir(&empty).unwrap();
+    assert!(!copy_tree_new(&src, &empty).unwrap());
+    assert_eq!(fs::read_dir(&empty).unwrap().count(), 0);
+
+    // A temporary left by an interrupted run is replaced, and none stays.
+    let other = dir.path().join("dst/other");
+    // ... even a read-only one.
+    let tmp = dir.path().join("dst/.other.migrate");
+    fs::create_dir_all(tmp.join("junk/deep")).unwrap();
+    fs::set_permissions(tmp.join("junk"), fs::Permissions::from_mode(0o555)).unwrap();
+    assert!(copy_tree_new(&src, &other).unwrap());
+    assert!(!other.join("junk").exists());
+    let names: Vec<String> = fs::read_dir(dir.path().join("dst"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert!(names.iter().all(|n| !n.contains(".migrate")), "{names:?}");
+
+    // A read-only file keeps its time too.
+    fs::set_permissions(src.join("run"), fs::Permissions::from_mode(0o555)).unwrap();
+    let ro = dir.path().join("dst/ro");
+    assert!(copy_tree_new(&src, &ro).unwrap());
+    assert_eq!(
+        fs::metadata(ro.join("run")).unwrap().modified().unwrap(),
+        fs::metadata(src.join("run")).unwrap().modified().unwrap()
+    );
+}

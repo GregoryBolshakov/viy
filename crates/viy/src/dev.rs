@@ -581,7 +581,9 @@ pub(crate) fn chat(
             paths.state_dir(),
             paths.data_dir(),
             paths.rpctl_config_dir(),
-            paths.pod_state_dir(),
+            // rp's, which holds the pod state until the cutover and rp's
+            // own chat records after it (kb d135).
+            paths.rpctl_state_dir(),
             paths.rpctl_data_dir(),
         ],
         toolbox: viy_agent::toolbox::Dirs::new(paths, &project),

@@ -100,3 +100,97 @@ fn browsing_starts_only_from_an_empty_box_or_a_recalled_entry() {
     assert!(!history.browses("two!", 4));
     assert!(!History::default().browses("", 0));
 }
+
+/// rp's file as GNU readline writes it: one entry per line, so a pasted
+/// two-line message is two entries, as rp recalls it.
+#[test]
+fn readline_entries_are_rps_lines_without_blanks_or_repeats() {
+    let rp = b"first\nls -la\nls -la\n\n   \ntwo\nlines\n#1762900000\nna\xefve \xff\nlast";
+    assert_eq!(
+        readline_entries(rp),
+        [
+            "first",
+            "ls -la",
+            "two",
+            "lines",
+            "#1762900000",
+            "na\u{fffd}ve \u{fffd}",
+            "last"
+        ]
+    );
+    assert!(readline_entries(b"").is_empty());
+}
+
+#[test]
+fn import_puts_rps_entries_before_viys_and_keeps_the_newest() {
+    let dir = ScratchDir::new("history").unwrap();
+    let path = dir.path().join(".viy").join("history");
+    let mut history = History::load(path.clone());
+    history.record("viy one").unwrap();
+    history.record("viy\ntwo").unwrap();
+    let rp: Vec<String> = ["rp one", "rp two"].map(String::from).to_vec();
+    assert_eq!(import(&path, &rp, 1_700_000_000).unwrap(), 2);
+    assert_eq!(
+        History::load(path.clone()).entries(),
+        ["rp one", "rp two", "viy one", "viy\ntwo"]
+    );
+    let first: Value = serde_json::from_str(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        first,
+        serde_json::json!({"ts": 1_700_000_000u64, "text": "rp one"})
+    );
+    let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
+
+    // Past MAX_ENTRIES the oldest of rp's go first.
+    let many: Vec<String> = (0..MAX_ENTRIES).map(|i| format!("old {i}")).collect();
+    assert_eq!(import(&path, &many, 1).unwrap(), MAX_ENTRIES - 4);
+    let entries = History::load(path).entries().to_vec();
+    assert_eq!(entries.len(), MAX_ENTRIES);
+    assert_eq!(entries[0], "old 4");
+    assert_eq!(
+        entries[MAX_ENTRIES - 4..],
+        ["rp one", "rp two", "viy one", "viy\ntwo"]
+    );
+}
+
+#[test]
+fn import_into_no_history_makes_one() {
+    let dir = ScratchDir::new("history").unwrap();
+    let path = dir.path().join(".viy").join("history");
+    assert_eq!(import(&path, &["a".to_string()], 5).unwrap(), 1);
+    assert_eq!(History::load(path).entries(), ["a"]);
+}
+
+#[test]
+fn import_twice_imports_once_and_a_repeat_at_the_seam_goes() {
+    let dir = ScratchDir::new("history").unwrap();
+    let path = dir.path().join(".viy").join("history");
+    let mut history = History::load(path.clone());
+    history.record("same").unwrap();
+    history.record("viy").unwrap();
+    let rp: Vec<String> = ["rp", "same"].map(String::from).to_vec();
+    assert_eq!(import(&path, &rp, 7).unwrap(), 1);
+    assert_eq!(History::load(path.clone()).entries(), ["rp", "same", "viy"]);
+    assert_eq!(import(&path, &rp, 7).unwrap(), 0);
+    assert_eq!(History::load(path).entries(), ["rp", "same", "viy"]);
+
+    // After a cut took the oldest of rp's, still once.
+    let many: Vec<String> = (0..MAX_ENTRIES + 5).map(|i| format!("old {i}")).collect();
+    let path = dir.path().join("cut").join("history");
+    assert_eq!(import(&path, &many, 1).unwrap(), MAX_ENTRIES);
+    assert_eq!(import(&path, &many, 1).unwrap(), 0);
+    assert_eq!(History::load(path).entries()[0], "old 5");
+    let names: Vec<String> = std::fs::read_dir(dir.path().join(".viy"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert_eq!(names, ["history"]);
+}

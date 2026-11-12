@@ -737,6 +737,22 @@ impl Scheduled {
     /// The live scheduled shutdown: its runner alive and a `shutdown`
     /// command. A file left by a dead one is removed.
     pub fn live(paths: &Paths) -> Option<Self> {
+        let live = Self::read(paths)?;
+        if live.is_none() {
+            let _ = fs::remove_file(paths.shutdown_state_file());
+        }
+        live
+    }
+
+    /// [`Scheduled::live`] without removing a dead one's file: for `viy
+    /// migrate --finish --dry-run`, which changes nothing.
+    pub fn peek(paths: &Paths) -> Option<Self> {
+        Self::read(paths).flatten()
+    }
+
+    /// `None` without a readable `shutdown.json`; `Some(None)` when the
+    /// one there is a dead runner's.
+    fn read(paths: &Paths) -> Option<Option<Self>> {
         let state: Value =
             serde_json::from_str(&fs::read_to_string(paths.shutdown_state_file()).ok()?).ok()?;
         let pid = state
@@ -748,17 +764,16 @@ impl Scheduled {
             && process::pid_alive(pid)
             && process::cmdline(pid).iter().any(|a| a == b"shutdown")
         {
-            return Some(Self {
+            return Some(Some(Self {
                 pid,
                 deadline: state.get("deadline").and_then(Value::as_f64).unwrap_or(0.0),
                 poweroff: state
                     .get("poweroff")
                     .and_then(Value::as_bool)
                     .unwrap_or(true),
-            });
+            }));
         }
-        let _ = fs::remove_file(paths.shutdown_state_file());
-        None
+        Some(None)
     }
 }
 

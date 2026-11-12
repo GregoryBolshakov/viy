@@ -10,7 +10,8 @@
 //!
 //! Until cutover rp's `rpctl-reap.timer` reaps the shared pod, and reads
 //! the same `last_activity` and `reap.json` (kb d006); [`install`] refuses
-//! while that timer is installed.
+//! while that timer is installed. `viy migrate --finish` removes it
+//! ([`remove_rpctl_timer`]) and installs viy's (kb d135).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -346,11 +347,7 @@ pub async fn install(
     report: Reporter<'_>,
 ) -> Result<(), CommandError> {
     let units = paths.systemd_user_dir();
-    let xdg_units = paths.config_home.join("systemd").join("user");
-    if [&units, &xdg_units]
-        .iter()
-        .any(|dir| dir.join(RPCTL_TIMER).exists())
-    {
+    if rpctl_timer_installed(paths) {
         return Err(CommandError::Exit(format!(
             "{RPCTL_TIMER} is installed and runs rp reap, which reaps viy's pod too; \
              viy-reap.timer replaces it at cutover (ROADMAP phase 8)"
@@ -364,22 +361,8 @@ pub async fn install(
     fs::create_dir_all(&units)?;
     fs::write(units.join("viy-reap.service"), service(viy))?;
     fs::write(units.join("viy-reap.timer"), TIMER)?;
-    for args in [
-        &["daemon-reload"][..],
-        &["enable", "--now", "viy-reap.timer"][..],
-    ] {
-        let command = viy_exec::Command::new("systemctl")
-            .arg("--user")
-            .args(args.iter().copied());
-        let shown = command.argv().join(" ");
-        let out = exec.run(command).await?;
-        if !out.status.success() {
-            return Err(CommandError::Exit(format!(
-                "{shown} exited {}",
-                viy_exec::exit_text(out.status)
-            )));
-        }
-    }
+    systemctl(exec, &["daemon-reload"]).await?;
+    systemctl(exec, &["enable", "--now", "viy-reap.timer"]).await?;
     say(
         report,
         Tone::Plain,
@@ -394,6 +377,73 @@ pub async fn install(
         "check it with:  systemctl --user list-timers viy-reap.timer",
     );
     Ok(())
+}
+
+/// The two folders a user's systemd units can be in: `~/.config/systemd/user`
+/// and the one under this shell's `XDG_CONFIG_HOME`, when that differs.
+fn unit_dirs(paths: &Paths) -> Vec<PathBuf> {
+    let mut dirs = vec![paths.systemd_user_dir()];
+    let xdg = paths.config_home.join("systemd").join("user");
+    if !dirs.contains(&xdg) {
+        dirs.push(xdg);
+    }
+    dirs
+}
+
+/// Whether rp's reap timer is installed, in either folder.
+pub fn rpctl_timer_installed(paths: &Paths) -> bool {
+    unit_dirs(paths)
+        .iter()
+        .any(|dir| dir.join(RPCTL_TIMER).exists())
+}
+
+/// Whether viy's reap timer is installed.
+pub fn timer_installed(paths: &Paths) -> bool {
+    paths.systemd_user_dir().join("viy-reap.timer").exists()
+}
+
+/// `viy migrate --finish` (kb d135): stops and disables rp's reap timer
+/// and removes its two units, so that, once the pod state has moved to
+/// viy's state folder, rp reap no longer looks at a pod it has no state
+/// for. Nothing to do when it is not installed.
+pub async fn remove_rpctl_timer(
+    paths: &Paths,
+    exec: &dyn ExecBackend,
+    report: Reporter<'_>,
+) -> Result<(), CommandError> {
+    if !rpctl_timer_installed(paths) {
+        return Ok(());
+    }
+    systemctl(exec, &["disable", "--now", RPCTL_TIMER]).await?;
+    for dir in unit_dirs(paths) {
+        for unit in [RPCTL_TIMER, "rpctl-reap.service"] {
+            remove(&dir.join(unit))?;
+        }
+    }
+    systemctl(exec, &["daemon-reload"]).await?;
+    say(
+        report,
+        Tone::Plain,
+        format!("stopped and removed {RPCTL_TIMER}: rp reap no longer runs"),
+    );
+    Ok(())
+}
+
+/// `systemctl --user <args>`, an error unless it exits 0.
+async fn systemctl(exec: &dyn ExecBackend, args: &[&str]) -> Result<(), CommandError> {
+    let command = viy_exec::Command::new("systemctl")
+        .arg("--user")
+        .args(args.iter().copied());
+    let shown = command.argv().join(" ");
+    let out = exec.run(command).await?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(CommandError::Exit(format!(
+            "{shown} exited {}",
+            viy_exec::exit_text(out.status)
+        )))
+    }
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@
 
 pub mod atomic;
 pub mod config;
+pub mod cutover;
 mod defaults;
 pub mod migrate;
 pub mod paths;

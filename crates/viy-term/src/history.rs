@@ -10,7 +10,8 @@
 //! one entry; each entry appended as it is sent, in one write under an
 //! exclusive lock, owner-only, so two chats in one project both keep
 //! theirs. The newest 2000 are kept, rp's length. rp's file is copied in by
-//! `viy migrate --finish` at cutover (kb d043), not read here.
+//! `viy migrate --finish` at cutover ([`import`], kb d043, d135), not read
+//! by the chat.
 //!
 //! Recall follows Codex's `chat_composer_history.rs`: Up and Down browse
 //! when the box is empty, or still holds the entry they last recalled with
@@ -23,6 +24,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -165,6 +167,97 @@ fn append(path: &PathBuf, text: &str) -> io::Result<()> {
         file.write_all(keep.as_bytes())?;
     }
     Ok(())
+}
+
+/// The entries of rp's history file, as readline reads them back: GNU
+/// readline's format, one entry per line, so an entry rp sent with
+/// newlines in it comes back as one entry per line, as rp recalled it.
+/// Blank lines and an entry repeating the one before are left out, as
+/// [`History::record`] leaves them out; bytes that are not UTF-8 are
+/// replaced.
+pub fn readline_entries(bytes: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(bytes);
+    let mut entries: Vec<String> = Vec::new();
+    for line in text.lines() {
+        if line.trim().is_empty() || entries.last().is_some_and(|e| e == line) {
+            continue;
+        }
+        entries.push(line.to_string());
+    }
+    entries
+}
+
+/// Puts `older` (oldest first) before the entries already in the history
+/// at `path`, each stamped `ts`, keeping the newest [`MAX_ENTRIES`]: rp's
+/// history imported by `viy migrate --finish` (kb d135), which runs with
+/// no chat open. The new file is written beside the old one and renamed
+/// over it under the lock [`History::record`] takes, so a failed write
+/// leaves the old history whole. The newest of `older` is left out when
+/// it repeats the oldest entry there, as `record` leaves out a repeat.
+/// Nothing is done when the history already opens with what this would
+/// put there (the end of it, if the cut took the oldest): an import run
+/// twice imports once. Returns how many of `older` were kept.
+pub fn import(path: &Path, older: &[String], ts: u64) -> io::Result<usize> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut file = OpenOptions::new()
+        .read(true)
+        .append(true)
+        .create(true)
+        .mode(0o600)
+        .open(path)?;
+    file.lock()?;
+    let mut ours = String::new();
+    file.read_to_string(&mut ours)?;
+    let ours: Vec<&str> = ours.lines().collect();
+    let first_text = ours
+        .first()
+        .and_then(|l| serde_json::from_str::<Value>(l).ok())
+        .and_then(|v| v.get("text")?.as_str().map(str::to_string));
+    let mut lines: Vec<String> = older
+        .iter()
+        .map(|text| json!({"ts": ts, "text": text}).to_string())
+        .collect();
+    // In already, with or without the repeat at the seam.
+    let opens_with = |block: &[String]| {
+        (0..block.len()).any(|k| {
+            let tail = &block[k..];
+            ours.len() >= tail.len() && ours.iter().zip(tail).all(|(a, b)| a == b)
+        })
+    };
+    if opens_with(&lines) || opens_with(&lines[..lines.len().saturating_sub(1)]) {
+        return Ok(0);
+    }
+    if older
+        .last()
+        .is_some_and(|last| first_text.as_ref() == Some(last))
+    {
+        lines.pop();
+    }
+    let imported = lines.len();
+    lines.extend(ours.iter().map(ToString::to_string));
+    let extra = lines.len().saturating_sub(MAX_ENTRIES);
+    lines.drain(..extra);
+    let keep: String = lines.iter().flat_map(|l| [l.as_str(), "\n"]).collect();
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let tmp = path.with_file_name(format!(".{name}.import.{}", std::process::id()));
+    let written = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&tmp)
+        .and_then(|mut new| {
+            new.write_all(keep.as_bytes())?;
+            new.sync_all()
+        })
+        .and_then(|()| std::fs::rename(&tmp, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    written?;
+    Ok(imported.saturating_sub(extra))
 }
 
 #[cfg(test)]

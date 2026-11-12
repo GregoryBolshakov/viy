@@ -683,6 +683,77 @@ async fn install_needs_viy_on_path_and_a_working_systemctl() {
     assert_eq!(error.to_string(), "systemctl --user daemon-reload exited 1");
 }
 
+#[tokio::test]
+async fn rps_timer_is_disabled_and_its_units_removed_from_both_folders() {
+    let dir = ScratchDir::new("idle-install").unwrap();
+    let paths = Paths::from_vars(dir.path().to_path_buf(), |name| {
+        (name == "XDG_CONFIG_HOME").then(|| dir.path().join("xdg").into_os_string())
+    });
+    let dirs = [
+        paths.systemd_user_dir(),
+        paths.config_home.join("systemd/user"),
+    ];
+    for units in &dirs {
+        std::fs::create_dir_all(units).unwrap();
+        std::fs::write(units.join("rpctl-reap.timer"), TIMER).unwrap();
+        std::fs::write(units.join("rpctl-reap.service"), "[Service]\n").unwrap();
+        std::fs::write(units.join("other.timer"), TIMER).unwrap();
+    }
+    assert!(rpctl_timer_installed(&paths));
+    let exec = FakeExec::new([Run::stdout(""), Run::stdout("")]);
+    let told = Told::default();
+    remove_rpctl_timer(&paths, &exec, &told.reporter())
+        .await
+        .unwrap();
+    let argv: Vec<Vec<String>> = exec.sent().iter().map(viy_exec::Command::argv).collect();
+    assert_eq!(
+        argv,
+        [
+            vec![
+                "systemctl",
+                "--user",
+                "disable",
+                "--now",
+                "rpctl-reap.timer"
+            ],
+            vec!["systemctl", "--user", "daemon-reload"],
+        ]
+    );
+    for units in &dirs {
+        assert!(!units.join("rpctl-reap.timer").exists());
+        assert!(!units.join("rpctl-reap.service").exists());
+        assert!(units.join("other.timer").exists());
+    }
+    assert!(!rpctl_timer_installed(&paths));
+    assert_eq!(
+        told.texts(),
+        ["stopped and removed rpctl-reap.timer: rp reap no longer runs"]
+    );
+
+    // Gone already: nothing to run.
+    let exec = FakeExec::default();
+    remove_rpctl_timer(&paths, &exec, &|_| {}).await.unwrap();
+    assert!(exec.sent().is_empty());
+}
+
+#[tokio::test]
+async fn rps_timer_stays_when_systemctl_fails() {
+    let dir = ScratchDir::new("idle-install").unwrap();
+    let paths = Paths::under(dir.path());
+    let units = paths.systemd_user_dir();
+    std::fs::create_dir_all(&units).unwrap();
+    std::fs::write(units.join("rpctl-reap.timer"), TIMER).unwrap();
+    let exec = FakeExec::new([Run::exit(1, "", "Failed to connect to bus")]);
+    let error = remove_rpctl_timer(&paths, &exec, &|_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "systemctl --user disable --now rpctl-reap.timer exited 1"
+    );
+    assert!(units.join("rpctl-reap.timer").exists());
+}
+
 // --------------------------------------------------------------- the oracle
 
 /// rpctl's `idle.decide` and `idle.limits` against viy's on generated

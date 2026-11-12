@@ -47,3 +47,27 @@ fn says_what_it_copied_kept_and_left() {
         )
     );
 }
+
+/// `viy migrate --finish --dry-run` on this machine's processes and PATH,
+/// a scratch home: it speaks and changes nothing (what it finds is
+/// `finish`'s tests' business).
+#[test]
+fn the_finish_dry_run_changes_nothing() {
+    let scratch = ScratchDir::new("migrate").unwrap();
+    let paths = Paths::under(scratch.path());
+    fs::create_dir_all(paths.rpctl_state_dir()).unwrap();
+    fs::write(paths.rpctl_state_dir().join("pod.json"), "{}").unwrap();
+    let mut out = Vec::new();
+    cmd_finish(&paths, scratch.path(), true, &mut out).unwrap();
+    let text = String::from_utf8(out).unwrap();
+    assert!(
+        text.starts_with("viy migrate --finish --dry-run: nothing is changed;"),
+        "{text}"
+    );
+    assert!(
+        text.contains("pod state: would move pod.json from "),
+        "{text}"
+    );
+    assert!(paths.rpctl_state_dir().join("pod.json").exists());
+    assert!(!paths.state_dir().exists());
+}

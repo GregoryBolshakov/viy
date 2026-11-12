@@ -18,9 +18,12 @@
 //! it (F13: rpctl's Ctrl-C table).
 //!
 //! A pick (rp's numbered lists: `/rewind`, `/resume`) lists its options
-//! with one chosen, the default at first: Up, Down, Home, End and a digit
-//! choose, Enter picks the one chosen, `q` or Esc picks none, with the
-//! same guard.
+//! with one chosen, the default at first, marked `›` and reversed: Up,
+//! Down, Home, End and a digit choose, Enter picks the one chosen, `q` or
+//! Esc picks none, with the same guard, except that Up and Down choose
+//! from the moment the box is drawn whole while the input box is empty
+//! (choosing answers nothing), each one in the guard starting it again
+//! (kb d136).
 //!
 //! A secret (the tok PIN for the model's git repository) takes hidden
 //! text: nothing typed is shown, not even how much. While it is the front
@@ -196,6 +199,23 @@ impl Questions {
         if self.queue.front().is_some_and(QuestionBox::is_secret) {
             return self.secret_key(key, now);
         }
+        // Moving through a pick answers nothing, so Up and Down choose as
+        // soon as it is drawn whole, in the guard too, while the input box
+        // is empty; pressed quickly one after another they would otherwise
+        // all go to the input box. One pressed in the guard starts it
+        // again, so an Enter typed right behind it picks nothing; once the
+        // box is armed they choose as before (kb d136).
+        if let Some(front) = self.queue.front()
+            && front.question.choices == Choices::Pick
+            && front.shown.is_some()
+            && !self.armed(now)
+            && !draft
+            && key.modifiers.is_empty()
+            && matches!(key.code, KeyCode::Up | KeyCode::Down)
+        {
+            self.typed(now);
+            return self.pick_key(key, draft);
+        }
         if !self.armed(now) {
             return None;
         }
@@ -317,7 +337,7 @@ impl Questions {
                 rows.extend(front.option_rows(inner));
             }
             rows.extend(wrapped(
-                &keys_spans(&front.question, self.armed(now)),
+                &keys_spans(&front.question, self.armed(now), front.shown.is_some()),
                 inner,
             ));
             rows
@@ -368,8 +388,8 @@ impl Questions {
 }
 
 impl QuestionBox {
-    /// A pick's options in view, the chosen one reversed: the window
-    /// follows it.
+    /// A pick's options in view, the chosen one marked `›` and reversed,
+    /// as Codex's selection lists mark theirs: the window follows it.
     fn option_rows(&self, width: usize) -> Vec<(Line<'static>, usize)> {
         let options = &self.question.options;
         let first = self
@@ -382,15 +402,16 @@ impl QuestionBox {
             .skip(first)
             .take(PICK_ROWS)
             .map(|(i, option)| {
-                let row = format!("{:>3}. {}", i + 1, option.replace('\n', " "));
-                let mut cut = wrapped(&[Span::raw(row)], width);
-                let (line, used) = cut.swap_remove(0);
-                let line = if i == self.chosen {
-                    line.cyan().reversed()
+                let chosen = i == self.chosen;
+                let mark = if chosen { '›' } else { ' ' };
+                let row = format!("{mark}{:>3}. {}", i + 1, option.replace('\n', " "));
+                let style = if chosen {
+                    Style::new().cyan().reversed()
                 } else {
-                    line
+                    Style::new()
                 };
-                (line, used)
+                let mut cut = wrapped(&[Span::styled(row, style)], width);
+                cut.swap_remove(0)
             })
             .collect()
     }
@@ -499,7 +520,9 @@ fn secret_keys(armed: bool) -> Vec<Span<'static>> {
 }
 
 /// The keys the box takes, dim until it takes them.
-fn keys_spans(question: &Question, armed: bool) -> Vec<Span<'static>> {
+/// The keys' hints, dim until the box takes them; a pick's arrows work
+/// as soon as it is drawn whole (`shown`), so theirs is not dimmed.
+fn keys_spans(question: &Question, armed: bool, shown: bool) -> Vec<Span<'static>> {
     let mark = |default: bool| if default { " (default)" } else { "" };
     let mut keys: Vec<(&str, String)> = if question.choices == Choices::Pick {
         vec![
@@ -530,12 +553,26 @@ fn keys_spans(question: &Question, armed: bool) -> Vec<Span<'static>> {
         if i > 0 {
             spans.push(Span::raw("   "));
         }
-        spans.push(Span::raw(format!("[{key}]")).cyan());
-        spans.push(Span::raw(format!(" {what}")));
+        let live = armed || (shown && key == "↑↓");
+        let (key, what) = (
+            Span::raw(format!("[{key}]")).cyan(),
+            Span::raw(format!(" {what}")),
+        );
+        if live {
+            spans.extend([key, what]);
+        } else {
+            spans.extend([
+                key.style(Style::new().dim()),
+                what.style(Style::new().dim()),
+            ]);
+        }
     }
     if !armed {
+        // The gaps dim with the keys around them.
         for span in &mut spans {
-            span.style = Style::new().dim();
+            if span.content.trim().is_empty() {
+                span.style = Style::new().dim();
+            }
         }
     }
     spans

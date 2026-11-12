@@ -257,16 +257,24 @@ fn a_pick_question_is_answered_from_its_list() {
             .any(|r| r.contains("resume which chat? [1-2, Enter = 1, q = cancel]")),
         "{screen:?}"
     );
-    assert!(
-        screen.iter().any(|r| r.contains("  1. two  just now")),
-        "{screen:?}"
-    );
-    // Typed ahead, Down is the input box's (its history).
-    f.clock += crate::question::GUARD + Duration::from_millis(1);
+    // The chosen one is marked and reversed, inside the frame too.
+    assert!(chosen_row(&mut f, "›  1. two  just now"), "{screen:?}");
+    // The arrows choose at once, in the guard, and quickly one after
+    // another: choosing answers nothing.
     f.key(KeyCode::Down);
-    f.screen();
-    f.clock += crate::question::GUARD + Duration::from_millis(1);
+    assert!(chosen_row(&mut f, "›  2. one  5m ago"), "{:?}", f.screen());
+    f.key(KeyCode::Up);
     f.key(KeyCode::Down);
+    assert!(chosen_row(&mut f, "›  2. one  5m ago"), "{:?}", f.screen());
+    // End in the guard is the transcript's, not the pick's.
+    f.key(KeyCode::End);
+    assert!(chosen_row(&mut f, "›  2. one  5m ago"), "{:?}", f.screen());
+    // An arrow in the guard starts it again: an Enter right behind it
+    // (each key here comes 50 ms after the last) answers nothing.
+    f.key(KeyCode::Down);
+    f.key(KeyCode::Enter);
+    assert_eq!(f.ops(), []);
+    f.clock += crate::question::GUARD + Duration::from_millis(1);
     f.key(KeyCode::Enter);
     assert_eq!(
         f.ops(),
@@ -282,4 +290,33 @@ fn a_pick_question_is_answered_from_its_list() {
             .any(|r| r == "resume which chat? [1-2, Enter = 1, q = cancel] 2"),
         "{screen:?}"
     );
+}
+
+/// Whether the row holding `text` is on screen and drawn reversed.
+fn chosen_row(f: &mut Fixture, text: &str) -> bool {
+    let rows = f.screen();
+    let Some(y) = rows.iter().position(|r| r.contains(text)) else {
+        return false;
+    };
+    let x = rows[y].find(text).unwrap();
+    let x = rows[y][..x].chars().count();
+    let screen = f.term.backend().vt100().screen();
+    screen
+        .cell(u16::try_from(y).unwrap(), u16::try_from(x).unwrap())
+        .unwrap()
+        .inverse()
+}
+
+#[test]
+fn with_a_draft_the_arrows_stay_the_input_boxs() {
+    let mut f = fixture(60, 16);
+    f.type_text("line one");
+    f.app.event(EventMsg::QuestionRequest(QuestionRequestEvent {
+        question_id: "q1".into(),
+        question: Question::pick("resume which chat?", vec!["a".into(), "b".into()], 0),
+    }));
+    // In the guard, typing into the draft: Down is the draft's.
+    f.screen();
+    f.key(KeyCode::Down);
+    assert!(chosen_row(&mut f, "›  1. a"), "{:?}", f.screen());
 }

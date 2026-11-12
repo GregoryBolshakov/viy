@@ -274,6 +274,14 @@ and the student must hold out until dawn.
         removed from it. In every tool result, text that spells the model's
         control tokens is defused, so a file can't end the tool result and
         open a forged turn.</li>
+        <li><b>A closed action language.</b> Before the first model request,
+        viy asks vLLM for its version. On vLLM 0.31 and newer it compiles the
+        tools offered for that turn and their argument schemas into
+        <code>structured_outputs</code>. The model can produce either a final
+        answer or calls to those named tools with schema-valid arguments;
+        incomplete or malformed output is rejected. Tool descriptions stay
+        in the prompt, and the existing checks still decide whether a valid
+        call may run.</li>
         <li><b>The handprints.</b> Once internet text is in the chat, the
         chat is tainted. From then on every network command is a question,
         for you, or for auto-yes if you turned it on.</li>

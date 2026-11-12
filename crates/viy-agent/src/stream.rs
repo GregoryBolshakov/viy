@@ -161,6 +161,76 @@ impl Reply {
     }
 }
 
+fn structured_action(text: &str) -> Result<(String, Vec<ToolCall>), String> {
+    let action: Value =
+        serde_json::from_str(text).map_err(|error| format!("invalid JSON: {error}"))?;
+    match action["kind"].as_str() {
+        Some("final") => {
+            let content = action["content"]
+                .as_str()
+                .ok_or_else(|| "final action has no string content".to_string())?;
+            Ok((content.to_string(), Vec::new()))
+        }
+        Some("tool_calls") => {
+            let calls = action["calls"]
+                .as_array()
+                .filter(|calls| !calls.is_empty())
+                .ok_or_else(|| "tool_calls action has no calls".to_string())?;
+            let mut out = Vec::with_capacity(calls.len());
+            for call in calls {
+                let name = call["name"]
+                    .as_str()
+                    .filter(|name| !name.is_empty())
+                    .ok_or_else(|| "tool call has no name".to_string())?;
+                let arguments = call["arguments"]
+                    .as_object()
+                    .ok_or_else(|| format!("tool call {name:?} arguments are not an object"))?;
+                out.push(ToolCall {
+                    id: String::new(),
+                    name: name.to_string(),
+                    arguments: serde_json::to_string(arguments).unwrap_or_else(|_| "{}".into()),
+                });
+            }
+            Ok((String::new(), out))
+        }
+        Some(kind) => Err(format!("unknown action kind {kind:?}")),
+        None => Err("action has no kind".into()),
+    }
+}
+
+fn finish_reply(
+    reply: Reply,
+    answer: &mut String,
+    structured: bool,
+    sink: &Sink<'_>,
+) -> Option<Round> {
+    let mut round = reply.finish(answer);
+    if !structured {
+        return Some(round);
+    }
+    let (text, calls) = match structured_action(&round.text) {
+        Ok(action) => action,
+        Err(error) => {
+            answer.clear();
+            sink.notice(
+                NoticeLevel::Error,
+                "invalid_structured_output",
+                format!("invalid structured model response: {error}"),
+            );
+            return None;
+        }
+    };
+    answer.clone_from(&text);
+    round.text = text;
+    round.tool_calls = calls;
+    if !round.text.is_empty() {
+        (sink.emit)(EventMsg::AgentMessageContentDelta(DeltaEvent {
+            delta: round.text.clone(),
+        }));
+    }
+    Some(round)
+}
+
 fn nonempty(value: &Value) -> Option<&str> {
     value.as_str().filter(|s| !s.is_empty())
 }
@@ -202,6 +272,7 @@ pub async fn stream_once(
     sink: &Sink<'_>,
     answer: &mut String,
 ) -> Option<Round> {
+    let structured = body.get("structured_outputs").is_some();
     answer.clear();
     let request = endpoint
         .request(Method::POST, "/v1/chat/completions")
@@ -251,7 +322,11 @@ pub async fn stream_once(
                 "VLLM_API_KEY in .env does not match the running server. Restart it with viy \
                  down && viy up",
             )
-        } else if status == 400 && text.to_lowercase().contains("tool") && endpoint.is_vllm {
+        } else if status == 400
+            && body.get("tools").is_some()
+            && text.to_lowercase().contains("tool")
+            && endpoint.is_vllm
+        {
             Some(
                 "The pod was launched without --tool-call-parser. Recreate it (viy down && viy \
                  up) or use /search off",
@@ -285,35 +360,49 @@ pub async fn stream_once(
                         "Check the pod and the tunnel: viy status",
                     );
                 }
+                if structured {
+                    answer.clear();
+                }
                 return None;
             }
         };
         pending.extend(chunk);
         while let Some(end) = pending.iter().position(|b| *b == b'\n') {
             let line: Vec<u8> = pending.drain(..=end).collect();
-            if take_line(&mut reply, &line, sink, answer) {
-                return Some(reply.finish(answer));
+            if take_line(&mut reply, &line, sink, answer, !structured) {
+                return finish_reply(reply, answer, structured, sink);
             }
         }
     }
     if !pending.is_empty() {
-        take_line(&mut reply, &pending, sink, answer);
+        take_line(&mut reply, &pending, sink, answer, !structured);
     }
-    Some(reply.finish(answer))
+    finish_reply(reply, answer, structured, sink)
 }
 
 /// Feeds one raw line to `reply`, showing what it carried; true at `[DONE]`.
-fn take_line(reply: &mut Reply, line: &[u8], sink: &Sink<'_>, answer: &mut String) -> bool {
+fn take_line(
+    reply: &mut Reply,
+    line: &[u8],
+    sink: &Sink<'_>,
+    answer: &mut String,
+    show_content: bool,
+) -> bool {
     let line = String::from_utf8_lossy(line);
     let line = line.trim_end_matches(['\n', '\r']);
     if let Some(pieces) = reply.line(line, answer) {
         // Streaming keeps the pod alive (viy reap).
         (sink.touch)();
         for piece in pieces {
-            (sink.emit)(match piece {
-                Piece::Reasoning(delta) => EventMsg::ReasoningContentDelta(DeltaEvent { delta }),
-                Piece::Content(delta) => EventMsg::AgentMessageContentDelta(DeltaEvent { delta }),
-            });
+            match piece {
+                Piece::Reasoning(delta) => {
+                    (sink.emit)(EventMsg::ReasoningContentDelta(DeltaEvent { delta }));
+                }
+                Piece::Content(delta) if show_content => {
+                    (sink.emit)(EventMsg::AgentMessageContentDelta(DeltaEvent { delta }));
+                }
+                Piece::Content(_) => {}
+            }
         }
     }
     reply.done

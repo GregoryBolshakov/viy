@@ -279,3 +279,16 @@ async fn a_connection_idle_past_pool_idle_is_not_reused() {
     let second = send(&http, Request::new(Method::GET, url)).await;
     assert!(second.is_ok(), "{second:?}");
 }
+
+#[test]
+fn the_provider_marker_is_one_plain_token_that_names_nothing() {
+    let marker = user_agent::PROVIDER_API;
+    assert!(!marker.is_empty());
+    assert!(
+        marker.chars().all(|c| c.is_ascii_alphanumeric()),
+        "{marker}"
+    );
+    for name in ["viy", "rpctl", "python"] {
+        assert!(!marker.to_lowercase().contains(name), "{marker}");
+    }
+}

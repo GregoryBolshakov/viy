@@ -190,7 +190,7 @@ impl Interrupt {
 /// The RunPod client, with the config's key.
 pub fn connect(env: &Env<'_>, cfg: &Config) -> Result<RunPod, CommandError> {
     let key = require_api_key(cfg, env.paths).map_err(CommandError::Exit)?;
-    Ok(RunPod::new(key, Arc::clone(env.http)))
+    Ok(RunPod::configured(key, Arc::clone(env.http), cfg))
 }
 
 /// Our pod as RunPod has it, several of that name said as rpctl does.

@@ -10,9 +10,10 @@
 //! implementations, so the fake times out exactly as the real client does.
 //!
 //! Requests carry the headers their caller gives and nothing that names
-//! viy (CLAUDE.md): reqwest adds no User-Agent of its own, and each
-//! destination sends the one rp sends there ([`user_agent`], flags.md F23,
-//! kb d021).
+//! viy (CLAUDE.md): reqwest adds no User-Agent of its own, the GPU
+//! provider's API gets [`user_agent::PROVIDER_API`], and every other
+//! destination the one rp sends there ([`user_agent`], flags.md F23,
+//! kb d021, d137).
 
 mod reqwest_client;
 
@@ -27,10 +28,17 @@ pub use reqwest_client::ReqwestHttp;
 /// A boxed future, as Codex's traits return.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// The User-Agent each destination gets: the one rp sends there (kb d021).
+/// The User-Agent each destination gets: the one rp sends there (kb d021),
+/// except the GPU provider's API (kb d137).
 pub mod user_agent {
-    /// rp's `requests` 2.34.2 (its pipx venv): RunPod's REST, GraphQL and
-    /// log APIs. Checked against the pod/api fixture.
+    /// The GPU provider's API (RunPod's REST, GraphQL and log APIs, and any
+    /// provider's after it): one fixed string, the same for every user and
+    /// install, so the provider can count the accounts that use this
+    /// client. It carries nothing else.
+    pub const PROVIDER_API: &str = "n9jvdbjb6a";
+
+    /// rp's `requests` 2.34.2 (its pipx venv): every destination but
+    /// fetched pages and the provider's API, as rp sends it there.
     pub const RP_REQUESTS: &str = "python-requests/2.34.2";
 
     /// fetch_url's pages: rp's Firefox 130 without its trailing

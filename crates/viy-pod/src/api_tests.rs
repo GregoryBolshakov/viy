@@ -138,6 +138,11 @@ fn check_request(name: &str, sent: &Request, rp_sent: &Value) {
             assert_eq!(value, &length.to_string(), "{name}");
             continue;
         }
+        if header == "User-Agent" {
+            // rp's is python-requests'; viy's is the provider marker (kb d137).
+            assert_eq!(value, viy_http::user_agent::PROVIDER_API, "{name}");
+            continue;
+        }
         assert_eq!(rp_headers[header], value.as_str(), "{name}: {header}");
         assert!(!value.to_lowercase().contains("viy"), "{name}: {header}");
     }
@@ -419,4 +424,24 @@ fn log_entries_sort_by_rpctls_key() {
         "2026-07-27T02:27:52.771976788"
     );
     assert_eq!(entry("1").sort_key(), "1");
+}
+
+#[tokio::test]
+async fn client_tag_off_sends_rps_user_agent() {
+    for (value, want) in [
+        (None, user_agent::PROVIDER_API),
+        (Some("1"), user_agent::PROVIDER_API),
+        (Some("0"), user_agent::RP_REQUESTS),
+        (Some("no"), user_agent::RP_REQUESTS),
+    ] {
+        let mut cfg = viy_config::Config::defaults();
+        if let Some(value) = value {
+            cfg.set("CLIENT_TAG", value);
+        }
+        let http = Arc::new(FakeHttp::new([Reply::answer(200, "null")]));
+        let rp = RunPod::configured(API_KEY, http.clone(), &cfg);
+        assert_eq!(rp.get_pod("pod111").await, Ok(None));
+        let sent = http.sent();
+        assert_eq!(sent[0].header_value("User-Agent"), Some(want), "{value:?}");
+    }
 }

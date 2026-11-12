@@ -240,6 +240,14 @@ pub fn tunnel_enabled(cfg: &Config) -> bool {
     )
 }
 
+/// Whether the provider's API gets the marker User-Agent (kb d137).
+pub fn client_tag(cfg: &Config) -> bool {
+    !matches!(
+        cfg.get("CLIENT_TAG").unwrap_or("").trim(),
+        "" | "0" | "false" | "no"
+    )
+}
+
 /// The local end of the tunnel: TUNNEL_LOCAL_PORT, else VLLM_PORT.
 pub fn tunnel_local_port(cfg: &Config) -> &str {
     match cfg.get("TUNNEL_LOCAL_PORT").unwrap_or("").trim() {

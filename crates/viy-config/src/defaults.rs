@@ -117,6 +117,7 @@ pub const DEFAULTS: &[(&str, &str)] = &[
     ("CLOUD_TYPE", "SECURE"),
     ("CONTAINER_DISK_GB", "60"),
     ("POD_NAME", "qwen38-abliterated"),
+    ("CLIENT_TAG", "1"),
     // The stock Docker Hub image. RunPod hosts pull it in ~1-2 min; the
     // ghcr.io sshd variant (docker/Dockerfile) shares every base layer, but a
     // host without them pulls all 9.1GB from ghcr.io, measured at 10+ minutes

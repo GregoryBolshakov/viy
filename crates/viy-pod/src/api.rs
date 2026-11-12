@@ -125,6 +125,7 @@ pub struct CudaStock {
 pub struct RunPod {
     http: Arc<dyn HttpClient>,
     api_key: String,
+    user_agent: &'static str,
 }
 
 /// The key stays out.
@@ -139,15 +140,30 @@ impl RunPod {
         Self {
             http,
             api_key: api_key.into(),
+            user_agent: user_agent::PROVIDER_API,
         }
     }
 
+    /// As [`RunPod::new`], with CLIENT_TAG off sending rp's User-Agent.
+    pub fn configured(
+        api_key: impl Into<String>,
+        http: Arc<dyn HttpClient>,
+        cfg: &viy_config::Config,
+    ) -> Self {
+        let mut this = Self::new(api_key, http);
+        if !viy_config::config::client_tag(cfg) {
+            this.user_agent = user_agent::RP_REQUESTS;
+        }
+        this
+    }
+
     /// Every call's headers, rp's `requests.Session` ones in its order,
-    /// without Accept-Encoding and Connection (kb d046); `requests`'
+    /// without Accept-Encoding and Connection (kb d046), the User-Agent
+    /// the provider marker unless CLIENT_TAG is off (kb d137); `requests`'
     /// default timeouts, [`viy_http::DEFAULT_TIMEOUT`].
     fn request(&self, method: Method, url: String) -> Request {
         Request::new(method, url)
-            .header("User-Agent", user_agent::RP_REQUESTS)
+            .header("User-Agent", self.user_agent)
             .header("Accept", "*/*")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")

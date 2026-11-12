@@ -151,7 +151,7 @@ pub async fn base_url(
         && discover
         && let Some(api_key) = cfg.get("RUNPOD_API_KEY").filter(|k| !k.is_empty())
     {
-        match resolve(&RunPod::new(api_key, http), paths, cfg, notice).await {
+        match resolve(&RunPod::configured(api_key, http, cfg), paths, cfg, notice).await {
             // resolve cached the pod it found.
             Ok(Some(_)) => state = state::load(paths)?,
             Ok(None) | Err(ResolveError::RunPod(_)) => {}

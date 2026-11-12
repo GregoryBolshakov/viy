@@ -114,20 +114,21 @@ fn the_layers_merge_as_rpctl_merges_them() {
             }
         }
         for marker in [".rpctl", ".viy"] {
-            // viy's own key, which rp's config lacks.
+            // viy's own keys, which rp's config lacks.
             let mut ours = as_map(&replay(case, marker));
-            ours.retain(|(k, _)| k != "CHAT_HEADER");
+            ours.retain(|(k, _)| k != "CHAT_HEADER" && k != "CLIENT_TAG");
             assert_eq!(ours, expected, "{name} under {marker}");
         }
     }
 }
 
 /// rpctl's 111 keys but CHAT_AUTOSAVE: viy always saves chats, as Codex
-/// (kb d083); and viy's own CHAT_HEADER, the chat's header art.
+/// (kb d083); and viy's own CHAT_HEADER, the chat's header art, and
+/// CLIENT_TAG (kb d137).
 #[test]
 fn defaults_are_rpctls_keys_but_chat_autosave() {
-    assert_eq!(DEFAULTS.len(), 111);
-    assert_eq!(Config::defaults().iter().count(), 111);
+    assert_eq!(DEFAULTS.len(), 112);
+    assert_eq!(Config::defaults().iter().count(), 112);
     assert!(Config::defaults().get("CHAT_AUTOSAVE").is_none());
     assert_eq!(Config::defaults().get("CHAT_HEADER"), Some("1"));
 }

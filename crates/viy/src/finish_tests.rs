@@ -96,6 +96,17 @@ fn rp_machine() -> Rp {
     tool(&rp_tools, "keep");
     tool(&paths.data_dir().join("toolbox"), "keep");
 
+    // The model's repositories, as gocryptfs leaves them: ciphertext names,
+    // a read-only config.
+    let cipher = paths.rpctl_data_dir().join("sandbox-git");
+    write(&cipher.join("gocryptfs.diriv"), "iv");
+    write(&cipher.join("Zm9v/gocryptfs.diriv"), "iv2");
+    write(&cipher.join("Zm9v/YmFy"), "sealed");
+    let conf = cipher.join("gocryptfs.conf");
+    write(&conf, "{\"Version\": 2}");
+    fs::set_permissions(&conf, fs::Permissions::from_mode(0o400)).unwrap();
+    fs::set_permissions(&cipher, fs::Permissions::from_mode(0o700)).unwrap();
+
     let rp_alpha = alpha.join(RPCTL_MARKER);
     write(&rp_alpha.join("history"), "ls\nls\n\ngit status\n");
     tool(&rp_alpha.join("toolbox"), "ptool");
@@ -190,6 +201,11 @@ async fn the_dry_run_says_what_it_would_do_and_changes_nothing() {
                 "toolbox: would copy grab to {} (there already, kept: keep)",
                 p.data_dir().join("toolbox").display()
             ),
+            format!(
+                "sandbox git: would copy the model's encrypted repositories from {} to {}",
+                p.rpctl_data_dir().join("sandbox-git").display(),
+                p.data_dir().join("sandbox-git").display()
+            ),
             format!("{}: not imported: viy marks no project in the home folder or above it", p.home.display()),
             format!("{}: would import 2 history entries into .viy/history", rp.alpha.display()),
             format!("{}: would copy tools ptool to .viy/toolbox", rp.alpha.display()),
@@ -233,6 +249,11 @@ async fn the_run_brings_everything_over_and_a_second_finds_nothing_to_do() {
             format!(
                 "toolbox: copied grab to {} (there already, kept: keep)",
                 p.data_dir().join("toolbox").display()
+            ),
+            format!(
+                "sandbox git: copied the model's encrypted repositories from {} to {}",
+                p.rpctl_data_dir().join("sandbox-git").display(),
+                p.data_dir().join("sandbox-git").display()
             ),
             format!(
                 "{}: not imported: viy marks no project in the home folder or above it",
@@ -337,6 +358,23 @@ async fn the_run_brings_everything_over_and_a_second_finds_nothing_to_do() {
         0o755
     );
 
+    // The model's repositories: the same ciphertext, modes kept, where a
+    // chat looks for them; rp's left as they were.
+    let places = viy_tools::sandboxgit::Places::new(&p.data_dir(), None, &p.state_dir());
+    assert!(places.initialized());
+    let rp_cipher = p.rpctl_data_dir().join("sandbox-git");
+    let rel = |root: &Path| -> BTreeMap<PathBuf, Vec<u8>> {
+        tree(root)
+            .into_iter()
+            .map(|(k, v)| (k.strip_prefix(root).unwrap().to_path_buf(), v))
+            .collect()
+    };
+    assert_eq!(rel(&places.cipher), rel(&rp_cipher));
+    assert_eq!(rel(&rp_cipher).len(), 5);
+    let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&places.cipher), 0o700);
+    assert_eq!(mode(&places.cipher.join("gocryptfs.conf")), 0o400);
+
     // The histories, in projects marked as a chat marks them; none at home.
     let entries = |root: &Path| {
         viy_term::history::History::load(root.join(".viy/history"))
@@ -398,6 +436,10 @@ async fn the_run_brings_everything_over_and_a_second_finds_nothing_to_do() {
             "sessions: viy has all 3 of rp's chats".to_string(),
             "toolbox: viy has every global tool of rp's (there already, kept: grab, keep)"
                 .to_string(),
+            format!(
+                "sandbox git: viy has its own in {}, kept; rp's not copied",
+                p.data_dir().join("sandbox-git").display()
+            ),
             format!(
                 "{}: not imported: viy marks no project in the home folder or above it",
                 p.home.display()
@@ -606,6 +648,36 @@ async fn with_no_pod_state_yet_viys_folder_is_where_it_goes() {
 }
 
 /// A tool linked into rp's toolbox is copied as a folder.
+#[tokio::test]
+async fn viys_own_sandbox_git_is_kept_and_none_at_rps_is_said() {
+    let rp = rp_machine();
+    let p = &rp.paths;
+    write(
+        &p.data_dir().join("sandbox-git/gocryptfs.conf"),
+        "viy's own",
+    );
+    let (result, lines) = finish(&rp, &FakeExec::default(), &[], true).await;
+    result.unwrap();
+    assert!(lines.contains(&format!(
+        "sandbox git: viy has its own in {}, kept; rp's not copied",
+        p.data_dir().join("sandbox-git").display()
+    )));
+
+    let rp = rp_machine();
+    let p = &rp.paths;
+    fs::remove_file(p.rpctl_data_dir().join("sandbox-git/gocryptfs.conf")).unwrap();
+    let exec = FakeExec::new([
+        Run::stdout(""),
+        Run::stdout(""),
+        Run::stdout(""),
+        Run::stdout(""),
+    ]);
+    let (result, lines) = finish(&rp, &exec, &[], false).await;
+    result.unwrap();
+    assert!(lines.contains(&"sandbox git: rp has none set up".to_string()));
+    assert!(!p.data_dir().join("sandbox-git").exists());
+}
+
 #[tokio::test]
 async fn a_linked_tool_comes_over() {
     let rp = rp_machine();

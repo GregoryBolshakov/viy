@@ -253,7 +253,7 @@ pub enum BootsAction {
 pub struct MigrateArgs {
     #[arg(
         long,
-        help = "the cutover: copy rp's chats, toolbox and input history, move the pod state to viy's, and swap the reap timers"
+        help = "the cutover: copy rp's chats, toolbox, input history and the model's encrypted repositories, move the pod state to viy's, and swap the reap timers"
     )]
     pub finish: bool,
     #[arg(

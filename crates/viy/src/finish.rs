@@ -6,6 +6,10 @@
 //!   viy has (or has archived) is kept. rp's trash is not copied, and the
 //!   listing sidecars are left for viy to rebuild.
 //! - rp's global toolbox, tool by tool, a tool viy has kept.
+//! - rp's encrypted folder of the model's own repositories (kb d128), when
+//!   viy has none: the same tok key opens it, and the repositories are
+//!   named by workspace as viy names them, so the model's branches from rp
+//!   chats are there in viy's. Copied as ciphertext; nothing is decrypted.
 //! - Per project, rp's input history, put before viy's in `.viy/history`,
 //!   and the project's toolbox. The projects are those rp's chats were
 //!   started in and the current one. `.viy/` is made as a chat makes it,
@@ -83,6 +87,7 @@ pub struct Plan {
     /// rp's global tools viy lacks, and those it has.
     tools: Vec<String>,
     tools_kept: Vec<String>,
+    sandbox_git: SandboxGit,
     projects: Vec<ProjectPlan>,
     /// (rp's, viy's) for each pod state file there is to move.
     pod_files: Vec<(PathBuf, PathBuf)>,
@@ -90,6 +95,17 @@ pub struct Plan {
     viy_timer: bool,
     /// Why a run would be refused now.
     blockers: Vec<String>,
+}
+
+/// rp's encrypted repositories for the model, as the plan finds them.
+#[derive(Debug, Default, PartialEq, Eq)]
+enum SandboxGit {
+    /// rp never set them up (no `gocryptfs.conf`).
+    #[default]
+    None,
+    /// viy has a folder of its own, kept.
+    Kept,
+    Copy,
 }
 
 #[derive(Debug)]
@@ -166,6 +182,14 @@ fn plan(m: &Machine<'_>) -> io::Result<Plan> {
         &paths.rpctl_data_dir().join("toolbox"),
         &paths.data_dir().join("toolbox"),
     )?;
+
+    plan.sandbox_git = if !rp_sandbox_git(paths).join("gocryptfs.conf").is_file() {
+        SandboxGit::None
+    } else if viy_sandbox_git(paths).symlink_metadata().is_ok() {
+        SandboxGit::Kept
+    } else {
+        SandboxGit::Copy
+    };
 
     if let Ok(here) = Project::find(m.cwd) {
         roots.insert(here.root().to_path_buf());
@@ -275,6 +299,7 @@ fn describe(m: &Machine<'_>, plan: &Plan) -> Vec<String> {
     let mut lines = Vec::new();
     lines.push(sessions_line(paths, plan, "would copy"));
     lines.push(toolbox_line(paths, plan, "would copy"));
+    lines.push(sandbox_git_line(paths, plan, "would copy"));
     for p in &plan.projects {
         lines.extend(project_lines(p, "would import", "would copy"));
     }
@@ -336,6 +361,21 @@ fn toolbox_line(paths: &Paths, plan: &Plan, verb: &str) -> String {
         plan.tools.join(", "),
         paths.data_dir().join("toolbox").display()
     )
+}
+
+fn sandbox_git_line(paths: &Paths, plan: &Plan, verb: &str) -> String {
+    match plan.sandbox_git {
+        SandboxGit::None => "sandbox git: rp has none set up".into(),
+        SandboxGit::Kept => format!(
+            "sandbox git: viy has its own in {}, kept; rp's not copied",
+            viy_sandbox_git(paths).display()
+        ),
+        SandboxGit::Copy => format!(
+            "sandbox git: {verb} the model's encrypted repositories from {} to {}",
+            rp_sandbox_git(paths).display(),
+            viy_sandbox_git(paths).display()
+        ),
+    }
 }
 
 fn project_lines(p: &ProjectPlan, import: &str, copy: &str) -> Vec<String> {
@@ -403,6 +443,14 @@ async fn apply(m: &Machine<'_>, mut plan: Plan, say: &mut dyn FnMut(String)) -> 
         copy_tree_new(&rp_tools.join(name), &viy_tools.join(name)).map_err(text)?;
     }
     say(toolbox_line(paths, &plan, "copied"));
+
+    if plan.sandbox_git == SandboxGit::Copy
+        && !copy_tree_new(&rp_sandbox_git(paths), &viy_sandbox_git(paths)).map_err(text)?
+    {
+        // viy set up its own meanwhile.
+        plan.sandbox_git = SandboxGit::Kept;
+    }
+    say(sandbox_git_line(paths, &plan, "copied"));
 
     for p in &plan.projects {
         if p.skipped.is_none() && (p.history.is_some() || !p.tools.is_empty()) {
@@ -544,6 +592,17 @@ fn already_there(dst: &Path) -> String {
 /// rp's sessions folder.
 fn rp_sessions_dir(paths: &Paths) -> PathBuf {
     paths.rpctl_data_dir().join("sessions")
+}
+
+/// rp's encrypted folder of the model's repositories (rpctl sandboxgit.py
+/// `CIPHER_DIR`).
+fn rp_sandbox_git(paths: &Paths) -> PathBuf {
+    paths.rpctl_data_dir().join("sandbox-git")
+}
+
+/// viy's, where a chat looks for it.
+fn viy_sandbox_git(paths: &Paths) -> PathBuf {
+    viy_tools::sandboxgit::Places::new(&paths.data_dir(), None, &paths.state_dir()).cipher
 }
 
 /// viy's archived chats.

@@ -462,7 +462,7 @@ async fn up_boots_in_the_background_and_asks_the_failover_question_in_a_box() {
         question
             .question
             .prompt
-            .contains("Try the backup volume in US-MO-1?"),
+            .contains("Try the backup volume in US-MO-1"),
         "{question:?}"
     );
     // While it waits, the chat is usable, and the pod is booting.

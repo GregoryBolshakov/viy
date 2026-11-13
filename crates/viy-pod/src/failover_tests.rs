@@ -46,8 +46,13 @@ fn as_viy(text: &str) -> String {
         })
 }
 
+/// The case's config. GPU_PREFERRED and BACKUP_VOLUME_TYPE are viy's own
+/// (kb d138, d139): off unless the case sets them, so that rpctl's cases
+/// get the requests rpctl sends.
 fn config(case: &Value) -> Config {
     let mut cfg = Config::defaults();
+    cfg.set("GPU_PREFERRED", "");
+    cfg.set("BACKUP_VOLUME_TYPE", "");
     for (k, v) in case["cfg"].as_object().into_iter().flatten() {
         cfg.set(k, v.as_str().unwrap_or_default());
     }
@@ -155,6 +160,24 @@ impl Replayed {
             .collect()
     }
 
+    /// The pod requests, as (region, the first type asked for, how many).
+    fn asks(&self) -> Vec<(String, String, usize)> {
+        self.http
+            .sent()
+            .iter()
+            .filter(|r| r.method == Method::POST && r.url.ends_with("/v1/pods"))
+            .map(|r| {
+                let body: Value = serde_json::from_slice(r.body.as_deref().unwrap()).unwrap();
+                let gpus = body["gpuTypeIds"].as_array().unwrap();
+                (
+                    body["dataCenterIds"][0].as_str().unwrap().into(),
+                    gpus[0].as_str().unwrap().into(),
+                    gpus.len(),
+                )
+            })
+            .collect()
+    }
+
     /// The outcome's value, as a list.
     fn ok(&self) -> Vec<Value> {
         self.outcome["ok"].as_array().cloned().unwrap_or_default()
@@ -170,6 +193,50 @@ impl Replayed {
 
 /// Runs `case` in viy and checks it against what rpctl did.
 async fn replay(case: &Value) -> Replayed {
+    let name = case["name"].as_str().unwrap_or_default().to_string();
+    let replayed = run_case(case).await;
+    let sent: Vec<Value> = replayed.http.sent().iter().map(shown_request).collect();
+    assert_eq!(json!(sent), case["sent"], "{name}: requests");
+    let viy = |v: &Value| -> Value { serde_json::from_str(&as_viy(&v.to_string())).unwrap() };
+    assert_eq!(
+        json!(replayed.asked),
+        viy(&case["asked"]),
+        "{name}: questions"
+    );
+    assert_eq!(json!(replayed.said), viy(&case["said"]), "{name}: notices");
+    for key in ["ok", "exit", "interrupted", "error"] {
+        if !case[key].is_null() || !replayed.outcome[key].is_null() {
+            assert_eq!(replayed.outcome[key], case[key], "{name}: {key}");
+        }
+    }
+    if let Some(stdout) = case["stdout"].as_str() {
+        let stdout = as_viy(stdout);
+        assert_eq!(
+            replayed.outcome["stdout"].as_str(),
+            Some(stdout.as_str()),
+            "{name}"
+        );
+    }
+    assert_eq!(
+        replayed.backups(),
+        case["backups_after"],
+        "{name}: backups.json"
+    );
+    assert_eq!(
+        rows(&replayed.paths.stock_file()),
+        case["stock_after"],
+        "{name}: stock.jsonl"
+    );
+    assert_eq!(
+        rows(&replayed.paths.up_failures_file()),
+        case["failures_after"],
+        "{name}: up_failures.jsonl"
+    );
+    replayed
+}
+
+/// Runs `case` in viy: its replies played back, its answers given.
+async fn run_case(case: &Value) -> Replayed {
     let name = case["name"].as_str().unwrap_or_default().to_string();
     let dir = ScratchDir::new("failover").unwrap();
     let paths = Paths::under(dir.path());
@@ -383,52 +450,14 @@ async fn replay(case: &Value) -> Replayed {
     };
     pressing.abort();
 
-    let replayed = Replayed {
+    Replayed {
         _dir: dir,
         paths,
         http: fake,
         said: said.lock().unwrap().clone(),
         asked: asked.lock().unwrap().clone(),
         outcome,
-    };
-    let sent: Vec<Value> = replayed.http.sent().iter().map(shown_request).collect();
-    assert_eq!(json!(sent), case["sent"], "{name}: requests");
-    let viy = |v: &Value| -> Value { serde_json::from_str(&as_viy(&v.to_string())).unwrap() };
-    assert_eq!(
-        json!(replayed.asked),
-        viy(&case["asked"]),
-        "{name}: questions"
-    );
-    assert_eq!(json!(replayed.said), viy(&case["said"]), "{name}: notices");
-    for key in ["ok", "exit", "interrupted", "error"] {
-        if !case[key].is_null() || !replayed.outcome[key].is_null() {
-            assert_eq!(replayed.outcome[key], case[key], "{name}: {key}");
-        }
     }
-    if let Some(stdout) = case["stdout"].as_str() {
-        let stdout = as_viy(stdout);
-        assert_eq!(
-            replayed.outcome["stdout"].as_str(),
-            Some(stdout.as_str()),
-            "{name}"
-        );
-    }
-    assert_eq!(
-        replayed.backups(),
-        case["backups_after"],
-        "{name}: backups.json"
-    );
-    assert_eq!(
-        rows(&replayed.paths.stock_file()),
-        case["stock_after"],
-        "{name}: stock.jsonl"
-    );
-    assert_eq!(
-        rows(&replayed.paths.up_failures_file()),
-        case["failures_after"],
-        "{name}: up_failures.jsonl"
-    );
-    replayed
 }
 
 /// Whether the case has someone to answer (`answers` not null).
@@ -739,7 +768,8 @@ async fn without_a_cuda_filter_no_stock_is_asked() {
     cfg.set("CUDA_VERSIONS", "");
     let http = Arc::new(FakeHttp::new([]));
     let rp = RunPod::new(API_KEY, http.clone());
-    assert!(!regions::any_cuda_is_safe(&rp, &cfg, "EUR-IS-1").await);
+    let gpus = regions::stock_types(&cfg);
+    assert!(!regions::any_cuda_is_safe(&rp, &cfg, "EUR-IS-1", &gpus).await);
     assert!(http.sent().is_empty());
 }
 
@@ -881,4 +911,225 @@ fn a_region_rejection_of_the_backup_itself_still_stops() {
     assert!(!regions::is_capacity_error(&rejected));
     let full = RunPodError::new("There are no instances currently available", Some(500));
     assert!(!regions::is_region_rejected(&full));
+}
+
+// ------------------------------------------- GPU_PREFERRED (kb d138)
+
+const FULL: &str = r#"{"error": "create pod: There are no instances currently available"}"#;
+const VOLUMES: &str = r#"[{"id": "prim", "name": "w", "size": 100, "dataCenterId": "EUR-IS-1"}, {"id": "bk", "name": "w-backup", "size": 100, "dataCenterId": "US-MO-1"}]"#;
+const ONLY_PRIMARY: &str =
+    r#"[{"id": "prim", "name": "w", "size": 100, "dataCenterId": "EUR-IS-1"}]"#;
+const POD: &str = r#"{"id": "pod-1", "costPerHr": 1.89}"#;
+const A100: &str = "NVIDIA A100 80GB PCIe";
+const RTX: &str = "NVIDIA RTX PRO 6000 Blackwell Server Edition";
+
+/// A `viy up` with the default GPU_PREFERRED against these replies, the
+/// pod expected in `region` (ignored when none is created).
+async fn preferring(replies: &[(u16, &str)], answers: Value, region: &str) -> Replayed {
+    preferring_with(replies, answers, region, "1").await
+}
+
+async fn preferring_with(
+    replies: &[(u16, &str)],
+    answers: Value,
+    region: &str,
+    failover: &str,
+) -> Replayed {
+    let replies: Vec<Value> = replies
+        .iter()
+        .map(|(status, body)| json!({"status": status, "body": body}))
+        .collect();
+    let mut case = json!({
+        "name": "preferred",
+        "answers": answers,
+        "cfg": {
+            "NETWORK_VOLUME_NAME": "w",
+            "NETWORK_VOLUME_ID": "prim",
+            "FAILOVER_RETRY_MIN": "1",
+            "POD_NAME": "qwen-pod",
+            "CUDA_VERSIONS": "",
+            "VLLM_API_KEY": "sk-SYNTHETICENDPOINT0000",
+            "RUNPOD_API_KEY": API_KEY,
+        },
+        "replies": replies,
+        "region_after": region,
+        "answer_wait": 0.0,
+    });
+    let preferred = Config::defaults().get("GPU_PREFERRED").unwrap().to_string();
+    case["cfg"]["GPU_PREFERRED"] = json!(preferred);
+    case["cfg"]["FAILOVER"] = json!(failover);
+    run_case(&case).await
+}
+
+fn ask(region: &str, first: &str, types: usize) -> (String, String, usize) {
+    (region.into(), first.into(), types)
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_first_request_asks_for_the_preferred_types_only() {
+    let r = preferring(&[(200, POD)], json!([]), "EUR-IS-1").await;
+    assert_eq!(r.asks(), [ask("EUR-IS-1", A100, 2)]);
+    assert_eq!(r.ok()[1..], [json!("prim"), json!(false)]);
+    assert!(r.asked.is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn preferred_types_in_both_regions_come_before_the_others_in_either() {
+    let replies = [
+        (500, FULL),
+        (200, VOLUMES),
+        (500, FULL),
+        (500, FULL),
+        (200, POD),
+    ];
+    let r = preferring(&replies, json!([true]), "US-MO-1").await;
+    assert_eq!(
+        r.asks(),
+        [
+            ask("EUR-IS-1", A100, 2),
+            ask("US-MO-1", A100, 2),
+            ask("EUR-IS-1", RTX, 5),
+            ask("US-MO-1", RTX, 5),
+        ]
+    );
+    assert_eq!(
+        json!(r.asked),
+        json!([[
+            "EUR-IS-1 has no preferred GPU type free. Try the backup volume in US-MO-1 before \
+             the other types?",
+            true
+        ]])
+    );
+    let warned: Vec<&str> = r
+        .said
+        .iter()
+        .filter(|s| s[0] == "warn")
+        .filter_map(|s| s[1].as_str())
+        .collect();
+    assert_eq!(
+        warned,
+        [
+            "  EUR-IS-1 (primary, preferred types): no preferred GPU type free",
+            "  US-MO-1 (backup, preferred types): no preferred GPU type free",
+            "  EUR-IS-1 (primary, other types): no other GPU type free",
+        ]
+    );
+    assert_eq!(r.ok()[1..], [json!("bk"), json!(false)]);
+    assert!(r.backups().get("bk").is_some());
+    // Each refusal is logged with the types it asked for.
+    let logged = rows(&r.paths.up_failures_file());
+    assert_eq!(logged[1]["role"], "backup, preferred types");
+    assert_eq!(logged[1]["gpu_types"].as_array().unwrap().len(), 2);
+    assert_eq!(logged[2]["role"], "primary, other types");
+    assert_eq!(logged[2]["gpu_types"][0], RTX);
+}
+
+#[tokio::test(start_paused = true)]
+async fn another_type_in_the_primary_beats_one_in_the_backup() {
+    let replies = [(500, FULL), (200, VOLUMES), (500, FULL), (200, POD)];
+    let r = preferring(&replies, json!([true]), "EUR-IS-1").await;
+    assert_eq!(r.asks().last(), Some(&ask("EUR-IS-1", RTX, 5)));
+    assert_eq!(r.ok()[1..], [json!("prim"), json!(false)]);
+    assert!(r.said.contains(&json!([
+        "ok",
+        "  pod created in EUR-IS-1 on the primary volume after all"
+    ])));
+    assert!(r.volume_calls().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn no_to_the_backup_still_asks_the_primary_for_the_other_types() {
+    let replies = [(500, FULL), (200, VOLUMES), (200, POD)];
+    let r = preferring(&replies, json!([false]), "EUR-IS-1").await;
+    assert_eq!(
+        r.asks(),
+        [ask("EUR-IS-1", A100, 2), ask("EUR-IS-1", RTX, 5)]
+    );
+    assert_eq!(r.ok()[1], "prim");
+
+    let replies = [(500, FULL), (200, VOLUMES), (500, FULL)];
+    let r = preferring(&replies, json!([false]), "").await;
+    assert_eq!(r.asks().len(), 2);
+    assert_eq!(r.outcome["exit"], 1);
+    assert!(r.said.contains(&json!([
+        "dim",
+        "Not trying the backup in US-MO-1. No pod was created; nothing is billing."
+    ])));
+}
+
+#[tokio::test(start_paused = true)]
+async fn without_a_backup_the_other_types_follow_in_the_primary() {
+    let replies = [(500, FULL), (200, ONLY_PRIMARY), (200, POD)];
+    let r = preferring(&replies, json!([]), "EUR-IS-1").await;
+    assert_eq!(
+        r.asks(),
+        [ask("EUR-IS-1", A100, 2), ask("EUR-IS-1", RTX, 5)]
+    );
+    assert!(r.asked.is_empty());
+    assert_eq!(r.ok()[1], "prim");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refusal_that_is_not_about_capacity_ends_the_search() {
+    let replies = [
+        (500, FULL),
+        (200, VOLUMES),
+        (500, FULL),
+        (400, r#"{"error": "bad"}"#),
+    ];
+    let r = preferring(&replies, json!([true]), "").await;
+    assert_eq!(r.asks().len(), 3);
+    assert_eq!(r.outcome["exit"], 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn failover_off_asks_the_primary_for_both_and_nothing_else() {
+    let r = preferring_with(&[(500, FULL), (200, POD)], json!([]), "EUR-IS-1", "0").await;
+    assert_eq!(
+        r.asks(),
+        [ask("EUR-IS-1", A100, 2), ask("EUR-IS-1", RTX, 5)]
+    );
+    assert_eq!(r.calls().len(), 2);
+    assert_eq!(r.ok()[1], "prim");
+
+    let r = preferring_with(&[(500, FULL), (500, FULL)], json!([]), "", "0").await;
+    assert_eq!(r.calls().len(), 2);
+    assert_eq!(r.outcome["exit"], 1);
+}
+
+// ------------------------------------------- BACKUP_VOLUME_TYPE (kb d139)
+
+#[tokio::test(start_paused = true)]
+async fn a_region_without_the_backups_storage_tier_is_dropped_and_the_rest_go_on() {
+    let fixture = fixtures::load("pod/failover").unwrap();
+    let mut case = fixture
+        .case("refused_candidate_loses_its_volume_the_next_is_tried")
+        .unwrap()
+        .clone();
+    case["cfg"]["BACKUP_VOLUME_TYPE"] = json!("STANDARD");
+    // CA-MTL-3 has no standard storage: no volume, no pod request, nothing
+    // to delete there.
+    let replies = case["replies"].as_array_mut().unwrap();
+    replies[6] = json!({
+        "status": 400,
+        "body": r#"{"detail":"Standard storage is not available in data center \"CA-MTL-3\".","status":400,"title":"Bad Request"}"#,
+    });
+    replies.remove(7);
+    replies.pop();
+    let r = run_case(&case).await;
+    assert_eq!(r.outcome["ok"][0]["id"], "pod-EU-RO-1");
+    assert_eq!(r.outcome["ok"][1], "new2");
+    assert!(r.said.contains(&json!([
+        "warn",
+        "  CA-MTL-3: no STANDARD storage for a volume there; dropped"
+    ])));
+    assert_eq!(
+        r.calls()
+            .into_iter()
+            .filter(|c| c.contains("volumes") && !c.starts_with("GET"))
+            .collect::<Vec<_>>(),
+        ["POST /v2/network-volumes", "POST /v2/network-volumes"]
+    );
+    assert_eq!(r.creates().last().unwrap().0, "EU-RO-1");
+    assert!(r.backups().get("new2").is_some());
 }

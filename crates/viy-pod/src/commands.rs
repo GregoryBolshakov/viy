@@ -603,7 +603,8 @@ pub async fn ensure_volume(
         ))
     })?;
     let volume = rp
-        .create_volume(&name, size_gb, &region)
+        // The primary takes its region's default tier, as rp.
+        .create_volume(&name, size_gb, &region, None)
         .await?
         .unwrap_or(Value::Null);
     let id = text(&volume, "id")

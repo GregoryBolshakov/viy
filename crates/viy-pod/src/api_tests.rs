@@ -57,7 +57,7 @@ async fn call(rp: &RunPod, call: &[Value]) -> Result<Value, RunPodError> {
         "list_volumes" => json!(rp.list_volumes().await?),
         "get_volume" => opt(rp.get_volume(arg(1)).await?),
         "create_volume" => opt(rp
-            .create_volume(arg(1), call[2].as_u64().unwrap(), arg(3))
+            .create_volume(arg(1), call[2].as_u64().unwrap(), arg(3), None)
             .await?),
         "delete_volume" => unit(rp.delete_volume(arg(1)).await?),
         "data_centers" => json!(rp.data_centers().await?),
@@ -444,4 +444,35 @@ async fn client_tag_off_sends_rps_user_agent() {
         let sent = http.sent();
         assert_eq!(sent[0].header_value("User-Agent"), Some(want), "{value:?}");
     }
+}
+
+/// RunPod's answers of 2026-07-30 (kb d139).
+#[tokio::test]
+async fn a_volume_with_a_tier_is_made_through_v2_and_reads_as_v1s() {
+    let made = r#"{"dataCenter":"EU-RO-1","id":"vol9","name":"w-backup","size":100,"tags":[],"type":"STANDARD"}"#;
+    let refused = r#"{"detail":"Standard storage is not available in data center \"AP-IN-1\".","status":400,"title":"Bad Request"}"#;
+    let http = Arc::new(FakeHttp::new([
+        Reply::answer(201, made),
+        Reply::answer(400, refused),
+    ]));
+    let rp = RunPod::new(API_KEY, http.clone());
+    let volume = rp
+        .create_volume("w-backup", 100, "EU-RO-1", Some("STANDARD"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(volume["id"], "vol9");
+    assert_eq!(volume["dataCenterId"], "EU-RO-1");
+    let sent = http.sent();
+    assert_eq!(sent[0].url, "https://api.runpod.io/v2/network-volumes");
+    let body: Value = serde_json::from_slice(sent[0].body.as_deref().unwrap()).unwrap();
+    assert_eq!(
+        body,
+        json!({"name": "w-backup", "size": 100, "dataCenter": "EU-RO-1", "type": "STANDARD"})
+    );
+    let error = rp
+        .create_volume("w-backup", 100, "AP-IN-1", Some("STANDARD"))
+        .await
+        .unwrap_err();
+    assert!(crate::regions::is_tier_unavailable(&error), "{error}");
 }

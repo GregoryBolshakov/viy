@@ -106,6 +106,11 @@ pub const DEFAULTS: &[(&str, &str)] = &[
     ("FAILOVER_RETRY_MIN", "15"),
     // rp reap deletes a backup volume no pod has used for this long; 0 keeps it.
     ("BACKUP_IDLE_DAYS", "30"),
+    // The storage tier of a backup volume viy makes: STANDARD ($0.07/GB a
+    // month), so a region that has only HIGH_PERFORMANCE ($0.14/GB) is not
+    // used for the backup. Empty takes each region's own default tier
+    // (kb d139).
+    ("BACKUP_VOLUME_TYPE", "STANDARD"),
     // Tried in order, so this ordering is the cost policy: cheapest first.
     // Every entry fits the 55.6GB of bf16 weights on one card.
     (
@@ -113,6 +118,13 @@ pub const DEFAULTS: &[(&str, &str)] = &[
         "NVIDIA A100 80GB PCIe,NVIDIA A100-SXM4-80GB,NVIDIA RTX PRO 6000 Blackwell Server Edition,NVIDIA H100 NVL,NVIDIA H100 80GB HBM3,NVIDIA H200,NVIDIA B200",
     ),
     ("GPU_TYPE_PRIORITY", "custom"),
+    // The types of GPU_TYPE_IDS asked for first: the primary region, then
+    // the backup, and only then the other types in the primary, then in the
+    // backup. Empty asks each region once, for every type (kb d138).
+    (
+        "GPU_PREFERRED",
+        "NVIDIA A100 80GB PCIe,NVIDIA A100-SXM4-80GB",
+    ),
     ("GPU_COUNT", "1"),
     ("CLOUD_TYPE", "SECURE"),
     ("CONTAINER_DISK_GB", "60"),

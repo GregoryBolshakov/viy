@@ -39,6 +39,8 @@ use viy_http::user_agent;
 pub const BASE: &str = "https://rest.runpod.io/v1";
 pub const GRAPHQL: &str = "https://api.runpod.io/graphql";
 const LOGS: &str = "https://api.runpod.io/v2/pods";
+/// RunPod's v2 REST API: the one whose volume creation takes a storage tier.
+const V2: &str = "https://api.runpod.io/v2";
 
 /// How long [`RunPod::pod_logs`] reads when its caller has no budget of its
 /// own: the stream never closes.
@@ -177,7 +179,18 @@ impl RunPod {
         path: &str,
         body: Option<Value>,
     ) -> Result<Option<Value>, RunPodError> {
-        let mut request = self.request(method.clone(), format!("{BASE}{path}"));
+        self.rest_at(BASE, method, path, body).await
+    }
+
+    /// [`RunPod::rest`] against `base`.
+    async fn rest_at(
+        &self,
+        base: &str,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<Option<Value>, RunPodError> {
+        let mut request = self.request(method.clone(), format!("{base}{path}"));
         if let Some(body) = body {
             request = request.body(body.to_string());
         }
@@ -328,14 +341,33 @@ impl RunPod {
             .await
     }
 
+    /// A new volume. With no `tier` RunPod takes the data center's default
+    /// storage tier; `STANDARD` or `HIGH_PERFORMANCE` asks for that one,
+    /// through the v2 API (v1 refuses the field), whose answer gets v1's
+    /// `dataCenterId`.
     pub async fn create_volume(
         &self,
         name: &str,
         size_gb: u64,
         data_center_id: &str,
+        tier: Option<&str>,
     ) -> Result<Option<Value>, RunPodError> {
-        let body = json!({ "name": name, "size": size_gb, "dataCenterId": data_center_id });
-        self.rest(Method::POST, "/networkvolumes", Some(body)).await
+        let Some(tier) = tier else {
+            let body = json!({ "name": name, "size": size_gb, "dataCenterId": data_center_id });
+            return self.rest(Method::POST, "/networkvolumes", Some(body)).await;
+        };
+        let body =
+            json!({ "name": name, "size": size_gb, "dataCenter": data_center_id, "type": tier });
+        let mut volume = self
+            .rest_at(V2, Method::POST, "/network-volumes", Some(body))
+            .await?;
+        if let Some(fields) = volume.as_mut().and_then(Value::as_object_mut)
+            && !fields.contains_key("dataCenterId")
+            && let Some(region) = fields.get("dataCenter").cloned()
+        {
+            fields.insert("dataCenterId".to_string(), region);
+        }
+        Ok(volume)
     }
 
     pub async fn delete_volume(&self, volume_id: &str) -> Result<(), RunPodError> {

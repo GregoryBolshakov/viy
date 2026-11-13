@@ -266,6 +266,22 @@ pub fn gpu_type_list(cfg: &Config) -> Vec<&str> {
         .collect()
 }
 
+/// GPU_TYPE_IDS split by GPU_PREFERRED: the types it names, then the
+/// others, each in GPU_TYPE_IDS order. None when either side is empty: a
+/// region is then asked once, for every type (kb d138).
+pub fn gpu_tiers(cfg: &Config) -> Option<(Vec<&str>, Vec<&str>)> {
+    let named: Vec<&str> = cfg
+        .get("GPU_PREFERRED")
+        .unwrap_or("")
+        .split(',')
+        .map(str::trim)
+        .collect();
+    let (preferred, others): (Vec<&str>, Vec<&str>) = gpu_type_list(cfg)
+        .into_iter()
+        .partition(|gpu| named.contains(gpu));
+    (!preferred.is_empty() && !others.is_empty()).then_some((preferred, others))
+}
+
 /// RUNPOD_API_KEY, or the message to exit with: where to put it and where
 /// to get one.
 pub fn require_api_key<'a>(cfg: &'a Config, paths: &Paths) -> Result<&'a str, String> {

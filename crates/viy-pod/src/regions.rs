@@ -75,6 +75,19 @@ pub fn is_region_rejected(error: &RunPodError) -> bool {
     error.status_code() == Some(400) && error.to_string().contains("dataCenterIds")
 }
 
+/// True when RunPod refuses a new volume because its region lacks the
+/// storage tier asked for (AP-IN-1 on 2026-07-30: "Standard storage is not
+/// available in data center \"AP-IN-1\".", HTTP 400).
+pub fn is_tier_unavailable(error: &RunPodError) -> bool {
+    error.status_code() == Some(400) && error.to_string().contains("storage is not available")
+}
+
+/// BACKUP_VOLUME_TYPE: the storage tier of a backup volume viy makes, None
+/// for the region's own default.
+pub fn backup_tier(cfg: &Config) -> Option<&str> {
+    Some(cfg.get("BACKUP_VOLUME_TYPE").unwrap_or("").trim()).filter(|tier| !tier.is_empty())
+}
+
 pub fn is_capacity_error(error: &RunPodError) -> bool {
     static CAPACITY: LazyLock<Regex> = LazyLock::new(|| {
         crate::compile_regex(
@@ -159,7 +172,8 @@ fn rows(file: &std::path::Path) -> Vec<Value> {
 }
 
 /// One line in `up_failures.jsonl` per refused pod creation, secrets
-/// masked.
+/// masked. `gpus` are the types that request asked for.
+#[allow(clippy::too_many_arguments)]
 pub fn log_failure(
     paths: &Paths,
     time: &dyn TimeProvider,
@@ -167,6 +181,7 @@ pub fn log_failure(
     region: &str,
     role: &str,
     volume_id: &str,
+    gpus: &Value,
     error: &RunPodError,
 ) {
     let text: String = Redactor::from_config(cfg)
@@ -180,7 +195,7 @@ pub fn log_failure(
         "role": role,
         "volume_id": volume_id,
         "pod_name": cfg.get("POD_NAME"),
-        "gpu_types": gpu_type_list(cfg),
+        "gpu_types": gpus,
         "status_code": error.status_code(),
         "capacity": is_capacity_error(error),
         "error": text,
@@ -420,8 +435,9 @@ pub async fn stock_snapshot(
 /// driver at or above the CUDA floor, and none free on an older one. Only
 /// then may `viy up` drop allowedCudaVersions, which REST matches exactly
 /// and caps at 13.0, so the pod can land on a 13.1 or 13.2 host. One
-/// GraphQL request; any doubt (no floor, an error) is a no.
-pub async fn any_cuda_is_safe(rp: &RunPod, cfg: &Config, region: &str) -> bool {
+/// GraphQL request for `gpus`, the types the refused request asked for;
+/// any doubt (no floor, an error) is a no.
+pub async fn any_cuda_is_safe(rp: &RunPod, cfg: &Config, region: &str, gpus: &[String]) -> bool {
     let Some(floor) = cuda_floor(cfg) else {
         return false;
     };
@@ -430,9 +446,8 @@ pub async fn any_cuda_is_safe(rp: &RunPod, cfg: &Config, region: &str) -> bool {
         .filter(|v| version(v) < version(&floor))
         .map(|v| (*v).to_string())
         .collect();
-    let gpus: Vec<String> = gpu_type_list(cfg).into_iter().map(str::to_string).collect();
     let Ok(stock) = rp
-        .cuda_stock(&[region.to_string()], &gpus, &floor, &older, secure(cfg))
+        .cuda_stock(&[region.to_string()], gpus, &floor, &older, secure(cfg))
         .await
     else {
         return false;

@@ -511,6 +511,8 @@ async fn failover_off_exits_after_the_primary() {
     );
     let mut home = Home::new(None, empty_runpod(refused));
     home.cfg.set("FAILOVER", "0");
+    // rpctl asks once, for every type (viy's GPU_PREFERRED, kb d138).
+    home.cfg.set("GPU_PREFERRED", "");
     // rpctl's test body has no allowedCudaVersions, so no stock is asked.
     home.cfg.set("CUDA_VERSIONS", "");
     let told = Told::default();

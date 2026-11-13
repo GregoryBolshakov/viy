@@ -1,9 +1,13 @@
 //! Creating the pod: rpctl pod.py's `_create_pod` with its `attempt` and
 //! `_ask`, and regions.py's `failover` and `_grab`.
 //!
-//! The success path is the single create request it always was. When
-//! DATA_CENTER_ID has no GPU free, the user is asked whether to try the
-//! backup volume; when that region is full too, or there is no backup
+//! The success path is the single create request it always was. It asks
+//! for GPU_PREFERRED's types only (the A100s); when DATA_CENTER_ID has none
+//! free, the user is asked whether to try the backup volume for them, then
+//! the other types are asked for in DATA_CENTER_ID and then in the backup's
+//! region, the cheapest first as GPU_TYPE_IDS orders them (kb d138; with
+//! no GPU_PREFERRED each region gets one request for every type, as rpctl
+//! sends). When no type is free in either region, or there is no backup
 //! yet, RunPod's stock of our GPU types is sampled and the user asked once
 //! whether to move the backup to the regions that showed one free, the
 //! cheapest type first. On yes each of
@@ -27,6 +31,7 @@ use serde_json::Value;
 use serde_json::json;
 use tokio::time::Instant;
 use viy_config::Config;
+use viy_config::config::gpu_tiers;
 use viy_config::config::gpu_type_list;
 use viy_protocol::Answer;
 use viy_protocol::Choices;
@@ -61,6 +66,18 @@ pub struct Created {
     /// Time spent on the user's answers and between retries for a free
     /// GPU: the user's or RunPod's, not the boot's.
     pub waited: Duration,
+}
+
+/// Which of GPU_TYPE_IDS a pod request asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ask {
+    /// Every type: a region's one request without GPU_PREFERRED, and
+    /// every request of the backup's move.
+    Every,
+    /// GPU_PREFERRED's types.
+    Preferred,
+    /// The types GPU_PREFERRED leaves.
+    Others,
 }
 
 /// Why failover ended without a pod.
@@ -120,6 +137,8 @@ pub struct Creation<'a> {
     user: User<'a>,
     /// DATA_CENTER_ID.
     primary: String,
+    /// GPU_PREFERRED's types and the others, when it splits GPU_TYPE_IDS.
+    tiers: Option<(Vec<String>, Vec<String>)>,
     /// The pod body, built once; each request sets its region and volume.
     body: Value,
     /// Whether a request was sent, which "Creating pod in" announces.
@@ -144,6 +163,10 @@ impl<'a> Creation<'a> {
             pubkey,
             user,
             primary: cfg.get("DATA_CENTER_ID").unwrap_or("").to_string(),
+            tiers: gpu_tiers(cfg).map(|(preferred, others)| {
+                let owned = |gpus: Vec<&str>| gpus.into_iter().map(str::to_string).collect();
+                (owned(preferred), owned(others))
+            }),
             body: Value::Null,
             tried: false,
             waited: Duration::ZERO,
@@ -166,6 +189,15 @@ impl<'a> Creation<'a> {
         }
     }
 
+    /// What a region is asked for first.
+    fn first(&self) -> Ask {
+        if self.tiers.is_some() {
+            Ask::Preferred
+        } else {
+            Ask::Every
+        }
+    }
+
     /// Creates the pod in DATA_CENTER_ID, and when that region has no GPU
     /// free offers the backup region. Ends with everything said when no
     /// region takes the pod.
@@ -178,10 +210,27 @@ impl<'a> Creation<'a> {
         // Only dataCenterIds and networkVolumeId differ between requests.
         self.body = build_pod_body(self.cfg, self.vllm_key, volume_id, self.pubkey)
             .map_err(|e| CommandError::Exit(e.to_string()))?;
-        let refused = match self.attempt(&primary, volume_id, "primary", false).await {
+        let first = self.first();
+        let mut refused = match self
+            .attempt(&primary, volume_id, "primary", false, first)
+            .await
+        {
             Ok(pod) => return Ok(self.created(pod, volume_id, volume_is_new, &primary)),
             Err(error) => error,
         };
+        // With no backup to offer, the other types follow at once.
+        if first == Ask::Preferred
+            && is_capacity_error(&refused)
+            && !regions::failover_enabled(self.cfg)
+        {
+            refused = match self
+                .attempt(&primary, volume_id, "primary", false, Ask::Others)
+                .await
+            {
+                Ok(pod) => return Ok(self.created(pod, volume_id, volume_is_new, &primary)),
+                Err(error) => error,
+            };
+        }
         let (message, capacity) =
             if is_capacity_error(&refused) && regions::failover_enabled(self.cfg) {
                 match self.failover(volume_id).await {
@@ -256,8 +305,8 @@ impl<'a> Creation<'a> {
         }
     }
 
-    /// One pod request in `region` on `volume_id`, logged when refused.
-    /// A capacity refusal where the free GPUs run only newer CUDA drivers
+    /// One pod request in `region` on `volume_id` for the types of `ask`,
+    /// logged when refused. A capacity refusal where the free GPUs run only newer CUDA drivers
     /// than CUDA_VERSIONS lists is asked again without the exact version.
     /// `quiet` leaves out the per-region notices of a retry round.
     async fn attempt(
@@ -266,10 +315,26 @@ impl<'a> Creation<'a> {
         volume_id: &str,
         role: &str,
         quiet: bool,
+        ask: Ask,
     ) -> Result<Value, RunPodError> {
         let mut body = self.body.clone();
         body["dataCenterIds"] = json!([region]);
         body["networkVolumeId"] = json!(volume_id);
+        let (role, none) = match (ask, &self.tiers) {
+            (Ask::Preferred, Some((preferred, _))) => {
+                body["gpuTypeIds"] = json!(preferred);
+                (
+                    format!("{role}, preferred types"),
+                    "no preferred GPU type free",
+                )
+            }
+            (Ask::Others, Some((_, others))) => {
+                body["gpuTypeIds"] = json!(others);
+                (format!("{role}, other types"), "no other GPU type free")
+            }
+            _ => (role.to_string(), "no GPU free"),
+        };
+        let role = role.as_str();
         if !self.tried {
             let gpus: Vec<&str> = gpu_type_list(self.cfg).into_iter().take(3).collect();
             self.say(
@@ -289,7 +354,7 @@ impl<'a> Creation<'a> {
             && is_capacity_error(error)
             && !quiet
         {
-            self.say(Tone::Warn, format!("  {region} ({role}): no GPU free"));
+            self.say(Tone::Warn, format!("  {region} ({role}): {none}"));
         }
         result
     }
@@ -307,16 +372,18 @@ impl<'a> Creation<'a> {
             Err(error) => error,
         };
         let env = self.env;
+        let gpus = body["gpuTypeIds"].clone();
         regions::log_failure(
-            env.paths, env.time, self.cfg, region, role, volume_id, &error,
+            env.paths, env.time, self.cfg, region, role, volume_id, &gpus, &error,
         );
+        let asked: Vec<String> = serde_json::from_value(gpus.clone()).unwrap_or_default();
         let filtered = body
             .get("allowedCudaVersions")
             .and_then(Value::as_array)
             .is_some_and(|v| !v.is_empty());
         if !(is_capacity_error(&error)
             && filtered
-            && regions::any_cuda_is_safe(self.rp, self.cfg, region).await)
+            && regions::any_cuda_is_safe(self.rp, self.cfg, region, &asked).await)
         {
             return Err(error);
         }
@@ -338,7 +405,7 @@ impl<'a> Creation<'a> {
         create(self.rp, body.clone()).await.inspect_err(|error| {
             let role = format!("{role}, any cuda");
             regions::log_failure(
-                env.paths, env.time, self.cfg, region, &role, volume_id, error,
+                env.paths, env.time, self.cfg, region, &role, volume_id, &gpus, error,
             );
         })
     }
@@ -375,8 +442,56 @@ impl<'a> Creation<'a> {
         answer != Answer::No
     }
 
+    /// The types GPU_PREFERRED leaves, asked for in DATA_CENTER_ID: the
+    /// pod, or None when none is free there or nothing was left out.
+    async fn others_in_primary(&mut self, volume_id: &str) -> Result<Option<Won>, Stop> {
+        if self.tiers.is_none() {
+            return Ok(None);
+        }
+        let primary = self.primary.clone();
+        match self
+            .attempt(&primary, volume_id, "primary", false, Ask::Others)
+            .await
+        {
+            Ok(pod) => Ok(Some(Won {
+                pod,
+                region: primary,
+                volume_id: volume_id.to_string(),
+                created: false,
+            })),
+            Err(error) if !is_capacity_error(&error) => Err(Stop::Refused(error)),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// One request on the backup volume: the pod, or None when its region
+    /// has none of these types free.
+    async fn in_backup(
+        &mut self,
+        backup: &Value,
+        region: &str,
+        ask: Ask,
+    ) -> Result<Option<Won>, Stop> {
+        match self.attempt(region, id(backup), "backup", false, ask).await {
+            Ok(pod) => {
+                let now = regions::now(self.env.time);
+                self.keep(regions::touch(self.env.paths, backup, now));
+                Ok(Some(Won {
+                    pod,
+                    region: region.to_string(),
+                    volume_id: id(backup).to_string(),
+                    created: false,
+                }))
+            }
+            Err(error) if !is_capacity_error(&error) => Err(Stop::Refused(error)),
+            Err(_) => Ok(None),
+        }
+    }
+
     /// regions.py's `failover`: called once DATA_CENTER_ID refused the
-    /// pod for lack of capacity.
+    /// pod for lack of capacity. With GPU_PREFERRED that request asked for
+    /// its types only: the backup is asked for them next, then
+    /// DATA_CENTER_ID and the backup for the others.
     async fn failover(&mut self, primary_volume: &str) -> Result<Won, Stop> {
         let (paths, time) = (self.env.paths, self.env.time);
         let primary = self.primary.clone();
@@ -385,29 +500,42 @@ impl<'a> Creation<'a> {
             .as_ref()
             .map(|b| crate::api::shown(b.get("dataCenterId")));
         if let (Some(backup), Some(region)) = (&backup, &backup_region) {
-            let question = format!("{primary} has no GPU free. Try the backup volume in {region}?");
+            let first = self.first();
+            let question = if first == Ask::Preferred {
+                format!(
+                    "{primary} has no preferred GPU type free. Try the backup volume in {region} \
+                     before the other types?"
+                )
+            } else {
+                format!("{primary} has no GPU free. Try the backup volume in {region}?")
+            };
             if !self.ask(question, true).await {
+                if let Some(won) = self.others_in_primary(primary_volume).await? {
+                    return Ok(won);
+                }
                 return Err(Stop::Declined(format!(
                     "Not trying the backup in {region}."
                 )));
             }
-            match self.attempt(region, id(backup), "backup", false).await {
-                Ok(pod) => {
-                    self.keep(regions::touch(paths, backup, regions::now(time)));
-                    return Ok(Won {
-                        pod,
-                        region: region.clone(),
-                        volume_id: id(backup).to_string(),
-                        created: false,
-                    });
-                }
-                Err(error) if !is_capacity_error(&error) => return Err(Stop::Refused(error)),
-                Err(_) => self.say(
-                    Tone::Warn,
-                    format!("The backup region {region} has no GPU free either."),
-                ),
+            if let Some(won) = self.in_backup(backup, region, first).await? {
+                return Ok(won);
             }
+            if let Some(won) = self.others_in_primary(primary_volume).await? {
+                return Ok(won);
+            }
+            if first == Ask::Preferred
+                && let Some(won) = self.in_backup(backup, region, Ask::Others).await?
+            {
+                return Ok(won);
+            }
+            self.say(
+                Tone::Warn,
+                format!("The backup region {region} has no GPU free either."),
+            );
         } else {
+            if let Some(won) = self.others_in_primary(primary_volume).await? {
+                return Ok(won);
+            }
             self.say(
                 Tone::Warn,
                 format!("{primary} has no GPU free, and there is no backup volume yet."),
@@ -577,6 +705,17 @@ impl<'a> Creation<'a> {
                             Ok(volume) => {
                                 made.insert(region.clone(), volume);
                             }
+                            Err(Stop::Refused(error)) if regions::is_tier_unavailable(&error) => {
+                                candidates.retain(|r| *r != region);
+                                self.say(
+                                    Tone::Warn,
+                                    format!(
+                                        "  {region}: no {} storage for a volume there; dropped",
+                                        regions::backup_tier(self.cfg).unwrap_or("such")
+                                    ),
+                                );
+                                continue;
+                            }
                             Err(stop) => {
                                 failed = Some(stop);
                                 break 'rounds;
@@ -588,7 +727,7 @@ impl<'a> Creation<'a> {
                 let attempt = tokio::select! {
                     biased;
                     () = &mut stopped => { interrupted = true; break 'rounds; }
-                    attempt = self.attempt(&region, &volume_id, role, rounds > 0) => attempt,
+                    attempt = self.attempt(&region, &volume_id, role, rounds > 0, Ask::Every) => attempt,
                 };
                 match attempt {
                     Ok(pod) => {
@@ -717,7 +856,12 @@ impl<'a> Creation<'a> {
         })?;
         let volume = self
             .rp
-            .create_volume(&regions::backup_name(self.cfg), size_gb, region)
+            .create_volume(
+                &regions::backup_name(self.cfg),
+                size_gb,
+                region,
+                regions::backup_tier(self.cfg),
+            )
             .await
             .map_err(Stop::Refused)?
             .filter(|v| !id(v).is_empty())

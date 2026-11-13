@@ -116,7 +116,15 @@ fn the_layers_merge_as_rpctl_merges_them() {
         for marker in [".rpctl", ".viy"] {
             // viy's own keys, which rp's config lacks.
             let mut ours = as_map(&replay(case, marker));
-            ours.retain(|(k, _)| k != "CHAT_HEADER" && k != "CLIENT_TAG");
+            ours.retain(|(k, _)| {
+                ![
+                    "CHAT_HEADER",
+                    "CLIENT_TAG",
+                    "GPU_PREFERRED",
+                    "BACKUP_VOLUME_TYPE",
+                ]
+                .contains(&k.as_str())
+            });
             assert_eq!(ours, expected, "{name} under {marker}");
         }
     }
@@ -124,11 +132,12 @@ fn the_layers_merge_as_rpctl_merges_them() {
 
 /// rpctl's 111 keys but CHAT_AUTOSAVE: viy always saves chats, as Codex
 /// (kb d083); and viy's own CHAT_HEADER, the chat's header art, and
-/// CLIENT_TAG (kb d137).
+/// CLIENT_TAG (kb d137), GPU_PREFERRED (kb d138) and BACKUP_VOLUME_TYPE
+/// (kb d139).
 #[test]
 fn defaults_are_rpctls_keys_but_chat_autosave() {
-    assert_eq!(DEFAULTS.len(), 112);
-    assert_eq!(Config::defaults().iter().count(), 112);
+    assert_eq!(DEFAULTS.len(), 114);
+    assert_eq!(Config::defaults().iter().count(), 114);
     assert!(Config::defaults().get("CHAT_AUTOSAVE").is_none());
     assert_eq!(Config::defaults().get("CHAT_HEADER"), Some("1"));
 }
@@ -325,6 +334,26 @@ fn tunnel_and_gpu_getters_follow_rpctl() {
     assert_eq!(tunnel_local_port(&cfg), "18000");
     cfg.set("GPU_TYPE_IDS", " a , ,b,");
     assert_eq!(gpu_type_list(&cfg), ["a", "b"]);
+}
+
+#[test]
+fn preferred_types_split_the_list_in_its_own_order() {
+    let mut cfg = Config::defaults();
+    let (preferred, others) = gpu_tiers(&cfg).unwrap();
+    assert_eq!(
+        preferred,
+        ["NVIDIA A100 80GB PCIe", "NVIDIA A100-SXM4-80GB"]
+    );
+    assert_eq!(others.len(), 5);
+    assert_eq!(others[0], "NVIDIA RTX PRO 6000 Blackwell Server Edition");
+    cfg.set("GPU_TYPE_IDS", "a,b,c");
+    cfg.set("GPU_PREFERRED", " c , a ");
+    assert_eq!(gpu_tiers(&cfg), Some((vec!["a", "c"], vec!["b"])));
+    // Nothing to put first, or nothing left for a second request.
+    for preferred in ["", "x", "a,b,c"] {
+        cfg.set("GPU_PREFERRED", preferred);
+        assert_eq!(gpu_tiers(&cfg), None, "{preferred:?}");
+    }
 }
 
 #[test]

@@ -5,8 +5,8 @@
 //! HTTP/1.1 server on a loopback socket, one thread per connection, every
 //! reply sent with `connection: close`; std only.
 //!
-//! GET `/health` and `/v1/models`, POST `/v1/chat/completions`. Each
-//! chat-completions request takes the next scripted response; one the
+//! GET `/health`, `/version` and `/v1/models`, POST `/v1/chat/completions`.
+//! Each chat-completions request takes the next scripted response; one the
 //! scenario did not expect, or one that fails the response's `expect`, gets
 //! HTTP 500 and is recorded with the reason. Every request is recorded in the
 //! shape of fakellm's log lines (implementation plan 3.4). A scenario's `web`
@@ -88,6 +88,7 @@ impl CapturedRequest {
 struct State {
     model: String,
     max_model_len: Value,
+    version: Option<String>,
     responses: VecDeque<Value>,
     served: usize,
     requests: Vec<CapturedRequest>,
@@ -120,6 +121,10 @@ impl MockLlm {
                 .get("max_model_len")
                 .cloned()
                 .unwrap_or(json!(65536)),
+            version: scenario
+                .get("version")
+                .and_then(Value::as_str)
+                .map(str::to_string),
             responses: scenario
                 .get("responses")
                 .and_then(Value::as_array)
@@ -300,6 +305,19 @@ fn serve(mut conn: TcpStream, state: &Mutex<State>) -> io::Result<()> {
         ("GET", "/health") => {
             record(captured);
             respond(&mut conn, 200, "text/plain", b"")
+        }
+        ("GET", "/version") => {
+            let version = lock(state).version.clone();
+            record(captured);
+            match version {
+                Some(version) => respond(
+                    &mut conn,
+                    200,
+                    "application/json",
+                    json!({"version": version}).to_string().as_bytes(),
+                ),
+                None => respond(&mut conn, 404, "text/plain", b"not found"),
+            }
         }
         ("GET", "/v1/models") => {
             let body = {

@@ -101,6 +101,39 @@ fn reasoning_comes_under_either_name_and_content_goes_to_the_answer() {
     assert_eq!(round.finish, None);
 }
 
+#[test]
+fn structured_actions_become_existing_round_shapes() {
+    let (text, calls) = structured_action(
+        r#"{"kind":"tool_calls","calls":[{"name":"search","arguments":{"q":"rust"}},{"name":"fetch","arguments":{"id":2}}]}"#,
+    )
+    .unwrap();
+    assert!(text.is_empty());
+    assert_eq!(
+        calls,
+        [
+            ToolCall {
+                id: String::new(),
+                name: "search".into(),
+                arguments: r#"{"q":"rust"}"#.into(),
+            },
+            ToolCall {
+                id: String::new(),
+                name: "fetch".into(),
+                arguments: r#"{"id":2}"#.into(),
+            },
+        ]
+    );
+    assert_eq!(
+        structured_action(r#"{"kind":"final","content":"done"}"#).unwrap(),
+        ("done".into(), Vec::new())
+    );
+    assert!(structured_action(r#"{"kind":"tool_calls","calls":[]}"#).is_err());
+    assert!(
+        structured_action(r#"{"kind":"tool_calls","calls":[{"name":"x","arguments":"{}"}]}"#)
+            .is_err()
+    );
+}
+
 struct Seen {
     events: Mutex<Vec<EventMsg>>,
     touched: AtomicUsize,
@@ -125,9 +158,21 @@ impl Seen {
             })
             .collect()
     }
+
+    fn content(&self) -> Vec<String> {
+        self.events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|event| match event {
+                EventMsg::AgentMessageContentDelta(delta) => Some(delta.delta.clone()),
+                _ => None,
+            })
+            .collect()
+    }
 }
 
-async fn round(base: &str, backend: &str, seen: &Seen) -> Option<Round> {
+async fn round_body(base: &str, backend: &str, seen: &Seen, body: Value) -> Option<Round> {
     let endpoint = Endpoint {
         base: base.into(),
         key: "fake-key".into(),
@@ -145,13 +190,11 @@ async fn round(base: &str, backend: &str, seen: &Seen) -> Option<Round> {
         touch: &touch,
     };
     let mut answer = String::new();
-    stream_once(
-        &endpoint,
-        &json!({"model": "m", "messages": []}),
-        &sink,
-        &mut answer,
-    )
-    .await
+    stream_once(&endpoint, &body, &sink, &mut answer).await
+}
+
+async fn round(base: &str, backend: &str, seen: &Seen) -> Option<Round> {
+    round_body(base, backend, seen, json!({"model": "m", "messages": []})).await
 }
 
 fn serve(responses: Value) -> MockLlm {
@@ -177,6 +220,40 @@ async fn a_streamed_reply_touches_the_activity_file_per_chunk() {
             .unwrap()
             .starts_with("python-requests/")
     );
+}
+
+#[tokio::test]
+async fn structured_streams_hide_the_envelope_and_emit_the_final_answer() {
+    let action = json!({"kind": "final", "content": "hello"}).to_string();
+    let mock = serve(json!([{"stream": [{"content": action}]}]));
+    let seen = Seen::new();
+    let out = round_body(
+        &mock.uri(),
+        "local",
+        &seen,
+        json!({
+            "model": "m",
+            "messages": [],
+            "structured_outputs": {"json": {"type": "object"}}
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(out.text, "hello");
+    assert_eq!(seen.content(), ["hello"]);
+
+    let broken = serve(json!([{"stream": [{"content": "{\"kind\":\"final\""}]}]));
+    let seen = Seen::new();
+    let out = round_body(
+        &broken.uri(),
+        "local",
+        &seen,
+        json!({"structured_outputs": {"json": {"type": "object"}}}),
+    )
+    .await;
+    assert_eq!(out, None);
+    assert!(seen.content().is_empty());
+    assert_eq!(seen.notices()[0].0, "invalid_structured_output");
 }
 
 #[tokio::test]
@@ -207,7 +284,13 @@ async fn http_errors_say_what_to_do() {
         "x".repeat(700)
     );
     let mock = serve(json!([{"status": 400, "body": long}]));
-    round(&mock.uri(), "local", &seen).await;
+    round_body(
+        &mock.uri(),
+        "local",
+        &seen,
+        json!({"tools": [{"type": "function"}]}),
+    )
+    .await;
     let notices = seen.notices();
     assert_eq!(notices[0].1.chars().count(), "HTTP 400: ".len() + 600);
     assert_eq!(

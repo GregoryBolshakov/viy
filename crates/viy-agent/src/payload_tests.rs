@@ -130,6 +130,72 @@ fn payload_tool_modes() {
 }
 
 #[test]
+fn supported_vllm_versions_use_the_constrained_action_protocol() {
+    let tool_specs = specs();
+    let mut s = settings(&[]);
+    s.observe_vllm_version("v0.31.0+rocm");
+    let auto = s.payload(
+        &[json!({"role": "user", "content": "find it"})],
+        &tool_specs,
+        Tools::Auto,
+        true,
+    );
+    assert!(auto.get("tools").is_none() && auto.get("tool_choice").is_none());
+    let branches = auto["structured_outputs"]["json"]["oneOf"]
+        .as_array()
+        .unwrap();
+    assert_eq!(branches[0]["properties"]["kind"]["const"], "final");
+    let calls = branches[1]["properties"]["calls"]["items"]["oneOf"]
+        .as_array()
+        .unwrap();
+    assert_eq!(calls.len(), tool_specs.len());
+    for (call, spec) in calls.iter().zip(&tool_specs) {
+        assert_eq!(
+            call["properties"]["name"]["const"],
+            spec["function"]["name"]
+        );
+        assert_eq!(
+            call["properties"]["arguments"],
+            spec["function"]["parameters"]
+        );
+        assert_eq!(call["additionalProperties"], false);
+    }
+    let contract = auto["messages"][0]["content"].as_str().unwrap();
+    for spec in &tool_specs {
+        assert!(contract.contains(spec["function"]["name"].as_str().unwrap()));
+        assert!(contract.contains(spec["function"]["description"].as_str().unwrap()));
+    }
+
+    let final_only = s.payload(&[], &tool_specs, Tools::None, true);
+    assert_eq!(
+        final_only["structured_outputs"]["json"]["properties"]["kind"]["const"],
+        "final"
+    );
+    assert_eq!(auto["messages"][0], final_only["messages"][0]);
+    assert!(
+        s.payload(&[], &tool_specs, Tools::Omit, true)
+            .get("structured_outputs")
+            .is_none()
+    );
+}
+
+#[test]
+fn unknown_or_old_servers_keep_native_tools() {
+    for version in ["not-a-version", "0.30.9"] {
+        let mut s = settings(&[]);
+        s.observe_vllm_version(version);
+        let body = s.payload(&[], &specs(), Tools::Auto, true);
+        assert_eq!(body["tool_choice"], "auto");
+        assert!(body.get("structured_outputs").is_none());
+    }
+    let mut hosted = settings(&[("BACKEND", "openai")]);
+    hosted.observe_vllm_version("99.0.0");
+    let body = hosted.payload(&[], &specs(), Tools::Auto, true);
+    assert_eq!(body["tool_choice"], "auto");
+    assert!(body.get("structured_outputs").is_none());
+}
+
+#[test]
 fn the_server_never_sees_thought_marks() {
     let history = vec![
         json!({"role": "user", "content": "q"}),

@@ -72,7 +72,11 @@ fn sessions_store() -> (ScratchDir, Sessions) {
 /// A chat on DEFAULTS with no tools and no title, plus `over`, against a
 /// server that answers with `responses`, saved to a store of its own.
 fn rig(responses: Value, over: &[(&str, &str)]) -> Rig {
-    let mock = MockLlm::start(&json!({"responses": responses})).unwrap();
+    rig_scenario(json!({"responses": responses}), over)
+}
+
+fn rig_scenario(scenario: Value, over: &[(&str, &str)]) -> Rig {
+    let mock = MockLlm::start(&scenario).unwrap();
     let (scratch, store) = sessions_store();
     let touched = Arc::new(AtomicUsize::new(0));
     let chat = chat_touching(&mock, over, &store, Arc::clone(&touched));
@@ -551,8 +555,11 @@ async fn the_context_length_comes_from_the_server() {
     assert_eq!(chat.discover_max_model_len().await, 262144);
     let requests = mock.requests();
     assert_eq!(
-        (requests[0].method.as_str(), requests[0].path.as_str()),
-        ("GET", "/v1/models")
+        requests
+            .iter()
+            .map(|request| (request.method.as_str(), request.path.as_str()))
+            .collect::<Vec<_>>(),
+        [("GET", "/version"), ("GET", "/v1/models")]
     );
 }
 
@@ -584,6 +591,7 @@ async fn the_first_request_to_a_server_asks_its_context_length_once() {
     assert_eq!(
         paths(&rig),
         [
+            "GET /version",
             "GET /v1/models",
             "POST /v1/chat/completions",
             "POST /v1/chat/completions"
@@ -592,7 +600,39 @@ async fn the_first_request_to_a_server_asks_its_context_length_once() {
     // A replaced pod is asked again.
     rig.turns.with_chat(Chat::server_changed).unwrap();
     rig.send("c").await;
-    assert_eq!(paths(&rig)[3], "GET /v1/models");
+    assert_eq!(
+        &paths(&rig)[4..],
+        [
+            "GET /version",
+            "GET /v1/models",
+            "POST /v1/chat/completions"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_supported_vllm_is_constrained_before_the_first_model_call() {
+    let action = json!({"kind": "final", "content": "done"}).to_string();
+    let mut rig = rig_scenario(
+        json!({
+            "version": "0.31.0",
+            "responses": [{"stream": [{"content": action}]}]
+        }),
+        &[("SEARCH_ENABLED", "1")],
+    );
+    rig.send("answer").await;
+    let requests = rig.mock.requests();
+    assert_eq!(
+        requests
+            .iter()
+            .map(|request| request.path.as_str())
+            .collect::<Vec<_>>(),
+        ["/version", "/v1/models", "/v1/chat/completions"]
+    );
+    let body = &rig.sent()[0];
+    assert!(body.get("structured_outputs").is_some());
+    assert!(body.get("tools").is_none() && body.get("tool_choice").is_none());
+    assert_eq!(rig.messages().last().unwrap()["content"], "done");
 }
 
 #[tokio::test]

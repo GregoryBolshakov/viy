@@ -39,6 +39,12 @@ pub enum Tools {
     Omit,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ToolProtocol {
+    Native,
+    Structured,
+}
+
 /// The sampling settings and model of a chat's requests.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
@@ -46,6 +52,7 @@ pub struct Settings {
     /// Whether the server is vLLM, which takes `top_k` and
     /// `chat_template_kwargs`.
     pub is_vllm: bool,
+    tool_protocol: ToolProtocol,
     pub temperature: f64,
     pub top_p: f64,
     pub top_k: i64,
@@ -70,6 +77,7 @@ impl Settings {
         Ok(Self {
             model,
             is_vllm,
+            tool_protocol: ToolProtocol::Native,
             temperature: number(cfg, "TEMPERATURE", "1.0")?,
             top_p: number(cfg, "TOP_P", "0.95")?,
             top_k: number(cfg, "TOP_K", "20")?,
@@ -78,14 +86,39 @@ impl Settings {
         })
     }
 
+    /// Selects the constrained action protocol when the running vLLM
+    /// version is known to support `structured_outputs`.
+    pub(crate) fn observe_vllm_version(&mut self, version: &str) {
+        self.tool_protocol = if self.is_vllm && version_at_least(version, (0, 31, 0)) {
+            ToolProtocol::Structured
+        } else {
+            ToolProtocol::Native
+        };
+    }
+
+    /// A restarted or replaced server must be discovered again.
+    pub(crate) fn forget_vllm_version(&mut self) {
+        self.tool_protocol = ToolProtocol::Native;
+    }
+
+    pub(crate) fn uses_structured_tools(&self) -> bool {
+        self.tool_protocol == ToolProtocol::Structured
+    }
+
     /// The body of a streamed chat request. `specs` are the tools this chat
     /// offers; `think: false` turns the reasoning trace off, which changes
     /// only the end of the prompt, so the prefix cache still hits.
     pub fn payload(&self, msgs: &[Value], specs: &[Value], tools: Tools, think: bool) -> Value {
+        let structured = self.uses_structured_tools() && !specs.is_empty() && tools != Tools::Omit;
+        let messages = with_valid_tool_args(&without_thought(msgs));
+        let messages = if structured {
+            with_action_contract(messages, specs)
+        } else {
+            messages
+        };
         let mut body = json!({
             "model": self.model,
-            // Also repairs chats saved before broken calls were caught.
-            "messages": with_valid_tool_args(&without_thought(msgs)),
+            "messages": messages,
             "stream": true,
             "temperature": self.temperature,
             "top_p": self.top_p,
@@ -103,7 +136,12 @@ impl Settings {
                 json!({"enable_thinking": false, "preserve_thinking": false})
             };
         }
-        if !specs.is_empty() && tools != Tools::Omit {
+        if structured {
+            body["structured_outputs"] = json!({
+                "json": action_schema(specs, tools),
+                "disable_additional_properties": true,
+            });
+        } else if !specs.is_empty() && tools != Tools::Omit {
             body["tools"] = Value::Array(specs.to_vec());
             body["tool_choice"] = json!(if tools == Tools::None { "none" } else { "auto" });
         }
@@ -129,6 +167,119 @@ impl Settings {
         }
         body
     }
+}
+
+fn version_at_least(version: &str, minimum: (u64, u64, u64)) -> bool {
+    let core = version
+        .trim()
+        .strip_prefix('v')
+        .unwrap_or(version.trim())
+        .split(|c| c == '-' || c == '+')
+        .next()
+        .unwrap_or_default();
+    let mut parts = core.split('.');
+    let Some(major) = parts.next().and_then(|n| n.parse().ok()) else {
+        return false;
+    };
+    let Some(minor) = parts.next().and_then(|n| n.parse().ok()) else {
+        return false;
+    };
+    let Some(patch) = parts.next().and_then(|n| n.parse().ok()) else {
+        return false;
+    };
+    (major, minor, patch) >= minimum
+}
+
+fn with_action_contract(mut messages: Vec<Value>, specs: &[Value]) -> Vec<Value> {
+    let definitions = Value::Array(
+        specs
+            .iter()
+            .filter_map(|spec| spec.get("function").cloned())
+            .collect(),
+    );
+    let contract = format!(
+        "Tool protocol: reply with exactly one JSON object and no text outside it. \
+         Return a final answer as {{\"kind\":\"final\",\"content\":\"...\"}}. \
+         To call one or more tools, return \
+         {{\"kind\":\"tool_calls\",\"calls\":[{{\"name\":\"tool_name\",\
+         \"arguments\":{{...}}}}]}}. Each call's arguments must satisfy that tool's schema. \
+         Tool definitions: {definitions}"
+    );
+    if let Some(system) = messages
+        .iter_mut()
+        .find(|message| message["role"].as_str() == Some("system"))
+    {
+        match &mut system["content"] {
+            Value::String(content) => {
+                content.push_str("\n\n");
+                content.push_str(&contract);
+            }
+            Value::Array(parts) => {
+                parts.push(json!({"type": "text", "text": contract}));
+            }
+            content => *content = json!(contract),
+        }
+    } else {
+        messages.insert(0, json!({"role": "system", "content": contract}));
+    }
+    messages
+}
+
+fn final_action_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "kind": {"const": "final"},
+            "content": {"type": "string"}
+        },
+        "required": ["kind", "content"],
+        "additionalProperties": false
+    })
+}
+
+fn action_schema(specs: &[Value], tools: Tools) -> Value {
+    let calls: Vec<Value> = specs
+        .iter()
+        .filter_map(|spec| {
+            let function = spec.get("function")?;
+            let name = function.get("name")?.as_str()?;
+            let arguments = function
+                .get("parameters")
+                .cloned()
+                .unwrap_or_else(|| json!({"type": "object"}));
+            Some(json!({
+                "type": "object",
+                "properties": {
+                    "name": {"const": name},
+                    "arguments": arguments
+                },
+                "required": ["name", "arguments"],
+                "additionalProperties": false
+            }))
+        })
+        .collect();
+    let final_answer = final_action_schema();
+    if tools == Tools::None || calls.is_empty() {
+        return final_answer;
+    }
+    json!({
+        "oneOf": [
+            final_answer,
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {"const": "tool_calls"},
+                    "calls": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"oneOf": calls}
+                    }
+                },
+                "required": ["kind", "calls"],
+                "additionalProperties": false
+            }
+        ]
+    })
 }
 
 /// The first `n` characters of `text`.

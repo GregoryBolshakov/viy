@@ -1055,10 +1055,12 @@ impl Chat {
         self.estimator.chars_per_token
     }
 
-    /// Forgets the server's context length, to be asked again before the
-    /// next request: the pod was replaced or restarted.
+    /// Forgets server capabilities, to be asked again before the next
+    /// request: the pod was replaced or restarted.
     pub fn server_changed(&mut self) {
         self.discovered = false;
+        self.probed = false;
+        self.settings.forget_vllm_version();
     }
 
     /// Tokens the conversation may occupy before a reply no longer fits.
@@ -1107,6 +1109,7 @@ impl Chat {
             self.endpoint.base = ready.base;
             self.settings.model = ready.model;
             self.discovered = false;
+            self.settings.forget_vllm_version();
             self.probed = false;
         }
     }
@@ -1116,11 +1119,31 @@ impl Chat {
         &self.settings.model
     }
 
+    async fn discover_vllm_version(&mut self) {
+        self.settings.forget_vllm_version();
+        if !self.endpoint.is_vllm {
+            return;
+        }
+        let request = self
+            .endpoint
+            .request(Method::GET, "/version")
+            .timeouts(Duration::from_secs(10), Duration::from_secs(30));
+        if let Ok(response) = viy_http::send(self.endpoint.http.as_ref(), request).await
+            && response.status == 200
+            && let Ok(bytes) = response.bytes().await
+            && let Ok(version) = serde_json::from_slice::<Value>(&bytes)
+            && let Some(version) = version["version"].as_str()
+        {
+            self.settings.observe_vllm_version(version);
+        }
+    }
+
     /// Asks the server what context it was launched with: MAX_MODEL_LEN is
     /// only what was asked for, and a running pod can predate a config
     /// edit. Keeps the configured value when the server does not say.
     pub async fn discover_max_model_len(&mut self) -> u64 {
         self.discovered = true;
+        self.discover_vllm_version().await;
         let request = self
             .endpoint
             .request(Method::GET, "/v1/models")
@@ -1145,6 +1168,9 @@ impl Chat {
     /// answers a request carrying tools with HTTP 400. `None`: could not
     /// tell.
     pub async fn tools_supported(&self) -> (Option<bool>, String) {
+        if self.settings.uses_structured_tools() {
+            return (Some(true), String::new());
+        }
         let body = json!({
             "model": self.settings.model,
             "messages": [{"role": "user", "content": "ping"}],
